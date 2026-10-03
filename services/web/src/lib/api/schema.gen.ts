@@ -246,6 +246,23 @@ export interface components {
             requested_ms: number;
             settings: components["schemas"]["Settings"];
         };
+        /** CopyFit */
+        CopyFit: {
+            /** Caps */
+            caps?: string[];
+            /** Cohort Size */
+            cohort_size: number;
+            /** Parts */
+            parts: {
+                [key: string]: number;
+            };
+            /** Value */
+            value: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+        };
         /** CopyPosition */
         CopyPosition: {
             /** Coin */
@@ -440,7 +457,7 @@ export interface components {
         Settings: {
             /**
              * Contract Version
-             * @default 2
+             * @default 3
              */
             contract_version: number;
             /**
@@ -607,12 +624,15 @@ export interface components {
             address: string;
             /** Coins */
             coins?: string[];
+            copy_fit?: components["schemas"]["CopyFit"] | null;
             /** Display Name */
             display_name?: string | null;
             /** Fills 30D */
             fills_30d: number;
             /** Flags */
             flags?: string[];
+            /** Last Fill Ms */
+            last_fill_ms?: number | null;
             /** Median Hold H */
             median_hold_h?: number | null;
             /** Opens Per Day */
@@ -627,6 +647,8 @@ export interface components {
             score: number;
             /** Sim Copies */
             sim_copies: number;
+            /** Sim Copy Capacity Pct */
+            sim_copy_capacity_pct?: number | null;
             /** Sim Fees Usd */
             sim_fees_usd: number;
             /** Sim Liquidations */
@@ -637,9 +659,15 @@ export interface components {
             sim_return_pct: number;
             /** Sim Skipped Min Order */
             sim_skipped_min_order: number;
+            style?: components["schemas"]["TradingStyle"] | null;
             /** Volume 30D Usd */
             volume_30d_usd: number;
         };
+        /**
+         * TradingStyle
+         * @enum {string}
+         */
+        TradingStyle: "algo" | "scalp" | "intraday" | "swing" | "position";
         /** ValidationError */
         ValidationError: {
             /** Context */

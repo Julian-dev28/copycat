@@ -38,6 +38,47 @@
         "title": "CloseAllResponse",
         "type": "object"
       },
+      "CopyFit": {
+        "properties": {
+          "caps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Caps",
+            "type": "array"
+          },
+          "cohort_size": {
+            "title": "Cohort Size",
+            "type": "integer"
+          },
+          "parts": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Parts",
+            "type": "object"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Weights",
+            "type": "object"
+          }
+        },
+        "required": [
+          "value",
+          "parts",
+          "weights",
+          "cohort_size"
+        ],
+        "title": "CopyFit",
+        "type": "object"
+      },
       "CopyPosition": {
         "properties": {
           "coin": {
@@ -666,7 +707,7 @@
         "description": "The whole user-editable configuration. Stored at data/settings.json,\nowned by the api service (the only writer), read by the engine every cycle.",
         "properties": {
           "contract_version": {
-            "default": 2,
+            "default": 3,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -1069,6 +1110,16 @@
             "title": "Coins",
             "type": "array"
           },
+          "copy_fit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CopyFit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "display_name": {
             "anyOf": [
               {
@@ -1090,6 +1141,17 @@
             },
             "title": "Flags",
             "type": "array"
+          },
+          "last_fill_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fill Ms"
           },
           "median_hold_h": {
             "anyOf": [
@@ -1126,6 +1188,17 @@
             "title": "Sim Copies",
             "type": "integer"
           },
+          "sim_copy_capacity_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sim Copy Capacity Pct"
+          },
           "sim_fees_usd": {
             "title": "Sim Fees Usd",
             "type": "number"
@@ -1145,6 +1218,16 @@
           "sim_skipped_min_order": {
             "title": "Sim Skipped Min Order",
             "type": "integer"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "volume_30d_usd": {
             "title": "Volume 30D Usd",
@@ -1170,6 +1253,17 @@
         ],
         "title": "TraderScore",
         "type": "object"
+      },
+      "TradingStyle": {
+        "enum": [
+          "algo",
+          "scalp",
+          "intraday",
+          "swing",
+          "position"
+        ],
+        "title": "TradingStyle",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {

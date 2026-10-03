@@ -12,7 +12,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CONTRACT_VERSION = 2   # v2: Venue cloid/order_status/ambiguous, partial-fill semantics
+CONTRACT_VERSION = 3   # v3: Scout models (docs/research/copytrading_page_spec.md section 6)
+# v2: Venue cloid/order_status/ambiguous, partial-fill semantics
 
 MAX_LEADERS = 10
 HL_MIN_ORDER_USD = 10.5          # Hyperliquid rejects orders under $10; 10.5 leaves rounding room
@@ -190,6 +191,11 @@ class TraderScore(BaseModel):
     sim_fees_usd: float
     score: float                        # the ranking key, higher is better
     flags: List[str] = Field(default_factory=list)   # e.g. "hft", "vault", "too_few_trades"
+    # v3 (Scout): optional so v2 rows still validate
+    sim_copy_capacity_pct: Optional[float] = None
+    copy_fit: Optional["CopyFit"] = None
+    style: Optional["TradingStyle"] = None
+    last_fill_ms: Optional[int] = None
 
 
 class DiscoveryRun(BaseModel):
@@ -203,3 +209,194 @@ class DiscoveryRun(BaseModel):
     scored: int
     error: Optional[str] = None
     results: List[TraderScore] = Field(default_factory=list)
+
+
+# ── Scout (v3): trader board + trader file. docs/research/copytrading_page_spec.md ──
+
+class PnlWindow(str, Enum):
+    day = "1d"
+    week = "7d"
+    month = "30d"
+    all_time = "all"
+
+class TradingStyle(str, Enum):
+    algo = "algo"
+    scalp = "scalp"
+    intraday = "intraday"
+    swing = "swing"
+    position = "position"
+
+class SizeTier(str, Enum):
+    S = "S"
+    M = "M"
+    L = "L"
+    XL = "XL"
+    XXL = "XXL"
+class PnlTier(str, Enum):
+    losing = "losing"
+    up = "up"
+    strong = "strong"
+    elite = "elite"
+
+class CurvePoint(BaseModel):
+    t_ms: int
+    value: float                         # USD
+
+class WindowPerf(BaseModel):             # straight from the stats-data leaderboard
+    window: PnlWindow
+    pnl_usd: float
+    roi_pct: float
+    volume_usd: float
+
+class RiskStats(BaseModel):              # from portfolio pnl/accountValue history
+    window: PnlWindow
+    max_drawdown_pct: Optional[float] = None    # >= 0
+    sharpe: Optional[float] = None
+    sortino: Optional[float] = None
+    profitable_days_pct: Optional[float] = None
+    days: int = 0
+
+class TradeStats(BaseModel):             # from reconstructed round trips
+    window: PnlWindow
+    trips: int
+    wins: int
+    long_trips: int
+    short_trips: int
+    win_rate_pct: Optional[float] = None
+    avg_hold_h: Optional[float] = None
+    median_hold_h: Optional[float] = None
+    opens_per_day: float = 0.0
+
+class CoinStat(BaseModel):
+    coin: str
+    volume_usd: float
+    pnl_usd: float
+    trips: int = 0
+
+class CopyFit(BaseModel):
+    value: float                         # 0..100
+    parts: Dict[str, float]              # part name -> 0..1 (pre-weight)
+    weights: Dict[str, float]
+    caps: List[str] = Field(default_factory=list)   # flags that capped it
+    cohort_size: int
+
+
+
+class TraderRow(BaseModel):              # one Scout board row; what the list route returns
+    address: str
+    display_name: Optional[str] = None
+    account_value_usd: float
+    size_tier: SizeTier
+    pnl_tier: PnlTier
+    style: Optional[TradingStyle] = None
+    last_fill_ms: Optional[int] = None
+    perf: List[WindowPerf]               # 1d, 7d, 30d, all
+    risk_30d: RiskStats
+    trades_30d: TradeStats
+    top_coins: List[CoinStat] = Field(default_factory=list, max_length=5)
+    pnl_spark_30d: List[CurvePoint] = Field(default_factory=list, max_length=60)
+    sim_spark_30d: List[CurvePoint] = Field(default_factory=list, max_length=60)
+    score: TraderScore                   # sim + Copy Fit at settings_hash
+    in_book: bool = False                # filled by api from Settings.leaders
+    flags: List[str] = Field(default_factory=list)
+
+class TraderPage(BaseModel):
+    as_of_ms: int
+    refresh_id: str
+    settings_hash: str
+    cohort_size: int
+    total: int                           # after filters
+    rows: List[TraderRow]
+
+class TraderPositionView(BaseModel):
+    coin: str
+    side: Literal["long", "short"]
+    size: float
+    notional_usd: float
+    entry_px: float
+    mark_px: float
+    unrealized_pnl_usd: float
+    roe_pct: float
+    leverage: int
+    is_cross: bool
+    liquidation_px: Optional[float] = None
+    liq_distance_pct: Optional[float] = None
+    margin_usd: float
+    funding_since_open_usd: float
+
+class RoundTrip(BaseModel):
+    coin: str
+    side: Literal["long", "short"]
+    opened_ms: int
+    closed_ms: int
+    hold_h: float
+    entry_px: float                      # size-weighted avg of opens/adds
+    exit_px: float                       # size-weighted avg of reduces/close
+    max_notional_usd: float
+    net_pnl_usd: float                   # closed_pnl - fees
+    win: bool
+
+class AccountRisk(BaseModel):
+    perps_usd: float
+    spot_usd: float
+    staked_usd: float
+    account_leverage: float
+    margin_usage_pct: float
+    nearest_liq_pct: Optional[float] = None
+    long_notional_usd: float
+    short_notional_usd: float
+    long_bias_pct: Optional[float] = None
+    unrealized_pnl_usd: float
+
+class LeaderFillView(BaseModel):         # display shape of a leader fill
+    time_ms: int
+    coin: str
+    side: Literal["B", "A"]
+    dir: str
+    px: float
+    sz: float
+    notional_usd: float
+    closed_pnl_usd: float
+    fee_usd: float
+
+
+class TraderProfile(BaseModel):          # the Trader file
+    row: TraderRow
+    account: AccountRisk
+    positions: List[TraderPositionView]
+    positions_as_of_ms: int
+    pnl_curve: Dict[PnlWindow, List[CurvePoint]]
+    value_curve: Dict[PnlWindow, List[CurvePoint]]
+    sim_curve: List[CurvePoint]          # hourly, 30d, at settings_hash
+    daily_pnl: List[CurvePoint]          # calendar, last 365 days, t = UTC midnight
+    risk: List[RiskStats]                # 7d, 30d, all
+    trades: List[TradeStats]             # 7d, 30d
+    longest_win_streak_days: int
+    coins: List[CoinStat]
+    recent_trips: List[RoundTrip] = Field(default_factory=list, max_length=100)
+    recent_fills: List[LeaderFillView] = Field(default_factory=list, max_length=100)
+
+
+
+class WhatIfRequest(BaseModel):
+    sim_equity_usd: float = Field(gt=0)
+    override: LeaderOverride             # reuses the existing per-leader override shape
+
+class WhatIfResult(BaseModel):
+    score: TraderScore                   # sim fields only; copy_fit None (no cohort)
+    sim_curve: List[CurvePoint]
+
+class ScoutStatus(BaseModel):
+    refresh_id: Optional[str]
+    state: Literal["idle", "running", "failed"]
+    stage: Optional[Literal["leaderboard", "stats", "sim"]] = None
+    done: int = 0
+    total: int = 0
+    eta_s: Optional[float] = None
+    last_ok_ms: Optional[int] = None
+    next_due_ms: Optional[int] = None
+    error: Optional[str] = None
+
+
+TraderScore.model_rebuild()
+DiscoveryRun.model_rebuild()
