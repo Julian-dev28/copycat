@@ -1,0 +1,1632 @@
+{
+  "components": {
+    "schemas": {
+      "AddLeaderRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "AddLeaderRequest",
+        "type": "object"
+      },
+      "CopyPosition": {
+        "properties": {
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "entry_px": {
+            "title": "Entry Px",
+            "type": "number"
+          },
+          "is_cross": {
+            "title": "Is Cross",
+            "type": "boolean"
+          },
+          "leader": {
+            "title": "Leader",
+            "type": "string"
+          },
+          "leverage": {
+            "title": "Leverage",
+            "type": "integer"
+          },
+          "liquidation_px": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liquidation Px"
+          },
+          "mark_px": {
+            "title": "Mark Px",
+            "type": "number"
+          },
+          "notional_usd": {
+            "title": "Notional Usd",
+            "type": "number"
+          },
+          "opened_ms": {
+            "title": "Opened Ms",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "number"
+          },
+          "sizing_mode": {
+            "$ref": "#/components/schemas/SizingMode"
+          },
+          "unrealized_pnl_usd": {
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coin",
+          "leader",
+          "side",
+          "size",
+          "entry_px",
+          "mark_px",
+          "notional_usd",
+          "leverage",
+          "is_cross",
+          "unrealized_pnl_usd",
+          "opened_ms",
+          "sizing_mode"
+        ],
+        "title": "CopyPosition",
+        "type": "object"
+      },
+      "DiscoveryRun": {
+        "properties": {
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished Ms"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/TraderScore"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "integer"
+          },
+          "sim_equity_usd": {
+            "title": "Sim Equity Usd",
+            "type": "number"
+          },
+          "sim_settings": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "started_ms": {
+            "title": "Started Ms",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "started_ms",
+          "status",
+          "sim_equity_usd",
+          "sim_settings",
+          "candidates",
+          "scored"
+        ],
+        "title": "DiscoveryRun",
+        "type": "object"
+      },
+      "DiscoveryRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Settings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sim_equity_usd": {
+            "title": "Sim Equity Usd",
+            "type": "number"
+          },
+          "top_n": {
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sim_equity_usd",
+          "top_n"
+        ],
+        "title": "DiscoveryRunRequest",
+        "type": "object"
+      },
+      "DiscoveryRunResponse": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "DiscoveryRunResponse",
+        "type": "object"
+      },
+      "EngineEvent": {
+        "description": "One line of the engine's append-only event log (data/events.jsonl).",
+        "properties": {
+          "action": {
+            "enum": [
+              "baseline",
+              "open",
+              "add",
+              "reduce",
+              "close",
+              "skip",
+              "error",
+              "intent",
+              "halt",
+              "resume"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "coin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "leader": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "notional_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notional Usd"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "short"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "ts_ms": {
+            "title": "Ts Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ts_ms",
+          "action"
+        ],
+        "title": "EngineEvent",
+        "type": "object"
+      },
+      "EngineStatus": {
+        "properties": {
+          "available_margin_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Margin Usd"
+          },
+          "cycle_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Ms"
+          },
+          "day_pnl_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Pnl Usd"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "equity_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Usd"
+          },
+          "halted_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Halted Reason"
+          },
+          "last_cycle_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cycle Ms"
+          },
+          "leaders": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderStatus"
+            },
+            "title": "Leaders",
+            "type": "array"
+          },
+          "our_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Our Address"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/CopyPosition"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running",
+          "enabled",
+          "dry_run"
+        ],
+        "title": "EngineStatus",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "LeaderOverride": {
+        "description": "Per-leader override. Absent field = inherit the book-wide value.",
+        "properties": {
+          "fixed_margin_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.01,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Margin Usd"
+          },
+          "fixed_notional_usd": {
+            "anyOf": [
+              {
+                "minimum": 10.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Notional Usd"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "leverage_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeverageMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "margin_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarginMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_worse_entry_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Worse Entry Pct"
+          },
+          "size_multiplier": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Multiplier"
+          },
+          "sizing_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SizingMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "LeaderOverride",
+        "type": "object"
+      },
+      "LeaderStatus": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "equity_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Usd"
+          },
+          "last_read_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Read Ms"
+          },
+          "open_positions": {
+            "default": 0,
+            "title": "Open Positions",
+            "type": "integer"
+          },
+          "owned_coins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owned Coins",
+            "type": "array"
+          },
+          "read_ok": {
+            "title": "Read Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "address",
+          "read_ok",
+          "effective"
+        ],
+        "title": "LeaderStatus",
+        "type": "object"
+      },
+      "LeverageMode": {
+        "enum": [
+          "max",
+          "match",
+          "fixed"
+        ],
+        "title": "LeverageMode",
+        "type": "string"
+      },
+      "MarginMode": {
+        "enum": [
+          "isolated",
+          "cross"
+        ],
+        "title": "MarginMode",
+        "type": "string"
+      },
+      "Settings": {
+        "description": "The whole user-editable configuration. Stored at data/settings.json,\nowned by the api service (the only writer), read by the engine every cycle.",
+        "properties": {
+          "contract_version": {
+            "default": 1,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "daily_loss_limit_usd": {
+            "default": 0.0,
+            "maximum": 0.0,
+            "title": "Daily Loss Limit Usd",
+            "type": "number"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fixed_margin_usd": {
+            "default": 1.0,
+            "minimum": 0.01,
+            "title": "Fixed Margin Usd",
+            "type": "number"
+          },
+          "fixed_notional_usd": {
+            "default": 10.5,
+            "minimum": 10.5,
+            "title": "Fixed Notional Usd",
+            "type": "number"
+          },
+          "include_spot_staked": {
+            "default": false,
+            "title": "Include Spot Staked",
+            "type": "boolean"
+          },
+          "leader_overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LeaderOverride"
+            },
+            "title": "Leader Overrides",
+            "type": "object"
+          },
+          "leaders": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Leaders",
+            "type": "array"
+          },
+          "leverage": {
+            "default": 20,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Leverage",
+            "type": "integer"
+          },
+          "leverage_mode": {
+            "$ref": "#/components/schemas/LeverageMode",
+            "default": "max"
+          },
+          "margin_mode": {
+            "$ref": "#/components/schemas/MarginMode",
+            "default": "isolated"
+          },
+          "max_open_copies": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Open Copies",
+            "type": "integer"
+          },
+          "max_position_leverage": {
+            "default": 50,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Position Leverage",
+            "type": "integer"
+          },
+          "max_worse_entry_pct": {
+            "default": 10.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Max Worse Entry Pct",
+            "type": "number"
+          },
+          "min_order_bump": {
+            "default": true,
+            "title": "Min Order Bump",
+            "type": "boolean"
+          },
+          "only_new_positions": {
+            "default": false,
+            "title": "Only New Positions",
+            "type": "boolean"
+          },
+          "poll_interval_s": {
+            "default": 5.0,
+            "maximum": 300.0,
+            "minimum": 2.0,
+            "title": "Poll Interval S",
+            "type": "number"
+          },
+          "size_multiplier": {
+            "default": 1.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size Multiplier",
+            "type": "number"
+          },
+          "sizing_mode": {
+            "$ref": "#/components/schemas/SizingMode",
+            "default": "fixed_margin"
+          },
+          "sleeve_frac": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Sleeve Frac",
+            "type": "number"
+          }
+        },
+        "title": "Settings",
+        "type": "object"
+      },
+      "SettingsPatch": {
+        "additionalProperties": false,
+        "description": "Partial Settings for PATCH /api/settings.\n\nEvery field is Optional and \"unset\" (not just None) means \"leave as\nis\" -- SettingsStore.patch() checks `model_fields_set`, not `is None`,\nfor every field except leader_overrides, where None is the documented\n\"clear this leader's override\" sentinel.\n\nRange constraints (ge/le, max_length) are intentionally NOT duplicated\nhere. contracts.models.Settings is the single source of truth for\nvalid ranges; SettingsStore.patch() re-validates the merged result\nthrough it before writing, which still 422s a bad value, just one\nlayer later, with the file-untouched guarantee coming from\nvalidate-then-write ordering in SettingsStore.patch().",
+        "properties": {
+          "contract_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version"
+          },
+          "daily_loss_limit_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Loss Limit Usd"
+          },
+          "dry_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dry Run"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "fixed_margin_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Margin Usd"
+          },
+          "fixed_notional_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Notional Usd"
+          },
+          "include_spot_staked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Spot Staked"
+          },
+          "leader_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LeaderOverride"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader Overrides"
+          },
+          "leaders": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leaders"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "leverage_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeverageMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "margin_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarginMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_open_copies": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Open Copies"
+          },
+          "max_position_leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Leverage"
+          },
+          "max_worse_entry_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Worse Entry Pct"
+          },
+          "min_order_bump": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Order Bump"
+          },
+          "only_new_positions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Only New Positions"
+          },
+          "poll_interval_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Interval S"
+          },
+          "size_multiplier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Multiplier"
+          },
+          "sizing_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SizingMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sleeve_frac": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sleeve Frac"
+          }
+        },
+        "title": "SettingsPatch",
+        "type": "object"
+      },
+      "SizingMode": {
+        "enum": [
+          "fixed_margin",
+          "fixed_notional",
+          "proportional"
+        ],
+        "title": "SizingMode",
+        "type": "string"
+      },
+      "TraderScore": {
+        "description": "One ranked candidate. Ranked by what COPYING him would have earned at\nthe given settings, not by his own PnL.",
+        "properties": {
+          "account_value_usd": {
+            "title": "Account Value Usd",
+            "type": "number"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "coins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coins",
+            "type": "array"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "fills_30d": {
+            "title": "Fills 30D",
+            "type": "integer"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "median_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hold H"
+          },
+          "opens_per_day": {
+            "title": "Opens Per Day",
+            "type": "number"
+          },
+          "pnl_30d_usd": {
+            "title": "Pnl 30D Usd",
+            "type": "number"
+          },
+          "pnl_all_time_usd": {
+            "title": "Pnl All Time Usd",
+            "type": "number"
+          },
+          "roi_30d_pct": {
+            "title": "Roi 30D Pct",
+            "type": "number"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "sim_copies": {
+            "title": "Sim Copies",
+            "type": "integer"
+          },
+          "sim_fees_usd": {
+            "title": "Sim Fees Usd",
+            "type": "number"
+          },
+          "sim_liquidations": {
+            "title": "Sim Liquidations",
+            "type": "integer"
+          },
+          "sim_max_drawdown_pct": {
+            "title": "Sim Max Drawdown Pct",
+            "type": "number"
+          },
+          "sim_return_pct": {
+            "title": "Sim Return Pct",
+            "type": "number"
+          },
+          "sim_skipped_min_order": {
+            "title": "Sim Skipped Min Order",
+            "type": "integer"
+          },
+          "volume_30d_usd": {
+            "title": "Volume 30D Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "address",
+          "account_value_usd",
+          "pnl_30d_usd",
+          "roi_30d_pct",
+          "pnl_all_time_usd",
+          "volume_30d_usd",
+          "fills_30d",
+          "opens_per_day",
+          "sim_return_pct",
+          "sim_max_drawdown_pct",
+          "sim_liquidations",
+          "sim_copies",
+          "sim_skipped_min_order",
+          "sim_fees_usd",
+          "score"
+        ],
+        "title": "TraderScore",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "copycat api",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/discovery/runs": {
+      "post": {
+        "operationId": "start_run_api_discovery_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoveryRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/discovery/runs/latest": {
+      "get": {
+        "operationId": "get_latest_run_api_discovery_runs_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Latest Run",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/discovery/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_discovery_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/engine/halt": {
+      "post": {
+        "description": "Flips `enabled` false. Exits already open keep mirroring -- the\nengine, not the api, decides what \"halted\" means for open positions;\nthis route's only job is the settings flip.",
+        "operationId": "halt_api_engine_halt_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Halt",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "get_events_api_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_ms",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since Ms"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EngineEvent"
+                  },
+                  "title": "Response Get Events Api Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Events",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/events/stream": {
+      "get": {
+        "operationId": "events_stream_api_events_stream_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Events Stream",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/leaders": {
+      "post": {
+        "operationId": "add_leader_api_leaders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddLeaderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Leader",
+        "tags": [
+          "leaders"
+        ]
+      }
+    },
+    "/api/leaders/{address}": {
+      "delete": {
+        "operationId": "delete_leader_api_leaders__address__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Leader",
+        "tags": [
+          "leaders"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "get_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_settings_api_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/status": {
+      "get": {
+        "operationId": "get_status_api_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "engine"
+        ]
+      }
+    }
+  }
+}

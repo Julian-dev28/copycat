@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Dark is the default theme (real-money trading UI, dark
+ * panels read best); light is opt-in via the theme toggle in the top nav.
+ * next-themes toggles the `dark` class on <html>; see src/app/providers.tsx.
+ */
+:root {
+  --background: #f7f5f2;
+  --surface: #ffffff;
+  --surface-2: #f0ede8;
+  --border: #e2ddd4;
+  --foreground: #16140f;
+  --muted: #6b6558;
+  --accent: #e8640c;
+  --accent-foreground: #fffaf5;
+  --accent-soft: #fde7d4;
+  --success: #18794e;
+  --danger: #c22e2e;
+  --warning: #a6650a;
+  --focus-ring: #e8640c;
+}
+
+.dark {
+  --background: #0b0b0a;
+  --surface: #151411;
+  --surface-2: #1c1a16;
+  --border: #2c2924;
+  --foreground: #f3efe8;
+  --muted: #9b9488;
+  --accent: #ff7a1a;
+  --accent-foreground: #1a0e03;
+  --accent-soft: #3a2111;
+  --success: #3dd68c;
+  --danger: #ff5c5c;
+  --warning: #ffb020;
+  --focus-ring: #ff7a1a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.font-num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Range slider: hand-rolled so it can carry the accent color precisely. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  outline-offset: 4px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--accent-foreground);
+  cursor: pointer;
+  margin-top: -6px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--accent-foreground);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

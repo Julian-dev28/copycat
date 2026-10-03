@@ -18,10 +18,11 @@ dependencies = [
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
 
 [tool.pytest.ini_options]
-pythonpath = [".", "services/hl", "services/engine", "services/discovery", "services/api"]
-testpaths = ["services/hl/tests", "services/engine/tests", "services/discovery/tests", "services/api/tests", "contracts/tests"]
+pythonpath = [".", "services/hl", "services/engine", "services/discovery", "services/api",
+              "services/engine/tests", "services/discovery/tests", "services/api/tests"]
+testpaths = ["services/hl/tests", "services/engine/tests", "services/discovery/tests", "services/api/tests"]
 markers = ["live: hits the real Hyperliquid API (eval lane, not the gate)"]
-addopts = "-m 'not live' -q"
+addopts = "-m 'not live' -q --import-mode=importlib"
 
 [tool.ruff]
 line-length = 110
