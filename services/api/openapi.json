@@ -1,6 +1,76 @@
 {
   "components": {
     "schemas": {
+      "AccountRisk": {
+        "properties": {
+          "account_leverage": {
+            "title": "Account Leverage",
+            "type": "number"
+          },
+          "long_bias_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Bias Pct"
+          },
+          "long_notional_usd": {
+            "title": "Long Notional Usd",
+            "type": "number"
+          },
+          "margin_usage_pct": {
+            "title": "Margin Usage Pct",
+            "type": "number"
+          },
+          "nearest_liq_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Liq Pct"
+          },
+          "perps_usd": {
+            "title": "Perps Usd",
+            "type": "number"
+          },
+          "short_notional_usd": {
+            "title": "Short Notional Usd",
+            "type": "number"
+          },
+          "spot_usd": {
+            "title": "Spot Usd",
+            "type": "number"
+          },
+          "staked_usd": {
+            "title": "Staked Usd",
+            "type": "number"
+          },
+          "unrealized_pnl_usd": {
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "perps_usd",
+          "spot_usd",
+          "staked_usd",
+          "account_leverage",
+          "margin_usage_pct",
+          "long_notional_usd",
+          "short_notional_usd",
+          "unrealized_pnl_usd"
+        ],
+        "title": "AccountRisk",
+        "type": "object"
+      },
       "AddLeaderRequest": {
         "additionalProperties": false,
         "properties": {
@@ -36,6 +106,34 @@
           "settings"
         ],
         "title": "CloseAllResponse",
+        "type": "object"
+      },
+      "CoinStat": {
+        "properties": {
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "pnl_usd": {
+            "title": "Pnl Usd",
+            "type": "number"
+          },
+          "trips": {
+            "default": 0,
+            "title": "Trips",
+            "type": "integer"
+          },
+          "volume_usd": {
+            "title": "Volume Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coin",
+          "volume_usd",
+          "pnl_usd"
+        ],
+        "title": "CoinStat",
         "type": "object"
       },
       "CopyFit": {
@@ -159,6 +257,24 @@
           "sizing_mode"
         ],
         "title": "CopyPosition",
+        "type": "object"
+      },
+      "CurvePoint": {
+        "properties": {
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t_ms",
+          "value"
+        ],
+        "title": "CurvePoint",
         "type": "object"
       },
       "DiscoveryRun": {
@@ -530,6 +646,63 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "LeaderFillView": {
+        "properties": {
+          "closed_pnl_usd": {
+            "title": "Closed Pnl Usd",
+            "type": "number"
+          },
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "dir": {
+            "title": "Dir",
+            "type": "string"
+          },
+          "fee_usd": {
+            "title": "Fee Usd",
+            "type": "number"
+          },
+          "notional_usd": {
+            "title": "Notional Usd",
+            "type": "number"
+          },
+          "px": {
+            "title": "Px",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "B",
+              "A"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "sz": {
+            "title": "Sz",
+            "type": "number"
+          },
+          "time_ms": {
+            "title": "Time Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time_ms",
+          "coin",
+          "side",
+          "dir",
+          "px",
+          "sz",
+          "notional_usd",
+          "closed_pnl_usd",
+          "fee_usd"
+        ],
+        "title": "LeaderFillView",
+        "type": "object"
+      },
       "LeaderOverride": {
         "description": "Per-leader override. Absent field = inherit the book-wide value.",
         "properties": {
@@ -702,6 +875,267 @@
         ],
         "title": "MarginMode",
         "type": "string"
+      },
+      "PnlTier": {
+        "enum": [
+          "losing",
+          "up",
+          "strong",
+          "elite"
+        ],
+        "title": "PnlTier",
+        "type": "string"
+      },
+      "PnlWindow": {
+        "enum": [
+          "1d",
+          "7d",
+          "30d",
+          "all"
+        ],
+        "title": "PnlWindow",
+        "type": "string"
+      },
+      "RiskStats": {
+        "properties": {
+          "days": {
+            "default": 0,
+            "title": "Days",
+            "type": "integer"
+          },
+          "max_drawdown_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Drawdown Pct"
+          },
+          "profitable_days_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitable Days Pct"
+          },
+          "sharpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe"
+          },
+          "sortino": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino"
+          },
+          "window": {
+            "$ref": "#/components/schemas/PnlWindow"
+          }
+        },
+        "required": [
+          "window"
+        ],
+        "title": "RiskStats",
+        "type": "object"
+      },
+      "RoundTrip": {
+        "properties": {
+          "closed_ms": {
+            "title": "Closed Ms",
+            "type": "integer"
+          },
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "entry_px": {
+            "title": "Entry Px",
+            "type": "number"
+          },
+          "exit_px": {
+            "title": "Exit Px",
+            "type": "number"
+          },
+          "hold_h": {
+            "title": "Hold H",
+            "type": "number"
+          },
+          "max_notional_usd": {
+            "title": "Max Notional Usd",
+            "type": "number"
+          },
+          "net_pnl_usd": {
+            "title": "Net Pnl Usd",
+            "type": "number"
+          },
+          "opened_ms": {
+            "title": "Opened Ms",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "win": {
+            "title": "Win",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "coin",
+          "side",
+          "opened_ms",
+          "closed_ms",
+          "hold_h",
+          "entry_px",
+          "exit_px",
+          "max_notional_usd",
+          "net_pnl_usd",
+          "win"
+        ],
+        "title": "RoundTrip",
+        "type": "object"
+      },
+      "ScoutSort": {
+        "enum": [
+          "fit",
+          "sim_return",
+          "sim_dd",
+          "pnl",
+          "roi",
+          "account_value",
+          "sharpe",
+          "max_dd",
+          "win_rate",
+          "trips",
+          "last_active",
+          "volume"
+        ],
+        "title": "ScoutSort",
+        "type": "string"
+      },
+      "ScoutStatus": {
+        "properties": {
+          "done": {
+            "default": 0,
+            "title": "Done",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "eta_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta S"
+          },
+          "last_ok_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ok Ms"
+          },
+          "next_due_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due Ms"
+          },
+          "refresh_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Id"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "leaderboard",
+                  "stats",
+                  "sim"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "running",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "refresh_id",
+          "state"
+        ],
+        "title": "ScoutStatus",
+        "type": "object"
       },
       "Settings": {
         "description": "The whole user-editable configuration. Stored at data/settings.json,\nowned by the api service (the only writer), read by the engine every cycle.",
@@ -1083,6 +1517,17 @@
         "title": "SettingsPatch",
         "type": "object"
       },
+      "SizeTier": {
+        "enum": [
+          "S",
+          "M",
+          "L",
+          "XL",
+          "XXL"
+        ],
+        "title": "SizeTier",
+        "type": "string"
+      },
       "SizingMode": {
         "enum": [
           "fixed_margin",
@@ -1091,6 +1536,448 @@
         ],
         "title": "SizingMode",
         "type": "string"
+      },
+      "TradeStats": {
+        "properties": {
+          "avg_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Hold H"
+          },
+          "long_trips": {
+            "title": "Long Trips",
+            "type": "integer"
+          },
+          "median_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hold H"
+          },
+          "opens_per_day": {
+            "default": 0.0,
+            "title": "Opens Per Day",
+            "type": "number"
+          },
+          "short_trips": {
+            "title": "Short Trips",
+            "type": "integer"
+          },
+          "trips": {
+            "title": "Trips",
+            "type": "integer"
+          },
+          "win_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Rate Pct"
+          },
+          "window": {
+            "$ref": "#/components/schemas/PnlWindow"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window",
+          "trips",
+          "wins",
+          "long_trips",
+          "short_trips"
+        ],
+        "title": "TradeStats",
+        "type": "object"
+      },
+      "TraderPage": {
+        "properties": {
+          "as_of_ms": {
+            "title": "As Of Ms",
+            "type": "integer"
+          },
+          "cohort_size": {
+            "title": "Cohort Size",
+            "type": "integer"
+          },
+          "refresh_id": {
+            "title": "Refresh Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TraderRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "settings_hash": {
+            "title": "Settings Hash",
+            "type": "string"
+          },
+          "stale_settings": {
+            "default": false,
+            "title": "Stale Settings",
+            "type": "boolean"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of_ms",
+          "refresh_id",
+          "settings_hash",
+          "cohort_size",
+          "total",
+          "rows"
+        ],
+        "title": "TraderPage",
+        "type": "object"
+      },
+      "TraderPositionView": {
+        "properties": {
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "entry_px": {
+            "title": "Entry Px",
+            "type": "number"
+          },
+          "funding_since_open_usd": {
+            "title": "Funding Since Open Usd",
+            "type": "number"
+          },
+          "is_cross": {
+            "title": "Is Cross",
+            "type": "boolean"
+          },
+          "leverage": {
+            "title": "Leverage",
+            "type": "integer"
+          },
+          "liq_distance_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liq Distance Pct"
+          },
+          "liquidation_px": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liquidation Px"
+          },
+          "margin_usd": {
+            "title": "Margin Usd",
+            "type": "number"
+          },
+          "mark_px": {
+            "title": "Mark Px",
+            "type": "number"
+          },
+          "notional_usd": {
+            "title": "Notional Usd",
+            "type": "number"
+          },
+          "roe_pct": {
+            "title": "Roe Pct",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "number"
+          },
+          "unrealized_pnl_usd": {
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coin",
+          "side",
+          "size",
+          "notional_usd",
+          "entry_px",
+          "mark_px",
+          "unrealized_pnl_usd",
+          "roe_pct",
+          "leverage",
+          "is_cross",
+          "margin_usd",
+          "funding_since_open_usd"
+        ],
+        "title": "TraderPositionView",
+        "type": "object"
+      },
+      "TraderProfile": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountRisk"
+          },
+          "coins": {
+            "items": {
+              "$ref": "#/components/schemas/CoinStat"
+            },
+            "title": "Coins",
+            "type": "array"
+          },
+          "daily_pnl": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Daily Pnl",
+            "type": "array"
+          },
+          "longest_win_streak_days": {
+            "title": "Longest Win Streak Days",
+            "type": "integer"
+          },
+          "pnl_curve": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CurvePoint"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/PnlWindow"
+            },
+            "title": "Pnl Curve",
+            "type": "object"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/TraderPositionView"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "positions_as_of_ms": {
+            "title": "Positions As Of Ms",
+            "type": "integer"
+          },
+          "recent_fills": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderFillView"
+            },
+            "maxItems": 100,
+            "title": "Recent Fills",
+            "type": "array"
+          },
+          "recent_trips": {
+            "items": {
+              "$ref": "#/components/schemas/RoundTrip"
+            },
+            "maxItems": 100,
+            "title": "Recent Trips",
+            "type": "array"
+          },
+          "risk": {
+            "items": {
+              "$ref": "#/components/schemas/RiskStats"
+            },
+            "title": "Risk",
+            "type": "array"
+          },
+          "row": {
+            "$ref": "#/components/schemas/TraderRow"
+          },
+          "sim_curve": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Sim Curve",
+            "type": "array"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/TradeStats"
+            },
+            "title": "Trades",
+            "type": "array"
+          },
+          "value_curve": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CurvePoint"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/PnlWindow"
+            },
+            "title": "Value Curve",
+            "type": "object"
+          }
+        },
+        "required": [
+          "row",
+          "account",
+          "positions",
+          "positions_as_of_ms",
+          "pnl_curve",
+          "value_curve",
+          "sim_curve",
+          "daily_pnl",
+          "risk",
+          "trades",
+          "longest_win_streak_days",
+          "coins"
+        ],
+        "title": "TraderProfile",
+        "type": "object"
+      },
+      "TraderRow": {
+        "properties": {
+          "account_value_usd": {
+            "title": "Account Value Usd",
+            "type": "number"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "in_book": {
+            "default": false,
+            "title": "In Book",
+            "type": "boolean"
+          },
+          "last_fill_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fill Ms"
+          },
+          "perf": {
+            "items": {
+              "$ref": "#/components/schemas/WindowPerf"
+            },
+            "title": "Perf",
+            "type": "array"
+          },
+          "pnl_spark_30d": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "maxItems": 60,
+            "title": "Pnl Spark 30D",
+            "type": "array"
+          },
+          "pnl_tier": {
+            "$ref": "#/components/schemas/PnlTier"
+          },
+          "risk_30d": {
+            "$ref": "#/components/schemas/RiskStats"
+          },
+          "score": {
+            "$ref": "#/components/schemas/TraderScore"
+          },
+          "sim_spark_30d": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "maxItems": 60,
+            "title": "Sim Spark 30D",
+            "type": "array"
+          },
+          "size_tier": {
+            "$ref": "#/components/schemas/SizeTier"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "top_coins": {
+            "items": {
+              "$ref": "#/components/schemas/CoinStat"
+            },
+            "maxItems": 5,
+            "title": "Top Coins",
+            "type": "array"
+          },
+          "trades_30d": {
+            "$ref": "#/components/schemas/TradeStats"
+          }
+        },
+        "required": [
+          "address",
+          "account_value_usd",
+          "size_tier",
+          "pnl_tier",
+          "perf",
+          "risk_30d",
+          "trades_30d",
+          "score"
+        ],
+        "title": "TraderRow",
+        "type": "object"
       },
       "TraderScore": {
         "description": "One ranked candidate. Ranked by what COPYING him would have earned at\nthe given settings, not by his own PnL.",
@@ -1303,6 +2190,71 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WhatIfRequest": {
+        "properties": {
+          "override": {
+            "$ref": "#/components/schemas/LeaderOverride"
+          },
+          "sim_equity_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Sim Equity Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sim_equity_usd",
+          "override"
+        ],
+        "title": "WhatIfRequest",
+        "type": "object"
+      },
+      "WhatIfResult": {
+        "properties": {
+          "score": {
+            "$ref": "#/components/schemas/TraderScore"
+          },
+          "sim_curve": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Sim Curve",
+            "type": "array"
+          }
+        },
+        "required": [
+          "score",
+          "sim_curve"
+        ],
+        "title": "WhatIfResult",
+        "type": "object"
+      },
+      "WindowPerf": {
+        "properties": {
+          "pnl_usd": {
+            "title": "Pnl Usd",
+            "type": "number"
+          },
+          "roi_pct": {
+            "title": "Roi Pct",
+            "type": "number"
+          },
+          "volume_usd": {
+            "title": "Volume Usd",
+            "type": "number"
+          },
+          "window": {
+            "$ref": "#/components/schemas/PnlWindow"
+          }
+        },
+        "required": [
+          "window",
+          "pnl_usd",
+          "roi_pct",
+          "volume_usd"
+        ],
+        "title": "WindowPerf",
         "type": "object"
       }
     }
@@ -1644,6 +2596,652 @@
         "summary": "Delete Leader",
         "tags": [
           "leaders"
+        ]
+      }
+    },
+    "/api/scout/presets": {
+      "get": {
+        "description": "Coin chips + hip3 count from the current `scout_rows`. Passed through\nas discovery returns it; contracts/models.py has no typed model yet.",
+        "operationId": "get_presets_api_scout_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Presets Api Scout Presets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Get Presets",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/refresh": {
+      "post": {
+        "operationId": "refresh_api_scout_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "a refresh is already running"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/status": {
+      "get": {
+        "operationId": "get_status_api_scout_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/traders": {
+      "get": {
+        "operationId": "list_traders_api_scout_traders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PnlWindow",
+              "default": "30d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "preset",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|hip3|coin:[A-Za-z0-9_:.\\-]{1,32})$",
+              "title": "Preset",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "coin",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Coin",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_av",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Av"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_av",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Av"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_pnl",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Pnl"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_pnl",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Pnl"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              "title": "Style",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_fit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Fit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_fit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Fit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_dd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Dd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_trips",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Trips"
+            }
+          },
+          {
+            "in": "query",
+            "name": "active_within_h",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 8784,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active Within H"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hide_flagged",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Hide Flagged",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ScoutSort",
+              "default": "fit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "ETag matched"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "List Traders",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}": {
+      "get": {
+        "operationId": "get_trader_api_scout_traders__address__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "profile is being built; poll again"
+          },
+          "404": {
+            "description": "not a 0x address, or no data for it"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Get Trader",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}/fills": {
+      "get": {
+        "operationId": "get_trader_fills_api_scout_traders__address__fills_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_ms",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Ms"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LeaderFillView"
+                  },
+                  "title": "Response Get Trader Fills Api Scout Traders  Address  Fills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a 0x address, or no data for it"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Get Trader Fills",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}/orders": {
+      "get": {
+        "description": "Live open orders (HL weight 20, cached 30 s by discovery). The shape\nis HL's open order as discovery passes it on; contracts/models.py has no\ntyped model for it yet.",
+        "operationId": "get_trader_orders_api_scout_traders__address__orders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Trader Orders Api Scout Traders  Address  Orders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a 0x address, or no data for it"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Get Trader Orders",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}/what-if": {
+      "post": {
+        "description": "Sim of this one wallet at the CURRENT settings file merged with\n`body.override`, on cached fills and candles only. One at a time per api\nprocess: a second request while one runs is 409, never queued (a queue\nof sims would just pile up threadpool workers).",
+        "operationId": "what_if_api_scout_traders__address__what_if_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a 0x address, or no data for it"
+          },
+          "409": {
+            "description": "a what-if is already running"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "What If",
+        "tags": [
+          "scout"
         ]
       }
     },

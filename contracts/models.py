@@ -307,6 +307,7 @@ class TraderPage(BaseModel):
     cohort_size: int
     total: int                           # after filters
     rows: List[TraderRow]
+    stale_settings: bool = False         # rows were scored at an older settings_hash (spec 7.3)
 
 class TraderPositionView(BaseModel):
     coin: str
@@ -400,3 +401,85 @@ class ScoutStatus(BaseModel):
 
 TraderScore.model_rebuild()
 DiscoveryRun.model_rebuild()
+
+
+# ── Strategy thesis (v3.1): what a trader actually does, so users can learn ──
+# Two sources, same shape:
+#   "ta"          deterministic fingerprint from fills + candles (services/discovery thesis module)
+#   "claude_code" written by the user's Claude Code through the copycat MCP server (services/mcp)
+
+class EntryContext(BaseModel):
+    """Market state at one entry, from candles. All deterministic."""
+    trend_aligned: Optional[bool] = None       # side matches the 1h EMA50 slope
+    breakout: Optional[bool] = None            # long within 0.5% of the 20-bar high / short of the low
+    pullback: Optional[bool] = None            # long >= 2% under the 20-bar high and above EMA50 (mirror for shorts)
+    rsi_14: Optional[float] = None             # 1h RSI at entry
+    move_24h_pct: Optional[float] = None       # coin's move over the 24h before entry
+    hour_utc: int
+
+
+class TradeExample(BaseModel):
+    """One representative round trip shown as evidence for a fingerprint claim."""
+    coin: str
+    side: Literal["long", "short"]
+    opened_ms: int
+    closed_ms: int
+    hold_h: float
+    adds: int
+    max_leverage: Optional[float] = None
+    net_pnl_usd: float
+    return_pct: float                          # on max notional
+    context: EntryContext
+    why_shown: str                             # e.g. "largest win", "typical breakout entry"
+
+
+class StrategyFingerprint(BaseModel):
+    address: str
+    as_of_ms: int
+    window_days: int
+    trips_analyzed: int
+    style: Optional[TradingStyle] = None
+    median_hold_h: Optional[float] = None
+    p90_hold_h: Optional[float] = None
+    long_pct: Optional[float] = None           # share of trips that are long, 0..100
+    # entry habits (share of trips, 0..100; None when candles were unavailable)
+    trend_aligned_pct: Optional[float] = None
+    breakout_pct: Optional[float] = None
+    pullback_pct: Optional[float] = None
+    avg_rsi_long_entry: Optional[float] = None
+    avg_rsi_short_entry: Optional[float] = None
+    # sizing
+    avg_adds_per_trip: Optional[float] = None
+    scales_in_pct: Optional[float] = None      # trips with >= 1 add
+    scales_out_pct: Optional[float] = None     # trips closed in >= 2 reduces
+    avg_leverage: Optional[float] = None
+    max_leverage: Optional[float] = None
+    # outcomes
+    win_rate_pct: Optional[float] = None
+    avg_win_usd: Optional[float] = None
+    avg_loss_usd: Optional[float] = None       # negative
+    payoff_ratio: Optional[float] = None       # avg win / |avg loss|
+    loser_hold_vs_winner: Optional[float] = None   # median loser hold / median winner hold (< 1 = cuts losers fast)
+    worst_trip_pct_of_equity: Optional[float] = None
+    pnl_from_top_coin_pct: Optional[float] = None  # concentration
+    # timing
+    hour_hist_utc: List[int] = Field(default_factory=list)      # 24 buckets, trip entries
+    weekday_hist: List[int] = Field(default_factory=list)       # 7 buckets, Monday first
+    top_coins: List[CoinStat] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)  # e.g. "trend follower", "dip buyer", "scales in"
+    summary: str                               # templated plain-English thesis, no AI
+    examples: List[TradeExample] = Field(default_factory=list, max_length=8)
+    caveats: List[str] = Field(default_factory=list)   # e.g. "only 12 trips", "candles missing for xyz coins"
+
+
+class Thesis(BaseModel):
+    """A written strategy thesis for one trader. `ta` ones are regenerated
+    from the fingerprint; `claude_code` ones are saved through the MCP
+    server and kept until replaced."""
+    address: str
+    source: Literal["ta", "claude_code"]
+    created_ms: int
+    title: str
+    markdown: str = Field(max_length=20_000)
+    fingerprint_as_of_ms: Optional[int] = None
+    author: Optional[str] = None               # e.g. "claude-opus-5-5 via copycat MCP"
