@@ -18,12 +18,17 @@ class LeaderPosition(TypedDict):
     is_cross: bool
 
 
-class AccountState(TypedDict):
+class AccountState(TypedDict, total=False):
     equity_perp_usd: float              # accountValue summed over main + hip3 dexes read
     spot_usdc: float
     positions: Dict[str, LeaderPosition]   # coin -> position; hip3 coins as "dex:COIN"
-    available: Dict[str, float]         # dex ("" = main) -> withdrawable margin
+    available: Dict[str, float]         # dex ("" = main) -> margin free to open with. Under
+                                        # unified/portfolio margin, per-dex withdrawable is not
+                                        # meaningful: hl reports spot USDC total - hold for every dex.
     raw_positions: Dict[str, Dict[str, Any]]   # coin -> HL assetPosition.position (entryPx, unrealizedPnl, liquidationPx, ...)
+    abstraction: str                    # HL userAbstraction: "default", "unifiedAccount",
+                                        # "portfolioMargin", ... (absent when the read failed;
+                                        # engine.sizing.account_equity then falls back to perp+spot)
 
 
 class Extras(TypedDict):

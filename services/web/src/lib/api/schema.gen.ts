@@ -55,6 +55,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engine/close-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close All
+         * @description Emergency flatten. Flips `enabled` false FIRST (so nothing new opens
+         *     even before the engine sees the flag), then writes
+         *     `data/close_all.flag`. The engine's next cycle closes every copy it
+         *     opened, reduce-only, regardless of `dry_run`; positions copycat did not
+         *     open are never touched. Idempotent: a second call while one is pending
+         *     just refreshes the timestamp.
+         */
+        post: operations["close_all_api_engine_close_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engine/halt": {
         parameters: {
             query?: never;
@@ -206,6 +231,20 @@ export interface components {
         AddLeaderRequest: {
             /** Address */
             address: string;
+        };
+        /**
+         * CloseAllResponse
+         * @description POST /api/engine/close-all. `settings` has `enabled` false already;
+         *     the closes themselves happen on the engine's next cycle (watch
+         *     /api/events for `close` events with reason "close-all", then a `halt`
+         *     event "close-all complete ...").
+         */
+        CloseAllResponse: {
+            /** Pending */
+            pending: boolean;
+            /** Requested Ms */
+            requested_ms: number;
+            settings: components["schemas"]["Settings"];
         };
         /** CopyPosition */
         CopyPosition: {
@@ -401,7 +440,7 @@ export interface components {
         Settings: {
             /**
              * Contract Version
-             * @default 1
+             * @default 2
              */
             contract_version: number;
             /**
@@ -703,6 +742,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_all_api_engine_close_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseAllResponse"];
                 };
             };
         };
