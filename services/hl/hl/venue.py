@@ -211,6 +211,44 @@ def _remember_active(user: str, active: List[str], full_scan: bool, read: List[s
         _active_dexes[user] = [d for d in prev if d not in read] + list(active)
 
 
+# ── per-user account abstraction cache ──────────────────────────────────────
+# /info {"type": "userAbstraction", "user": U} returns a bare JSON string
+# (curled 2026-10-04: 0xe282...df29 -> "unifiedAccount", 0x2c2e...6985 ->
+# "disabled"). Other values per HL docs/SDK: "portfolioMargin", "default",
+# "dexAbstraction". It changes only when the user flips it in the UI, so it
+# is cached ABSTRACTION_TTL_S per user. A failed read serves the last value
+# seen (if any) and is retried next call; with no value at all the key is
+# omitted from account_state, never failing the whole read.
+ABSTRACTION_TTL_S = float(os.environ.get("COPYCAT_HL_ABSTRACTION_TTL_S", "600"))
+UNIFIED_ABSTRACTIONS = frozenset({"unifiedAccount", "portfolioMargin"})
+_abstraction: Dict[str, Tuple[str, float]] = {}
+
+
+def _user_abstraction(user: str) -> Optional[str]:
+    key = user.lower()
+    cached = _abstraction.get(key)
+    if cached is not None and time.time() - cached[1] < ABSTRACTION_TTL_S:
+        return cached[0]
+    raw = http_post("/info", {"type": "userAbstraction", "user": user})
+    if isinstance(raw, str) and raw:
+        _abstraction[key] = (raw, time.time())
+        return raw
+    logger.warning(f"[hl.venue] userAbstraction read failed for {user}: {raw!r}"
+                   + (" -- serving last known value" if cached else " -- omitting abstraction"))
+    return cached[0] if cached else None
+
+
+def _spot_usdc_free(balances: List[Dict[str, Any]]) -> float:
+    """USDC total - hold from spotClearinghouseState: the margin actually
+    free under unified/portfolio margin, where one spot balance
+    collateralizes every perp dex."""
+    free = 0.0
+    for b in balances:
+        if isinstance(b, dict) and b.get("coin") == "USDC":
+            free += float(b.get("total") or 0) - float(b.get("hold") or 0)
+    return max(0.0, free)
+
+
 class HlVenue:
     """Stateless wrapper over hl.http / hl.meta / hl.sdk -- every cache and
     rate limiter lives at module scope in those modules, so instantiating
@@ -273,13 +311,30 @@ class HlVenue:
                 return None
             spot_usdc = sum(float(b.get("total") or 0) for b in spot["balances"] if b.get("coin") == "USDC")
 
-            return {
+            out: Dict[str, Any] = {
                 "equity_perp_usd": equity,
                 "spot_usdc": spot_usdc,
                 "positions": positions,
                 "available": available,
                 "raw_positions": raw_positions,
             }
+            try:
+                abstraction = _user_abstraction(user)
+            except Exception as exc:  # never fail account_state over this
+                logger.warning(f"[hl.venue] account_state: abstraction lookup failed for {user}: {exc}")
+                abstraction = None
+            if abstraction is not None:
+                out["abstraction"] = abstraction
+                if abstraction in UNIFIED_ABSTRACTIONS:
+                    # Per-dex withdrawable is not meaningful here (measured
+                    # live: $5.7k reported vs $844k actually free).
+                    try:
+                        free = _spot_usdc_free(spot["balances"])
+                        out["available"] = {dex: free for dex in available}
+                    except (TypeError, ValueError) as exc:
+                        logger.warning(f"[hl.venue] account_state: unparseable spot USDC hold for {user}, "
+                                       f"keeping per-dex withdrawable: {exc}")
+            return out
         except Exception as exc:
             logger.error(f"[hl.venue] account_state: unexpected failure for user={user}: {exc}")
             return None

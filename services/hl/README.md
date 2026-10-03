@@ -266,6 +266,23 @@ Configurable via `COPYCAT_HL_DEXES` (comma-separated, `""` = main) for
 ops/local tuning, or by passing `override=[...]` to `hl.meta.dex_list`
 directly.
 
+## Account abstraction (`account_state`)
+
+`account_state` also reads `{"type": "userAbstraction", "user": U}`. The
+response is a bare JSON string (curled 2026-10-04:
+`0xe2823659be02e0f48a4660e4da008b5e1abfdf29` -> `"unifiedAccount"`,
+`0x2c2e4efF574B3Fd9879AdeF9c5CAC6fD7C916985` -> `"disabled"`; other
+values: `"portfolioMargin"`, `"default"`, `"dexAbstraction"`). The raw
+value goes in `state["abstraction"]`, cached per user for 10 min
+(`COPYCAT_HL_ABSTRACTION_TTL_S`). A failed read serves the last value
+seen, or omits the key if none; it never fails `account_state`.
+
+Under `unifiedAccount` / `portfolioMargin` one spot balance collateralizes
+every perp dex and per-dex `withdrawable` is meaningless (measured live:
+$5.7k reported vs $844k actually free). In those modes `available[dex]`
+is set, for every dex read, to spot USDC `total - hold` from
+`spotClearinghouseState`. Other modes keep per-dex `withdrawable`.
+
 ## Meta caching
 
 Per-dex perp universes (`hl.meta.universe`) cache for 1h
@@ -283,8 +300,9 @@ leader pricing mid-cycle.
 .venv/bin/python -m pytest services/hl/tests -m live   # live eval: hits the real API
 ```
 
-Gate tests (182, ~1.3s) fake `http_post` and the SDK `Exchange` -- no
-network, deterministic (one test spawns a real child Python process to
+Gate tests (189, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
+network (conftest replaces the HTTP session with one that refuses every
+POST, so an unfaked read cannot leak to mainnet), deterministic (one test spawns a real child Python process to
 prove the rate-limit file is shared across processes). They cover:
 price/size rounding (incl. HL's 5-sig-fig rule below $1, IOC-direction
 rounding, the integer-size-coin floor, reduce-only never bumped), the
@@ -296,6 +314,7 @@ budget, background reserve, drain, corrupt file, fallback) and 429
 backoff, `account_state`'s multi-dex aggregation and HIP-3 coin
 namespacing, `extras`'s index-based spot pricing and the illiquid-mark
 exclusion, `fills` pagination, `leaderboard`/`candles` parsing,
+`userAbstraction` (unified vs standard `available`, failure, cache),
 `set_leverage`'s strict-error-body check and isolated-only fallback, and
 contract v2 writes (`tests/test_venue_writes.py`): cloid passthrough,
 `order_status` mapping, full vs partial fills, ambiguous vs clean

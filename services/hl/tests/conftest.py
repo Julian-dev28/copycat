@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 from hl import meta, sdk
+from hl import venue as venue_mod
 from hl.http import reset_session
 from hl.rate_limit import TokenBucket
 
@@ -18,8 +19,13 @@ _ENV_KEYS = (
 )
 
 
+class _NoNetwork:
+    def post(self, url, **kw):
+        raise ConnectionError(f"gate tests must not hit the network: POST {url}")
+
+
 @pytest.fixture(autouse=True)
-def _clean_state(monkeypatch):
+def _clean_state(monkeypatch, request):
     """Runs around every test: clear copycat's HL env vars, reset the meta
     caches and the Exchange singleton, and give every test an unlimited,
     instant token bucket unless it explicitly wants to test rate limiting."""
@@ -28,9 +34,16 @@ def _clean_state(monkeypatch):
     meta.reset_caches()
     sdk.reset()
     reset_session()
+    venue_mod._abstraction.clear()
+    venue_mod._active_dexes.clear()
+    venue_mod._last_full_scan.clear()
     # Fresh, effectively-infinite bucket by default: a test exercising
     # http_post for something unrelated to rate limiting must never be
     # throttled by a previous test's partially-drained bucket.
+    # Gate tests never touch the network: any http_post a test did not fake
+    # fails like a dead connection (http_post turns that into None).
+    if request.node.get_closest_marker("live") is None:
+        monkeypatch.setattr("hl.http.get_session", lambda: _NoNetwork())
     monkeypatch.setattr("hl.rate_limit.HL_LIMITER", TokenBucket(capacity=1_000_000, refill_per_sec=1_000_000))
     yield
     meta.reset_caches()

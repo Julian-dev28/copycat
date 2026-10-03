@@ -25,8 +25,13 @@ def test_live_account_state():
     assert state["equity_perp_usd"] >= 0
     assert isinstance(state["positions"], dict)
     assert isinstance(state["raw_positions"], dict)
+    # userAbstraction is a bare JSON string; this wallet was "unifiedAccount" on 2026-10-04
+    assert isinstance(state.get("abstraction"), str)
+    if state["abstraction"] in ("unifiedAccount", "portfolioMargin"):
+        assert len(set(state["available"].values())) == 1   # one spot pool for every dex
     print(f"\n[live] account_state({LEADER}): equity_perp_usd={state['equity_perp_usd']:.2f} "
-          f"spot_usdc={state['spot_usdc']:.2f} positions={list(state['positions'].keys())}")
+          f"spot_usdc={state['spot_usdc']:.2f} abstraction={state['abstraction']} "
+          f"available_main={state['available'].get('')} positions={list(state['positions'].keys())}")
 
 
 def test_live_extras():

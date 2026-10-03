@@ -539,3 +539,90 @@ def test_pinned_dexes_env_reads_exactly_that_set_every_time(monkeypatch):
     venue = v.HlVenue()
     venue.account_state("0xabc"); venue.account_state("0xabc")
     assert reads == ["", "xyz", "", "xyz"]
+
+
+# ── account abstraction: unified / portfolio margin ─────────────────────────
+
+def _abstraction_fake(monkeypatch, abstraction, calls=None):
+    """Main dex with a misleading $5.7k withdrawable plus xyz; spot USDC
+    total 900k with 56k on hold. `abstraction` is what userAbstraction
+    returns (a bare JSON string, as curled from mainnet), or None = failed."""
+    monkeypatch.setattr(meta, "dex_list", lambda: ["", "xyz"])
+
+    def fake_post(path, payload, **kw):
+        t = payload["type"]
+        if calls is not None:
+            calls.append(t)
+        if t == "clearinghouseState":
+            return _chs(account_value=10_000.0, withdrawable=5_700.0 if payload["dex"] == "" else 0.0)
+        if t == "spotClearinghouseState":
+            return {"balances": [
+                {"coin": "USDC", "token": 0, "total": "900000.0", "hold": "56000.0", "entryNtl": "0.0"},
+                {"coin": "HYPE", "token": 150, "total": "1.0", "hold": "0.0", "entryNtl": "10.0"},
+            ]}
+        if t == "userAbstraction":
+            assert payload == {"type": "userAbstraction", "user": "0xabc"}
+            return abstraction
+        raise AssertionError(payload)
+
+    monkeypatch.setattr(venue_mod, "http_post", fake_post)
+
+
+def test_unified_account_available_is_spot_usdc_free_on_every_dex(monkeypatch):
+    _abstraction_fake(monkeypatch, "unifiedAccount")
+    st = HlVenue().account_state("0xabc")
+    assert st["abstraction"] == "unifiedAccount"
+    assert st["available"] == {"": 844_000.0, "xyz": 844_000.0}   # not the $5.7k withdrawable
+
+
+def test_portfolio_margin_also_uses_spot_usdc_free(monkeypatch):
+    _abstraction_fake(monkeypatch, "portfolioMargin")
+    st = HlVenue().account_state("0xabc")
+    assert st["abstraction"] == "portfolioMargin"
+    assert st["available"][""] == 844_000.0
+
+
+def test_standard_account_keeps_per_dex_withdrawable(monkeypatch):
+    _abstraction_fake(monkeypatch, "disabled")
+    st = HlVenue().account_state("0xabc")
+    assert st["abstraction"] == "disabled"
+    assert st["available"] == {"": 5_700.0, "xyz": 0.0}
+
+
+def test_abstraction_read_failure_omits_key_and_keeps_withdrawable(monkeypatch):
+    _abstraction_fake(monkeypatch, None)
+    st = HlVenue().account_state("0xabc")
+    assert st is not None                         # never fails the whole read
+    assert "abstraction" not in st
+    assert st["available"] == {"": 5_700.0, "xyz": 0.0}
+
+
+def test_abstraction_unexpected_shape_is_a_failed_read(monkeypatch):
+    _abstraction_fake(monkeypatch, {"error": "nope"})
+    st = HlVenue().account_state("0xabc")
+    assert st is not None and "abstraction" not in st
+
+
+def test_abstraction_cached_per_user_then_refreshed_after_ttl(monkeypatch):
+    calls = []
+    _abstraction_fake(monkeypatch, "unifiedAccount", calls)
+    v = HlVenue()
+    v.account_state("0xabc")
+    v.account_state("0xabc")
+    assert calls.count("userAbstraction") == 1
+    key, (val, ts) = next(iter(venue_mod._abstraction.items()))
+    venue_mod._abstraction[key] = (val, ts - venue_mod.ABSTRACTION_TTL_S - 1)
+    v.account_state("0xabc")
+    assert calls.count("userAbstraction") == 2
+
+
+def test_abstraction_failure_after_success_serves_last_known(monkeypatch):
+    _abstraction_fake(monkeypatch, "unifiedAccount")
+    v = HlVenue()
+    v.account_state("0xabc")
+    key, (val, ts) = next(iter(venue_mod._abstraction.items()))
+    venue_mod._abstraction[key] = (val, ts - venue_mod.ABSTRACTION_TTL_S - 1)   # expired
+    _abstraction_fake(monkeypatch, None)                                         # and now failing
+    st = v.account_state("0xabc")
+    assert st["abstraction"] == "unifiedAccount"
+    assert st["available"][""] == 844_000.0

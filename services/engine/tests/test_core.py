@@ -629,3 +629,35 @@ def test_a_skip_is_logged_once_and_again_only_when_its_reason_changes(engine_sta
     out = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=2)
     skips = [e for e in out["_events"] if e.action == "skip"]
     assert [(e.leader, e.reason) for e in skips] == [(LEADER1, "leader read failed")]
+
+
+# ── unified / portfolio margin: one shared pool, not one per dex ───────────
+
+def test_unified_margin_is_one_pool_spent_across_dexes(engine_state, venue):
+    """hl repeats the unified spot pool under every dex key. Opening on main
+    must shrink the room on xyz too, or two copies on two dexes in one
+    cycle would each think they had the whole pool."""
+    # unified: equity is spot USDC (+uPnL), perp accountValue is not added
+    venue.set_account(OUR, 10.0, spot_usdc=10.0, available={"": 1.0, "xyz": 1.0})
+    venue.accounts[OUR]["abstraction"] = "unifiedAccount"
+    venue.max_levs.update({"BTC": 20, "xyz:TSLA": 10})
+    venue.hold(LEADER1, "BTC", 1.0, entry_px=100.0)
+    venue.hold(LEADER2, "xyz:TSLA", 1.0, entry_px=100.0)
+    s = cfg(leaders=[LEADER1, LEADER2], sizing_mode="fixed_margin", fixed_margin_usd=0.6,
+            leverage_mode="max")
+    out = run(venue, s, engine_state)
+    assert out["opened"] == ["BTC"]                       # $0.60 margin of the $1 pool
+    assert "xyz:TSLA" in out["skipped"]                   # only $0.40 left, not a fresh $1
+    assert out["available_margin_usd"] == 1.0             # reported once, not summed per dex
+
+
+def test_standard_account_keeps_per_dex_margin(engine_state, venue):
+    venue.set_account(OUR, 10.0, available={"": 1.0, "xyz": 1.0})
+    venue.max_levs.update({"BTC": 20, "xyz:TSLA": 20})
+    venue.hold(LEADER1, "BTC", 1.0, entry_px=100.0)
+    venue.hold(LEADER2, "xyz:TSLA", 1.0, entry_px=100.0)
+    s = cfg(leaders=[LEADER1, LEADER2], sizing_mode="fixed_margin", fixed_margin_usd=0.6,
+            leverage_mode="max")
+    out = run(venue, s, engine_state)
+    assert sorted(out["opened"]) == ["BTC", "xyz:TSLA"]
+    assert out["available_margin_usd"] == 2.0

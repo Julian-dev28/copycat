@@ -131,6 +131,7 @@ class _Cycle:
         self.dry = settings.dry_run
         self.our_positions: Dict[str, Any] = {}
         self.available: Dict[str, float] = {}
+        self.shared_margin = False   # unified/portfolio margin: one pool repeated under every dex key
         self.equity_usd = 0.0
         self.n_leaders = 1
         self.entries_ok = False
@@ -171,7 +172,12 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
 
     equity_usd = sizing.account_equity(our_account)
     out["equity_usd"] = equity_usd
-    out["available_margin_usd"] = sum(float(v) for v in our_account["available"].values())
+    shared_margin = our_account.get("abstraction") in sizing.UNIFIED_ABSTRACTIONS
+    avail_vals = [float(v) for v in our_account["available"].values()]
+    # Unified/portfolio margin: hl repeats ONE spot pool under every dex key, so
+    # summing would count it once per dex read.
+    out["available_margin_usd"] = (max(avail_vals, default=0.0) if shared_margin
+                                   else sum(avail_vals))
     if equity_usd <= 0:
         out["skipped"]["all"] = "degraded account read (equity <= 0)"
         cy.event("error", reason="degraded account read (equity <= 0)")
@@ -185,6 +191,7 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     cy.equity_usd = equity_usd
     cy.entries_ok = settings.enabled and halted_reason is None
     cy.available = dict(our_account["available"])
+    cy.shared_margin = shared_margin
     # Local copy: a coin we close this cycle is flat for the rest of it.
     cy.our_positions = dict(our_account["positions"])
 
@@ -631,7 +638,7 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
             dc.size += signed_delta
             state.put_dry_copy(dc)
             out["added"].append(coin)
-        cy.available[dex] = float(cy.available.get(dex, 0.0)) - ntl / lev
+        _spend_margin(cy, dex, ntl / lev)
         return
 
     if copy is None:
@@ -672,7 +679,7 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         px = float(res.get("avg_px") or mid)
         fill_note = f"partial fill {filled:.6g} of {size:.6g}"
         ntl = filled * px
-    cy.available[dex] = float(cy.available.get(dex, 0.0)) - ntl / lev
+    _spend_margin(cy, dex, ntl / lev)
     if copy is None:
         state.promote_copy(coin)
         out["opened"].append(coin)
@@ -835,6 +842,15 @@ def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
 
 
 # ── risk gates ──────────────────────────────────────────────────────────────
+
+def _spend_margin(cy: "_Cycle", dex: str, margin_usd: float) -> None:
+    """Charge an open/add's margin against this cycle's room. Under a shared
+    pool (unified/portfolio margin) every dex key is the same money, so every
+    key goes down; otherwise only that dex's own margin does."""
+    keys = list(cy.available) if cy.shared_margin else [dex]
+    for k in keys:
+        cy.available[k] = float(cy.available.get(k, 0.0)) - margin_usd
+
 
 def _update_day_pnl(state: EngineState, now_ms: int, equity_usd: float) -> float:
     """PnL since the UTC day's equity anchor. Re-anchors at the first cycle
