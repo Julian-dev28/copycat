@@ -14,11 +14,14 @@ from pathlib import Path
 
 
 def main() -> None:
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
+    # COPYCAT_SKIP_DOTENV=1: never read ./.env (it holds the real agent key).
+    # Every test or scratch run of this entrypoint sets it.
+    if os.environ.get("COPYCAT_SKIP_DOTENV") != "1":
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
 
     logging.basicConfig(
         level=os.environ.get("COPYCAT_LOG_LEVEL", "INFO"),

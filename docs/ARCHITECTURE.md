@@ -30,8 +30,12 @@ cycle and validates through the model; an invalid file keeps the last good setti
 and logs an `error` event.
 
 ## API (services/api, prefix /api, JSON)
-Auth: header `Authorization: Bearer $COPYCAT_API_TOKEN` on every route except `GET /api/health`.
-If `COPYCAT_API_TOKEN` is unset the api refuses to start unless `COPYCAT_BIND=127.0.0.1` (localhost-only dev).
+Auth: header `Authorization: Bearer <token>` on every route except `GET /api/health`, on every bind.
+There is no unauthenticated mode. Token: `COPYCAT_API_TOKEN` if set (>= 32 chars, "change-me" refused at
+startup); if empty, the api generates one into `$COPYCAT_DATA_DIR/api_token` (mode 0600), prints the path,
+and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `COPYCAT_ALLOWED_HOSTS`
+(comma list), else 400 (DNS-rebinding guard). The api drops `COPYCAT_AGENT_KEY` from its env at startup.
+`COPYCAT_SKIP_DOTENV=1` makes `python -m api` / `python -m engine` skip loading `.env`.
 
 | method | path | body / returns |
 |---|---|---|
@@ -39,15 +43,27 @@ If `COPYCAT_API_TOKEN` is unset the api refuses to start unless `COPYCAT_BIND=12
 | GET | /api/settings | `Settings` |
 | PUT | /api/settings | full `Settings` -> `Settings` (validated) |
 | PATCH | /api/settings | partial `Settings` -> `Settings`. `leader_overrides` replace per leader; `null` clears one |
-| POST | /api/leaders | `{address}` -> `Settings` (409 at 10, 400 bad address) |
+| POST | /api/leaders | `{address}` -> `Settings` (409 at 10, 400 bad address or our own `COPYCAT_ACCOUNT_ADDRESS`) |
 | DELETE | /api/leaders/{address} | -> `Settings` (also drops its override) |
 | GET | /api/status | `EngineStatus` |
 | GET | /api/events?limit=&since_ms= | `EngineEvent[]` newest first |
 | GET | /api/events/stream | SSE of `EngineEvent` |
 | POST | /api/engine/halt | flips `enabled` false (exits keep mirroring) |
-| POST | /api/discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}` |
+| POST | /api/engine/close-all | flips `enabled` false, then writes `data/close_all.flag` -> `{requested_ms, pending, settings}`. Next engine cycle closes every copy reduce-only (even in dry_run), keeps the flag until none remain, then logs `halt` "close-all complete" |
+| POST | /api/discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}` (409 if one is running) |
 | GET | /api/discovery/runs/latest | `DiscoveryRun` |
-| GET | /api/discovery/runs/{id} | `DiscoveryRun` |
+| GET | /api/discovery/runs/{id} | `DiscoveryRun` (404 unknown id) |
+
+## Processes, data files, HL rate budget
+- `data/` must be the same absolute path for every process (`python -m api` / `python -m engine`
+  resolve `COPYCAT_DATA_DIR` to an absolute path at startup).
+- Files: `settings.json` (api writes), `engine.db` + `events.jsonl` (engine writes), `discovery.db`,
+  `close_all.flag` (api writes, engine deletes), `api_token` (api), `engine.lock` (flock held by the one
+  engine worker; a second worker on the same dir exits 1), `hl_rate.bucket` (shared HL token bucket).
+- Discovery runs execute in a child process spawned by the api (`api.discovery_client.run_child`) with
+  `COPYCAT_HL_PRIORITY=background` and no agent key: its HL reads only take rate tokens while the
+  engine's reserve (`COPYCAT_HL_RESERVE_FRAC`, default 40%) stays in the shared bucket, and its CPU never
+  competes with the api's halt/close-all routes. The api reads results from `discovery.db`.
 
 ## Keys
 Hyperliquid API ("agent") wallet: approve it at app.hyperliquid.xyz/API. It can
