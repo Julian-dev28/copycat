@@ -15,13 +15,13 @@ state = venue.account_state("0x...")   # None on failure, never raises
 
 | file | owns |
 |---|---|
-| `hl/venue.py` | `HlVenue` -- the contract surface, all 12 `Venue` methods |
+| `hl/venue.py` | `HlVenue` -- the contract surface, all 13 `Venue` methods (contract v2) |
 | `hl/env.py` | network selection (`COPYCAT_NETWORK`), credentials, timeout |
 | `hl/http.py` | shared session, the timeout guard, `http_post` (every read goes through this) |
-| `hl/rate_limit.py` | token-bucket limiter + the documented per-endpoint weight table |
+| `hl/rate_limit.py` | cross-process file-backed token bucket with engine priority, in-process fallback, the documented per-endpoint weight table |
 | `hl/meta.py` | per-dex perp-universe cache, HIP-3 dex-list cache, spot-price cache, `max_leverage`, `is_isolated_only` |
 | `hl/sizing.py` | pure price/size rounding math (no network) |
-| `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` singleton, used only for writes |
+| `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` singleton (writes only), timeout-guarded, refuses the main wallet's key |
 
 Ported from `pathiel` at commit `ab2e800` (`client/exchange.py`,
 `client/http_session.py`, `client/hl_client.py`,
@@ -58,6 +58,12 @@ an outage doesn't force every coin into isolated margin, and `mid` is
 Missing either one returns `{"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}`
 immediately -- no network call, no exception.
 
+**Main wallet key refused.** If `COPYCAT_AGENT_KEY` derives to
+`COPYCAT_ACCOUNT_ADDRESS`, the main wallet's own private key was pasted.
+That key can withdraw; copycat never uses it. `sdk.get_exchange` raises
+`MainWalletKeyError` and every write returns `ok False` with an error
+telling the user to create an API wallet at `app.hyperliquid.xyz/API`.
+
 `set_leverage` is **strict**: `ok` is only `True` when HL's response body
 says `status == "ok"`. `exchange.update_leverage` can return HTTP 200 with
 `{"status": "err", "response": "<message>"}`, and a non-strict caller
@@ -67,10 +73,57 @@ An isolated-only market (most HIP-3 coins, ~3% of native HL) rejects a
 cross-margin request; `set_leverage` detects this via `is_isolated_only`
 and falls back to isolated rather than sending a call it knows will no-op.
 
-`close(coin)` reads the account's own live position size via
-`account_state` and closes exactly that -- it never trusts a caller-
-supplied size, because the $10-minimum-order floor in `market()` would
-otherwise overshoot a sub-$10 residual and flip it to the opposite side.
+### `market(coin, is_buy, size, mid, reduce_only=False, cloid=None, max_slippage_pct=1.0)`
+
+IOC limit order. Rules, each with a regression test in
+`tests/test_venue_writes.py`:
+
+| rule | behavior |
+|---|---|
+| cloid | `0x` + 32 hex, sent as `Cloid.from_str(cloid)`. Malformed: `ok False`, nothing sent. |
+| full vs partial | `ok True` only when HL's `filled.totalSz` >= the sent size (within half a size tick). Partial: `ok False`, `error "partial fill a/b"`, `filled_sz`/`avg_px` set. `filled_sz` is set whenever HL reported a fill. |
+| ambiguous | the `/exchange` POST raised a timeout, connection error, or 5xx (`requests` Timeout/ConnectionError, `TimeoutError`, SDK `ServerError`): `{ok False, ambiguous True, error}`. The order may be live; resolve with `order_status(cloid)` or a fresh `account_state`. A clean HL rejection (`{"error": ...}` status, `status: err`, a 4xx `ClientError`) or a failure before sending is `ambiguous False`. HL `ok` with no statuses is ambiguous. |
+| slippage cap | limit = `mid * (1 +/- max_slippage_pct/100)`, rounded INSIDE the cap (buy down, sell up). If the l2Book touch (best ask for a buy, best bid for a sell) is already past the cap: `{ok False, error "slippage cap"}`, nothing sent. No book (read failed): sent at the cap. |
+| $10 floor | opens are bumped to $10.50 (`sizing.order_size`); `reduce_only` orders are **never** bumped. A size that rounds to 0 is refused. |
+
+### `order_status(cloid)`
+
+`POST /info {"type": "orderStatus", "user": COPYCAT_ACCOUNT_ADDRESS, "oid": "<cloid hex>"}`.
+HL accepts the cloid string in the `oid` field (the SDK's
+`Info.query_order_by_cloid` sends exactly this). Mapping:
+
+| HL | returned |
+|---|---|
+| `{"status": "unknownOid"}` | `"unknown"` |
+| `open`, `filled`, `triggered` | same |
+| `canceled`, `scheduledCancel`, any `...Canceled` (`marginCanceled`, `reduceOnlyCanceled`, ...) | `"canceled"` |
+| `rejected`, any `...Rejected` (`minTradeNtlRejected`, `iocCancelRejected`, ...) | `"rejected"` |
+| read failed, bad shape, no account, malformed cloid | `None` |
+
+An IOC that filled part of its size and cancelled the rest reports
+`canceled`: **`canceled` does not mean zero fill**. Take the real size
+from `account_state`.
+
+### `close(coin, cloid=None)`
+
+Reduce-only IOC sized from a fresh `account_state` read of our own
+position (never a caller size), then a **second fresh read**: `ok True`
+only if the position is now flat. Partial fill, slippage cap, rejection,
+or a fill the read disagrees with: `ok False` with `filled_sz`. Post-order
+read failed: `ok False`, the order's `filled_sz`/`ambiguous` kept. An
+ambiguous order that the fresh read shows flat is `ok True`. Retrying is
+always safe: each call re-reads its size and reduce-only cannot flip.
+Slippage cap for closes: `COPYCAT_HL_CLOSE_SLIPPAGE_PCT` (default 1.0).
+
+### Timeouts on the SDK
+
+`Exchange(..., timeout=COPYCAT_HL_TIMEOUT_S)` (default 10s): the SDK's
+`Exchange.__init__` builds an `Info` that reads `spotMeta`, `perpDexs`
+and one `meta` per dex inside the constructor, all bounded by that
+timeout. Both the Exchange's and its Info's sessions then get the
+`timeout None -> default` guard. The singleton lock is never held across
+construction; two cold-start racers may both build one, the first stored
+wins.
 
 ## Keys and network
 
@@ -104,12 +157,40 @@ checked 2026-10-02):
 | +1 per 20 items returned | `userFills`, `userFillsByTime`, `historicalOrders`, `fundingHistory`, and others in the per-item group |
 | +1 per 60 items returned | `candleSnapshot` |
 
-`hl.rate_limit.HL_LIMITER` is a single process-wide token bucket, capacity
-1200, refill 20/s (= 1200/min), env-tunable via `COPYCAT_HL_RATE_CAPACITY`
-/ `COPYCAT_HL_RATE_REFILL_PER_SEC`. Every call through `http_post`
-acquires its estimated weight first; a drained bucket makes `http_post`
-return `None` (logged) without ever touching the network, rather than
-firing into a real 429.
+The budget is per IP and two copycat processes share it: the engine and
+discovery (inside the api process today). `hl.rate_limit.HL_LIMITER` is a
+`SharedTokenBucket`: one fcntl-locked file, `$COPYCAT_DATA_DIR/hl_rate.bucket`
+(`"<tokens> <wall_ts>"`), that every process on the host draws from.
+Capacity 1200, refill 20/s, env-tunable via `COPYCAT_HL_RATE_CAPACITY` /
+`COPYCAT_HL_RATE_REFILL_PER_SEC`. The file is created on first acquire,
+not at import. Both processes must see the same `COPYCAT_DATA_DIR` (it
+defaults to the relative `./data`).
+
+| `COPYCAT_HL_PRIORITY` | may spend |
+|---|---|
+| `engine` (default) | the whole bucket |
+| `background` | only down to a reserve of `COPYCAT_HL_RESERVE_FRAC` (default 0.4) of capacity, then sleeps |
+
+So the engine always finds ~40% of the budget (~480 weight) waiting for
+it, however hard discovery is pulling. The process that hosts discovery
+sets `COPYCAT_HL_PRIORITY=background` in its environment before importing
+`hl`, or calls `hl.rate_limit.set_priority("background")` at startup.
+
+If the file cannot be opened or locked, that process falls back to a
+private in-process bucket (logged once): pacing becomes per-process, reads
+keep working.
+
+Every call through `http_post` acquires its estimated weight first; a
+budget that does not free up within `max_wait` makes `http_post` return
+`None` (logged) without touching the network. A real **429** from HL is
+retried inside `http_post`: the shared bucket is drained (so the other
+process backs off too), then exponential backoff 1s, 2s, 4s (honoring
+`Retry-After`, each sleep capped at 4s), at most 3 retries, each retry
+re-acquiring its weight. After that, `None`.
+
+Writes charge weight 1 per order before sending (never blocking an order
+for more than 2s on our own estimate). The SDK Exchange constructor's own
+reads (once per process) are not metered.
 
 ## Fills pagination (`fills`)
 
@@ -202,20 +283,24 @@ leader pricing mid-cycle.
 .venv/bin/python -m pytest services/hl/tests -m live   # live eval: hits the real API
 ```
 
-Gate tests (93, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
-network, deterministic. They cover: price/size rounding (incl. the
-IOC-direction rounding and the integer-size-coin floor), the never-
-silently-1 `max_leverage` forced-refresh path, `is_isolated_only`'s
+Gate tests (182, ~1.3s) fake `http_post` and the SDK `Exchange` -- no
+network, deterministic (one test spawns a real child Python process to
+prove the rate-limit file is shared across processes). They cover:
+price/size rounding (incl. HL's 5-sig-fig rule below $1, IOC-direction
+rounding, the integer-size-coin floor, reduce-only never bumped), the
+never-silently-1 `max_leverage` forced-refresh path, `is_isolated_only`'s
 default-False fallback, the timeout guard (including the exact SDK bug --
-`timeout=None` passed explicitly, so `setdefault` can't catch it), the
-token bucket + documented weight table, `account_state`'s multi-dex
-aggregation and HIP-3 coin namespacing, `extras`'s index-based spot
-pricing and the illiquid-mark exclusion (including the actual $1B-MAX
-shape), `fills` pagination by last-fill-time (not offset) with its
-safety-valve page cap, `leaderboard`/`candles` parsing, `set_leverage`'s
-strict-error-body check and isolated-only fallback, `market`'s IOC pricing
-+ min-size bump + reduce-only passthrough, `close`'s long/short handling,
-and the no-key write refusal across all three write methods.
+`timeout=None` passed explicitly, so `setdefault` can't catch it) on both
+the Exchange and its internal Info, the shared token bucket (shared
+budget, background reserve, drain, corrupt file, fallback) and 429
+backoff, `account_state`'s multi-dex aggregation and HIP-3 coin
+namespacing, `extras`'s index-based spot pricing and the illiquid-mark
+exclusion, `fills` pagination, `leaderboard`/`candles` parsing,
+`set_leverage`'s strict-error-body check and isolated-only fallback, and
+contract v2 writes (`tests/test_venue_writes.py`): cloid passthrough,
+`order_status` mapping, full vs partial fills, ambiguous vs clean
+failures, the slippage cap, `close` confirmed by a fresh read, the
+main-wallet-key guard, and the no-key write refusal.
 
 `test_live.py` (6 tests, `@pytest.mark.live`, excluded from the default
 gate by `pyproject.toml`'s `addopts = "-m 'not live'"`) hits the real

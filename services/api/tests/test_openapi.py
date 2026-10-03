@@ -38,6 +38,7 @@ def test_openapi_has_every_documented_route() -> None:
         ("GET", "/api/events"),
         ("GET", "/api/events/stream"),
         ("POST", "/api/engine/halt"),
+        ("POST", "/api/engine/close-all"),
         ("POST", "/api/discovery/runs"),
         ("GET", "/api/discovery/runs/latest"),
         ("GET", "/api/discovery/runs/{run_id}"),

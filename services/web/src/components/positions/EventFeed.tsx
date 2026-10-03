@@ -31,7 +31,7 @@ export function EventFeed() {
       />
       <ul className="max-h-96 divide-y divide-border overflow-y-auto border-t border-border" aria-live="polite">
         {events.length === 0 ? (
-          <li className="px-5 py-8 text-center text-sm text-muted">No events yet.</li>
+          <li className="px-5 py-8 text-center text-sm text-muted">No events yet. Opens, closes, skips and errors stream in here live.</li>
         ) : (
           events.map((e, i) => (
             <li key={`${e.ts_ms}-${i}`} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm sm:px-5">
@@ -49,7 +49,7 @@ export function EventFeed() {
                 <span className="font-num text-xs text-muted">{formatUsd(e.notional_usd)}</span>
               ) : null}
               {e.leverage ? <span className="font-num text-xs text-muted">{formatLeverage(e.leverage)}</span> : null}
-              {e.reason ? <span className="text-xs text-muted">— {e.reason}</span> : null}
+              {e.reason ? <span className="min-w-0 basis-full text-xs break-words text-muted sm:basis-auto">{e.reason}</span> : null}
             </li>
           ))
         )}

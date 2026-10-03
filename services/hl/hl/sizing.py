@@ -20,9 +20,16 @@ def round_price(price: float, sz_decimals: int, is_perp: bool = True,
                 is_buy: Optional[bool] = None) -> str:
     """Round a price to satisfy Hyperliquid's two constraints:
 
-    1. Multiple of the tick size: tick = 10^(-(MAX_DECIMALS - sz_decimals))
-       where MAX_DECIMALS = 6 for perps, 8 for spot.
-    2. At most 5 significant figures total.
+    1. At most MAX_DECIMALS - sz_decimals decimal places, where
+       MAX_DECIMALS = 6 for perps, 8 for spot.
+    2. At most 5 significant figures, counted from the first non-zero
+       digit (so 0.000123456 has decimals for 5 sig figs = 9, not 5).
+       Integer prices are always allowed, whatever their digit count.
+
+    The old version counted sig figs as `5 - integer digits` with integer
+    digits floored at 0, which treats every sub-$1 price as if it started
+    at the tenths place: 0.000123 got 5 decimals and a buy rounded up to
+    0.00013, a 5.7% worse limit than asked for.
 
     `is_buy` controls rounding direction so an IOC limit always rounds in
     the direction of MORE aggression (preserves cross-the-book intent):
@@ -40,8 +47,11 @@ def round_price(price: float, sz_decimals: int, is_perp: bool = True,
     max_decimals = 6 if is_perp else 8
     px_decimals_by_tick = max(0, max_decimals - int(sz_decimals))
 
-    int_digits = max(0, math.floor(math.log10(price)) + 1)
-    px_decimals_by_sigfig = max(0, 5 - int_digits)
+    # Decimal.adjusted() = exponent of the most significant digit, exact
+    # (no float log10 edge at powers of ten): 85002.3 -> 4, 0.5 -> -1,
+    # 0.000123 -> -4. Decimals allowed for 5 sig figs = 4 - adjusted.
+    msd_exp = Decimal(str(price)).adjusted()
+    px_decimals_by_sigfig = max(0, 4 - msd_exp)
     px_decimals = min(px_decimals_by_tick, px_decimals_by_sigfig)
 
     if is_buy is True:
@@ -71,14 +81,25 @@ def min_order_size(price: float, sz_decimals: int) -> float:
     return math.ceil((MIN_ORDER_USD / price) / tick) * tick
 
 
-def size_for_notional(coin: str, notional_usd: float, mid_price: float) -> float:
+def order_size(size: float, mid_price: float, sz_dec: int, reduce_only: bool) -> float:
+    """The size `market()` actually sends: rounded to szDecimals, and for an
+    OPEN bumped up to the $10.50 floor. A reduce_only order is NEVER bumped:
+    a bump on a sub-$10 reduce would be an order for more than the position
+    (best case HL rejects it, worst case a later non-reduce retry flips the
+    position). It is sent at its own size and HL decides."""
+    if not reduce_only:
+        size = max(size, min_order_size(mid_price, sz_dec))
+    return float(f"{size:.{sz_dec}f}")
+
+
+def size_for_notional(coin: str, notional_usd: float, mid_price: float,
+                      reduce_only: bool = False) -> float:
     """Coin size for an intended dollar notional, rounded to the coin's
-    szDecimals and bumped up to HL's $10 floor if the raw size would fall
-    under it. Mirrors exactly what `market()`'s own sizing does, so a
-    caller's risk gates and bookkeeping match the order that will actually
-    be sent. 0.0 for an invalid input."""
+    szDecimals and (opens only) bumped up to HL's $10 floor if the raw size
+    would fall under it. Mirrors exactly what `market()`'s own sizing does,
+    so a caller's risk gates and bookkeeping match the order that will
+    actually be sent. 0.0 for an invalid input."""
     if notional_usd <= 0 or mid_price <= 0:
         return 0.0
     sz_dec = meta.sz_decimals(coin)
-    size = max(notional_usd / mid_price, min_order_size(mid_price, sz_dec))
-    return float(f"{size:.{sz_dec}f}")
+    return order_size(notional_usd / mid_price, mid_price, sz_dec, reduce_only)

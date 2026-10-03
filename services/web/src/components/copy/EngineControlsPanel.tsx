@@ -13,6 +13,9 @@ import { LiquidationHint } from "./LiquidationHint";
 import { EnableConfirmDialog } from "./EnableConfirmDialog";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { dailyLossLimitToStored, storedToDailyLossMagnitude } from "@/lib/sizing";
+import { leverageVibe, minMarginForLeverage, settingsLeverage } from "@/lib/copyRecipe";
+import { formatUsd } from "@/lib/format";
+import { patchGoesLive } from "@/lib/settings";
 
 const SIZING_OPTIONS = [
   { value: "fixed_margin" as const, label: "Fixed margin" },
@@ -36,7 +39,8 @@ export function EngineControlsPanel({
   settings: Settings;
   onPatch: (patch: SettingsPatch) => void;
 }) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  // A patch that would turn on real-money trading waits here for the confirm.
+  const [pendingLivePatch, setPendingLivePatch] = useState<SettingsPatch | null>(null);
   const [leverage, setLeverage] = useSyncedState(settings.leverage);
   const [fixedMargin, setFixedMargin] = useSyncedState(settings.fixed_margin_usd);
   const [fixedNotional, setFixedNotional] = useSyncedState(settings.fixed_notional_usd);
@@ -45,16 +49,17 @@ export function EngineControlsPanel({
   const [lossLimit, setLossLimit] = useSyncedState(storedToDailyLossMagnitude(settings.daily_loss_limit_usd));
   const [maxOpenCopies, setMaxOpenCopies] = useSyncedState(settings.max_open_copies);
 
-
   const debouncedPatch = useDebouncedCallback((patch: SettingsPatch) => onPatch(patch), 350);
   const lossLimitEnabled = lossLimit > 0;
+  const recipeLev = settingsLeverage({ ...settings, leverage }).leverage;
 
-  function handleEnabledToggle(next: boolean) {
-    if (next && !settings.dry_run) {
-      setConfirmOpen(true);
+  /** Every enabled/dry_run change goes through here, so neither switch can go live unconfirmed. */
+  function guardedPatch(patch: SettingsPatch) {
+    if (patchGoesLive(settings, patch)) {
+      setPendingLivePatch(patch);
       return;
     }
-    onPatch({ enabled: next });
+    onPatch(patch);
   }
 
   return (
@@ -65,9 +70,10 @@ export function EngineControlsPanel({
         title="Trading enabled"
         description="Real money. When on and dry run is off, the engine places live orders on Hyperliquid."
         htmlFor="enabled"
+        inline
       >
         <div className="flex justify-end">
-          <Switch id="enabled" checked={settings.enabled} onChange={handleEnabledToggle} label="Trading enabled" />
+          <Switch id="enabled" checked={settings.enabled} onChange={(v) => guardedPatch({ enabled: v })} label="Trading enabled" />
         </div>
       </SettingRow>
 
@@ -75,12 +81,13 @@ export function EngineControlsPanel({
         title="Dry run"
         description="Engine reads real positions and logs what it would do, but places no orders."
         htmlFor="dry_run"
+        inline
       >
         <div className="flex justify-end">
           <Switch
             id="dry_run"
             checked={settings.dry_run}
-            onChange={(v) => onPatch({ dry_run: v })}
+            onChange={(v) => guardedPatch({ dry_run: v })}
             label="Dry run"
           />
         </div>
@@ -96,8 +103,13 @@ export function EngineControlsPanel({
       </SettingRow>
 
       {settings.sizing_mode === "fixed_margin" ? (
-        <SettingRow title="Fixed margin" description="Margin posted per new copy, at the resolved leverage.">
+        <SettingRow
+          title="Fixed margin"
+          description={`Margin posted per new copy. Margin x leverage must reach $10.50 (at ${recipeLev}x: at least ${formatUsd(minMarginForLeverage(recipeLev))}).`}
+        >
           <Input
+            leading="$"
+            aria-label="Fixed margin in dollars"
             type="number"
             min={0.01}
             step={0.5}
@@ -112,8 +124,10 @@ export function EngineControlsPanel({
       ) : null}
 
       {settings.sizing_mode === "fixed_notional" ? (
-        <SettingRow title="Fixed notional" description="Flat position size per new copy, independent of leverage.">
+        <SettingRow title="Fixed notional" description="Flat position size per new copy, independent of leverage. Minimum $10.50.">
           <Input
+            leading="$"
+            aria-label="Fixed notional in dollars"
             type="number"
             min={10.5}
             step={1}
@@ -131,6 +145,8 @@ export function EngineControlsPanel({
         <>
           <SettingRow title="Size multiplier" description="Scales the proportional copy size up or down.">
             <Input
+              trailing="x"
+              aria-label="Size multiplier"
               type="number"
               min={0}
               max={100}
@@ -155,7 +171,7 @@ export function EngineControlsPanel({
                 setSleeveFrac(v);
                 debouncedPatch({ sleeve_frac: v / 100 });
               }}
-              formatValue={(v) => `${v}%`}
+              formatValue={(v) => `${v} %`}
             />
           </SettingRow>
         </>
@@ -181,7 +197,8 @@ export function EngineControlsPanel({
                 setLeverage(v);
                 debouncedPatch({ leverage: v });
               }}
-              formatValue={(v) => `${v}x`}
+              formatValue={(v) => `${v} x`}
+              vibe={leverageVibe}
             />
             <LiquidationHint leverage={leverage} marginMode={settings.margin_mode} />
           </>
@@ -201,6 +218,7 @@ export function EngineControlsPanel({
         title="Daily loss limit"
         description="Halts new opens/adds once today's PnL drops this far. Off disables the limit."
         htmlFor="daily_loss_limit_toggle"
+        inline
       >
         <div className="flex items-center justify-end gap-3">
           <Switch
@@ -215,10 +233,11 @@ export function EngineControlsPanel({
           />
           {lossLimitEnabled ? (
             <Input
+              leading="$"
               type="number"
               min={0}
               step={10}
-              className="w-28"
+              className="w-32"
               aria-label="Daily loss limit in dollars"
               value={lossLimit}
               onChange={(e) => {
@@ -247,11 +266,11 @@ export function EngineControlsPanel({
       </SettingRow>
 
       <EnableConfirmDialog
-        open={confirmOpen}
-        onCancel={() => setConfirmOpen(false)}
+        open={pendingLivePatch !== null}
+        onCancel={() => setPendingLivePatch(null)}
         onConfirm={() => {
-          onPatch({ enabled: true });
-          setConfirmOpen(false);
+          if (pendingLivePatch) onPatch(pendingLivePatch);
+          setPendingLivePatch(null);
         }}
       />
     </Panel>

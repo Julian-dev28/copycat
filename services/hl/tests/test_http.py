@@ -152,3 +152,71 @@ def test_http_post_respects_rate_limiter(monkeypatch):
     out = http.http_post("/info", {"type": "meta"}, max_wait=0.05)
     assert out is None
     assert fake.posts == []  # never called
+
+
+# ── 429: back off and retry inside http_post ────────────────────────────────
+
+class _SeqSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.posts = 0
+
+    def post(self, url, json=None, timeout=None):
+        self.posts += 1
+        return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
+
+
+class _429(_FakeResponse):
+    def __init__(self, retry_after=None):
+        super().__init__({}, status=429)
+        self.headers = {"Retry-After": retry_after} if retry_after is not None else {}
+
+
+class _CountingBucket(rate_limit.TokenBucket):
+    def __init__(self):
+        super().__init__(capacity=1_000_000, refill_per_sec=1_000_000)
+        self.drains = 0
+        self.acquires = 0
+
+    def acquire(self, weight=20, max_wait=10.0):
+        self.acquires += 1
+        return True
+
+    def drain(self):
+        self.drains += 1
+
+
+def test_429_backs_off_drains_and_retries(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    bucket = _CountingBucket()
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", bucket)
+    sess = _SeqSession([_429(), _429(), _FakeResponse({"ok": 1})])
+    monkeypatch.setattr(http, "get_session", lambda: sess)
+    assert http.http_post("/info", {"type": "meta"}) == {"ok": 1}
+    assert sess.posts == 3
+    assert sleeps == [1.0, 2.0]          # exponential
+    assert bucket.drains == 2            # the other process backs off too
+    assert bucket.acquires == 3          # every retry pays its weight again
+
+
+def test_persistent_429_gives_up_bounded(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", _CountingBucket())
+    sess = _SeqSession([_429()])
+    monkeypatch.setattr(http, "get_session", lambda: sess)
+    assert http.http_post("/info", {"type": "meta"}) is None
+    assert sess.posts == http.RETRY_429_MAX + 1
+    assert len(sleeps) == http.RETRY_429_MAX
+    assert all(s <= http.RETRY_429_MAX_SLEEP_S for s in sleeps)
+
+
+def test_429_honors_retry_after_but_caps_it(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", _CountingBucket())
+    sess = _SeqSession([_429(retry_after="3"), _429(retry_after="600"), _FakeResponse({})])
+    monkeypatch.setattr(http, "get_session", lambda: sess)
+    http.http_post("/info", {"type": "meta"})
+    assert sleeps == [3.0, http.RETRY_429_MAX_SLEEP_S]

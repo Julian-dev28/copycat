@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/Button";
 export function DiscoveryForm({
   onStart,
   starting,
+  running,
   error,
 }: {
   onStart: (opts: { simEquityUsd: number; topN: number; useCurrentSettings: boolean }) => void;
   starting: boolean;
+  /** A run is already in progress: one at a time. */
+  running?: boolean;
   error?: string | null;
 }) {
   const [simEquityUsd, setSimEquityUsd] = useState(1000);
@@ -33,8 +36,10 @@ export function DiscoveryForm({
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium text-foreground">Simulated equity ($)</span>
+            <span className="font-medium text-foreground">Simulated equity</span>
+            <span className="text-xs text-muted">What a pretend copier starts with. Use roughly your real account size.</span>
             <Input
+              leading="$"
               type="number"
               min={10}
               step={100}
@@ -43,7 +48,8 @@ export function DiscoveryForm({
             />
           </label>
           <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium text-foreground">Top N candidates</span>
+            <span className="font-medium text-foreground">Wallets to scan</span>
+            <span className="text-xs text-muted">Top of the 30-day leaderboard. More takes longer.</span>
             <Input type="number" min={1} max={200} value={topN} onChange={(e) => setTopN(Number(e.target.value))} />
           </label>
         </div>
@@ -58,8 +64,8 @@ export function DiscoveryForm({
         </label>
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         <div>
-          <Button type="submit" variant="primary" disabled={starting}>
-            {starting ? "Starting…" : "Start discovery run"}
+          <Button type="submit" variant="primary" disabled={starting || running}>
+            {starting ? "Starting…" : running ? "Scan running…" : "Start discovery run"}
           </Button>
         </div>
       </form>

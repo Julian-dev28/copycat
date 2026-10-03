@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from contracts.models import DiscoveryRun
 
 from ..deps import get_discovery_client, get_store, require_auth
-from ..discovery_client import DiscoveryClient, DiscoveryUnavailable
+from ..discovery_client import DiscoveryBusy, DiscoveryClient, DiscoveryUnavailable
 from ..schemas import DiscoveryRunRequest, DiscoveryRunResponse
 from ..settings_store import SettingsStore
 
@@ -21,6 +21,8 @@ def start_run(
     settings = body.settings if body.settings is not None else store.load()
     try:
         run_id = discovery.start_run(settings, body.sim_equity_usd, body.top_n)
+    except DiscoveryBusy as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
     except DiscoveryUnavailable as e:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
     return DiscoveryRunResponse(run_id=run_id)
@@ -41,8 +43,11 @@ def get_latest_run(discovery: DiscoveryClient = Depends(get_discovery_client)) -
 @router.get("/runs/{run_id}", response_model=DiscoveryRun)
 def get_run(run_id: str, discovery: DiscoveryClient = Depends(get_discovery_client)) -> DiscoveryRun:
     try:
-        return discovery.get_run(run_id)
+        run = discovery.get_run(run_id)
     except DiscoveryUnavailable as e:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
     except KeyError as e:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no discovery run {run_id}") from e
+    if run is None:  # discovery.public.get_run returns None for an unknown id
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no discovery run {run_id}")
+    return run

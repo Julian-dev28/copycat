@@ -21,7 +21,7 @@ def build_schema() -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         config = Config(
             data_dir=Path(tmp),
-            api_token="openapi-export-placeholder",
+            api_token="openapi-export-placeholder-token-0000000",
             bind="0.0.0.0",
             web_origin="http://localhost:3000",
         )

@@ -1,15 +1,23 @@
-"""The FastAPI app: `api.main:app`. create_app() is the single place that
-wires config -> store/auth/clients -> middleware -> routers, used by both
-the real entrypoint (api.__main__) and every test (each test builds its own
-app from its own Config, never touching the module-level singleton below).
+"""The FastAPI app. create_app() is the single place that wires config ->
+store/auth/clients -> middleware -> routers, used by both the real
+entrypoint (api.__main__) and every test (each test builds its own app from
+its own Config).
+
+`api.main:app` still works for `uvicorn api.main:app`, but is built lazily
+on first attribute access (module `__getattr__`), not at import: building it
+resolves the api token, which may generate `data/api_token`, and importing
+this module from a test must never write into the repo's ./data.
 """
 from __future__ import annotations
 
-from typing import Optional
+import os
+from typing import Any, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .auth import BearerAuth
 from .config import API_VERSION, Config
 from .discovery_client import RealDiscoveryClient
 from .engine_client import RealEngineClient
@@ -18,21 +26,26 @@ from .routes import discovery, engine, events_stream, health
 from .routes import leaders as leaders_routes
 from .routes import settings as settings_routes
 from .settings_store import SettingsStore
-from .auth import BearerAuth
 
 
 def create_app(config: Optional[Config] = None) -> FastAPI:
+    # The api never signs anything. `make dev` runs load_dotenv() in
+    # api.__main__, which would otherwise leave the agent's private key in
+    # this process's environment (and in every subprocess it spawns, such as
+    # discovery runs). Drop it before anything else happens.
+    os.environ.pop("COPYCAT_AGENT_KEY", None)
+
     config = config or Config.from_env()
     config.validate_or_raise()
 
     app = FastAPI(title="copycat api", version=API_VERSION)
     app.state.config = config
-    app.state.store = SettingsStore(config.data_dir)
+    app.state.store = SettingsStore(config.data_dir, config.our_address)
     app.state.auth = BearerAuth(config.api_token)
     # factories, not instances: each request gets a fresh client so a
     # lazily-imported engine/discovery module reload is picked up.
     app.state.engine_client_factory = RealEngineClient
-    app.state.discovery_client_factory = RealDiscoveryClient
+    app.state.discovery_client_factory = lambda: RealDiscoveryClient(config.data_dir)
 
     app.add_middleware(
         CORSMiddleware,
@@ -41,6 +54,9 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # DNS rebinding guard: a page on evil.com that resolves to 127.0.0.1
+    # still sends `Host: evil.com`, and gets a 400 here before any route.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(config.allowed_hosts))
 
     register_exception_handlers(app)
 
@@ -54,4 +70,13 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     return app
 
 
-app = create_app()
+_app: Optional[FastAPI] = None
+
+
+def __getattr__(name: str) -> Any:
+    global _app
+    if name == "app":
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(name)

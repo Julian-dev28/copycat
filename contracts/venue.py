@@ -44,10 +44,12 @@ class Fill(TypedDict):
 
 
 class OrderResult(TypedDict, total=False):
-    ok: bool
+    ok: bool            # True only when the requested size FULLY filled (or rested, for GTC)
     error: str
     avg_px: float
-    filled_sz: float
+    filled_sz: float    # always set when HL reported a fill, including partial fills
+    ambiguous: bool     # the request may have reached HL (timeout, dropped connection):
+                        # outcome unknown, resolve with order_status(cloid) or a fresh account read
 
 
 class Venue(Protocol):
@@ -64,5 +66,12 @@ class Venue(Protocol):
     # writes (need COPYCAT_AGENT_KEY; return ok False with error otherwise)
     def set_leverage(self, coin: str, leverage: int, is_cross: bool) -> OrderResult: ...  # strict: ok only on HL status "ok"
     def market(self, coin: str, is_buy: bool, size: float, mid: float,
-               reduce_only: bool = False) -> OrderResult: ...  # IOC with slippage
-    def close(self, coin: str) -> OrderResult: ...             # reduce-only full close
+               reduce_only: bool = False, cloid: Optional[str] = None,
+               max_slippage_pct: float = 1.0) -> OrderResult: ...
+        # IOC. Limit price capped at mid*(1 +/- max_slippage_pct/100). reduce_only orders are
+        # never bumped up to the exchange minimum. cloid: 0x + 32 hex, HL client order id.
+    def order_status(self, cloid: str) -> Optional[str]: ...
+        # HL status for our order by cloid: "filled", "open", "canceled", "rejected", ...,
+        # "unknown" when HL has no such order, None when the read itself failed.
+    def close(self, coin: str, cloid: Optional[str] = None) -> OrderResult: ...
+        # reduce-only full close sized from a fresh read; ok only if the position is now flat

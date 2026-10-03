@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from .settings_store import OwnAddressError
+
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ValidationError)
@@ -19,3 +21,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             for e in exc.errors()
         ]
         return JSONResponse(status_code=422, content={"detail": errors})
+
+    @app.exception_handler(OwnAddressError)
+    async def _on_own_address(request: Request, exc: OwnAddressError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})

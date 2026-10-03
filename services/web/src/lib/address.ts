@@ -9,3 +9,8 @@ export function normAddr(address: string): string {
 export function isValidAddress(address: string): boolean {
   return ADDR_RE.test(normAddr(address));
 }
+
+/** Hyperliquid's public explorer page for a wallet. */
+export function explorerUrl(address: string): string {
+  return `https://app.hyperliquid.xyz/explorer/address/${normAddr(address)}`;
+}

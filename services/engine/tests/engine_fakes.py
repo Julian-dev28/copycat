@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 
-from engine.state import EngineState
 
 OUR = "0x" + "0" * 40
 LEADER1 = "0x95da8596c44dd09f4b8becce87ad3b7894fb2328"
@@ -30,6 +29,16 @@ class FakeVenue:
         self.levs: Dict[str, Dict[str, Any]] = {}
         self.fail_market: Set[str] = set()
         self.fail_close: bool = False
+        # contract v2 behaviors
+        # partial fills: coin -> fraction of the requested size that fills (ok False when < 1)
+        self.fill_frac: Dict[str, float] = {}
+        # close(): coin -> filled_sz of a partial close (ok False: not flat)
+        self.close_filled: Dict[str, float] = {}
+        self.ambiguous: Set[str] = set()          # market() on these coins: outcome unknown
+        self.close_ambiguous: Set[str] = set()
+        self.statuses: Dict[str, Optional[str]] = {}   # cloid -> order_status answer
+        self.cloids: List[Optional[str]] = []
+        self.raise_on_mid: Set[str] = set()
 
     # ── setup helpers (not part of the Venue protocol) ──────────────────
 
@@ -90,6 +99,8 @@ class FakeVenue:
         return self.extras_map.get(user)
 
     def mid(self, coin: str) -> float:
+        if coin in self.raise_on_mid:
+            raise RuntimeError(f"mid blew up for {coin}")
         return self.mids.get(coin, 100.0)
 
     def max_leverage(self, coin: str) -> int:
@@ -115,16 +126,30 @@ class FakeVenue:
         return {"ok": True}
 
     def market(self, coin: str, is_buy: bool, size: float, mid: float,
-               reduce_only: bool = False) -> Dict[str, Any]:
+               reduce_only: bool = False, cloid: Optional[str] = None,
+               max_slippage_pct: float = 1.0) -> Dict[str, Any]:
+        self.cloids.append(cloid)
         if coin in self.fail_market:
             return {"ok": False, "error": "rejected"}
         self.orders.append((coin, is_buy, round(size, 6), reduce_only))
-        return {"ok": True}
+        if coin in self.ambiguous:
+            return {"ok": False, "ambiguous": True, "error": "timeout"}
+        if coin in self.fill_frac:
+            frac = self.fill_frac[coin]
+            return {"ok": frac >= 1.0, "filled_sz": size * frac, "avg_px": mid}
+        return {"ok": True, "filled_sz": size, "avg_px": mid}
 
-    def close(self, coin: str) -> Dict[str, Any]:
+    def order_status(self, cloid: str) -> Optional[str]:
+        return self.statuses.get(cloid, "unknown")
+
+    def close(self, coin: str, cloid: Optional[str] = None) -> Dict[str, Any]:
         if self.fail_close:
             return {"ok": False, "error": "failed"}
         self.closes.append(coin)
+        if coin in self.close_ambiguous:
+            return {"ok": False, "ambiguous": True, "error": "timeout"}
+        if coin in self.close_filled:
+            return {"ok": False, "filled_sz": self.close_filled[coin], "error": "not flat"}
         return {"ok": True}
 
 

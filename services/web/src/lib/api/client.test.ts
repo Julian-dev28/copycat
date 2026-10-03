@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, apiFetch, getApiBase, onUnauthorized } from "./client";
+import { ApiError, api, apiFetch, getApiBase, isNotSupported, onUnauthorized } from "./client";
 import { clearStoredToken, setStoredToken } from "./token";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -183,5 +183,47 @@ describe("api.removeLeader", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${getApiBase()}/api/leaders/0xABC`);
     expect(init.method).toBe("DELETE");
+  });
+});
+
+describe("api.closeAllCopies", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("POSTs to /api/engine/close-all with the bearer token", async () => {
+    setStoredToken("t");
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ closed: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(api.closeAllCopies()).resolves.toEqual({ closed: 2 });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/api/engine/close-all`);
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer t");
+    clearStoredToken();
+  });
+
+  it("a 404 from an older api is reported as not supported", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ detail: "Not Found" }, { status: 404 })));
+    const err = await api.closeAllCopies().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(isNotSupported(err)).toBe(true);
+  });
+
+  it("other failures are not mistaken for not supported", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ detail: "boom" }, { status: 500 })));
+    const err = await api.closeAllCopies().catch((e: unknown) => e);
+    expect(isNotSupported(err)).toBe(false);
+    expect(isNotSupported(new Error("x"))).toBe(false);
+  });
+});
+
+describe("apiFetch network failure", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("turns a fetch rejection into ApiError(0) naming the api base", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+    await expect(apiFetch("/api/status")).rejects.toMatchObject({
+      status: 0,
+      message: `can't reach the api at ${getApiBase()}. Is it running?`,
+    });
   });
 });

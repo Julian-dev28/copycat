@@ -10,6 +10,12 @@ from .main import create_app
 
 
 def main() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     config = Config.from_env()
     app = create_app(config)
     uvicorn.run(app, host=config.bind, port=config.api_port, log_level="info")

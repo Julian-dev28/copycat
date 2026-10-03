@@ -28,3 +28,14 @@ export function useHaltEngine() {
     },
   });
 }
+
+/** POST /api/engine/close-all. Check isNotSupported(error) for an api that predates the route. */
+export function useCloseAllCopies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.closeAllCopies,
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: STATUS_KEY });
+    },
+  });
+}

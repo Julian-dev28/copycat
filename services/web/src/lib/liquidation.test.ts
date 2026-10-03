@@ -41,6 +41,6 @@ describe("formatLiquidationHint", () => {
   });
 
   it("describes cross margin without a specific percentage", () => {
-    expect(formatLiquidationHint(50, "cross")).toBe("50x cross — liquidation depends on total account equity");
+    expect(formatLiquidationHint(50, "cross")).toBe("50x cross: liquidation depends on total account equity");
   });
 });

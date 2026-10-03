@@ -47,3 +47,18 @@ def request_timeout_s() -> float:
         return float(os.environ.get("COPYCAT_HL_TIMEOUT_S", DEFAULT_TIMEOUT_S))
     except (TypeError, ValueError):
         return DEFAULT_TIMEOUT_S
+
+
+DEFAULT_CLOSE_MAX_SLIPPAGE_PCT = 1.0
+
+
+def close_max_slippage_pct() -> float:
+    """Slippage cap for close() (the contract's close() has no slippage
+    arg). Default 1.0, matching market()'s default. Tunable via
+    COPYCAT_HL_CLOSE_SLIPPAGE_PCT for thin books where exits keep hitting
+    the cap."""
+    try:
+        v = float(os.environ.get("COPYCAT_HL_CLOSE_SLIPPAGE_PCT", DEFAULT_CLOSE_MAX_SLIPPAGE_PCT))
+        return v if v > 0 else DEFAULT_CLOSE_MAX_SLIPPAGE_PCT
+    except (TypeError, ValueError):
+        return DEFAULT_CLOSE_MAX_SLIPPAGE_PCT

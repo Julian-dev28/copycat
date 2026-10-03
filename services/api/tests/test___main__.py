@@ -19,7 +19,7 @@ def test_main_runs_uvicorn_with_env_config(
 
     monkeypatch.setattr(entrypoint.uvicorn, "run", fake_run)
     monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("COPYCAT_API_TOKEN", "t")
+    monkeypatch.setenv("COPYCAT_API_TOKEN", "t" * 32)
     monkeypatch.setenv("COPYCAT_BIND", "0.0.0.0")
     monkeypatch.setenv("COPYCAT_API_PORT", "9999")
 

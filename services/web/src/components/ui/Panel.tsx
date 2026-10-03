@@ -35,26 +35,30 @@ export function SettingRow({
   htmlFor,
   children,
   className,
+  inline,
 }: {
   title: ReactNode;
   description?: ReactNode;
   htmlFor?: string;
   children: ReactNode;
   className?: string;
+  /** Keep the control beside the label on phones too (switches). */
+  inline?: boolean;
 }) {
   return (
     <div
       className={clsx(
-        "flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5",
+        "flex gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5",
+        inline ? "flex-row items-center justify-between" : "flex-col",
         "border-t border-border first:border-t-0",
         className,
       )}
     >
-      <label htmlFor={htmlFor} className="max-w-sm text-sm font-medium text-foreground">
+      <label htmlFor={htmlFor} className="min-w-0 max-w-sm text-sm font-medium text-foreground">
         {title}
         {description ? <span className="mt-0.5 block text-xs font-normal text-muted">{description}</span> : null}
       </label>
-      <div className="w-full sm:w-72 sm:flex-shrink-0">{children}</div>
+      <div className={clsx(inline ? "flex-shrink-0" : "w-full", "sm:w-80 sm:flex-shrink-0")}>{children}</div>
     </div>
   );
 }

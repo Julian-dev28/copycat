@@ -65,7 +65,15 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     headers.set("Authorization", `Bearer ${effectiveToken}`);
   }
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...rest, body, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, { ...rest, body, headers });
+  } catch (err) {
+    // fetch only rejects on network failure (api down, wrong host, CORS):
+    // status 0 so callers can tell "unreachable" apart from an http error.
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError(0, `can't reach the api at ${getApiBase()}. Is it running?`);
+  }
 
   if (res.status === 401) {
     unauthorizedListeners.forEach((cb) => cb());
@@ -100,6 +108,14 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
 }
+
+/** True when the api answered but doesn't have the route (an older api build). */
+export function isNotSupported(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 405);
+}
+
+/** Whatever POST /api/engine/close-all returns; the ui only needs it to succeed. */
+export type CloseAllResult = Record<string, unknown> | undefined;
 
 function json(body: unknown): string {
   return JSON.stringify(body);
@@ -137,6 +153,12 @@ export const api = {
 
   /** Flips `enabled` false server-side and returns the updated Settings (not EngineStatus). */
   haltEngine: () => apiFetch<Settings>("/api/engine/halt", { method: "POST" }),
+
+  /**
+   * Market-closes every copy position copycat opened. 404/405 means this api
+   * build predates the route: check with isNotSupported().
+   */
+  closeAllCopies: () => apiFetch<CloseAllResult>("/api/engine/close-all", { method: "POST" }),
 
   startDiscoveryRun: (body: StartDiscoveryRunBody) =>
     apiFetch<{ run_id: string }>("/api/discovery/runs", { method: "POST", body: json(body) }),

@@ -12,7 +12,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2   # v2: Venue cloid/order_status/ambiguous, partial-fill semantics
 
 MAX_LEADERS = 10
 HL_MIN_ORDER_USD = 10.5          # Hyperliquid rejects orders under $10; 10.5 leaves rounding room

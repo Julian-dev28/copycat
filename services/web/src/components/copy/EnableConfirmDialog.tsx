@@ -17,7 +17,7 @@ export function EnableConfirmDialog({
       open={open}
       onClose={onCancel}
       title="Trade with real money?"
-      description="Dry run is off. Turning this on lets the engine place real orders on Hyperliquid on your behalf, mirroring your leaders at the leverage and sizing you've configured."
+      description="This turns on live trading: trading enabled with dry run off. The engine will place real orders on Hyperliquid on your behalf, mirroring your leaders at the leverage and sizing you've configured."
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>

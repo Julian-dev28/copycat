@@ -6,7 +6,7 @@
  * preview used on /copy before/without a status round-trip.
  */
 import { normAddr } from "./address";
-import type { Settings } from "./api/types";
+import type { LeaderOverride, Settings } from "./api/types";
 
 export function effectiveSettingsForLeader(settings: Settings, leader: string): Settings {
   const override = settings.leader_overrides[normAddr(leader)];
@@ -17,4 +17,24 @@ export function effectiveSettingsForLeader(settings: Settings, leader: string): 
     if (value !== null && value !== undefined) patch[key] = value;
   }
   return { ...settings, ...patch };
+}
+
+/**
+ * The api returns unset override fields as null, the UI deletes them
+ * (undefined). Both mean "inherit the book-wide value".
+ */
+export function isOverrideSet(value: unknown): boolean {
+  return value !== null && value !== undefined;
+}
+
+/** True when an override has at least one field that actually overrides. */
+export function hasActiveOverride(override: LeaderOverride | null | undefined): boolean {
+  return Boolean(override) && Object.values(override as object).some(isOverrideSet);
+}
+
+/** Drops null/undefined fields so a draft holds only real overrides. */
+export function compactOverride(override: LeaderOverride | null | undefined): LeaderOverride {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(override ?? {})) if (isOverrideSet(v)) out[k] = v;
+  return out as LeaderOverride;
 }

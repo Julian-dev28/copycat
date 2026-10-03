@@ -63,3 +63,24 @@ export function formatNumber(value: number | null | undefined, digits = 4): stri
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
+
+/**
+ * Prices span 6 orders of magnitude on Hyperliquid (BTC ~1e5, kPEPE ~1e-2,
+ * some memecoins ~1e-5). Two fixed decimals would print $0.00 for those, so
+ * use 5 significant digits under $1 and cap at 2 decimals at or above $1.
+ */
+export function formatPrice(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const abs = Math.abs(value);
+  if (abs === 0) return "$0";
+  if (abs >= 1) {
+    return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `$${value.toLocaleString("en-US", { maximumSignificantDigits: 5 })}`;
+}
+
+/** Position size: absolute, at most 6 significant decimals, no float noise like 0.30000000000000004. */
+export function formatSize(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return Math.abs(value).toLocaleString("en-US", { maximumSignificantDigits: 6 });
+}

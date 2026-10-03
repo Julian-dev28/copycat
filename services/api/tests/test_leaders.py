@@ -60,3 +60,22 @@ def test_delete_leader_not_present_is_idempotent(client: TestClient, auth_header
     r = client.delete(f"/api/leaders/{ADDR_B}", headers=auth_headers)
     assert r.status_code == 200
     assert r.json()["leaders"] == []
+
+
+# ── our own account is never a leader ───────────────────────────────────────
+
+from api_fakes import OUR_ADDRESS  # noqa: E402
+
+
+def test_add_leader_rejects_our_own_address(client, auth_headers) -> None:
+    r = client.post("/api/leaders", headers=auth_headers, json={"address": OUR_ADDRESS.upper().replace("0X", "0x")})
+    assert r.status_code == 400 and "own account" in r.json()["detail"]
+
+
+def test_patch_and_put_reject_our_own_address_in_leaders(client, auth_headers) -> None:
+    r = client.patch("/api/settings", headers=auth_headers, json={"leaders": [OUR_ADDRESS]})
+    assert r.status_code == 400
+    full = client.get("/api/settings", headers=auth_headers).json()
+    full["leaders"] = [OUR_ADDRESS]
+    assert client.put("/api/settings", headers=auth_headers, json=full).status_code == 400
+    assert client.get("/api/settings", headers=auth_headers).json()["leaders"] == []

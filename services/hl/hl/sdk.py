@@ -48,30 +48,82 @@ def _perp_dexs_arg() -> Optional[List[str]]:
         return None
 
 
+class MainWalletKeyError(RuntimeError):
+    """COPYCAT_AGENT_KEY derives to COPYCAT_ACCOUNT_ADDRESS: the main
+    wallet's own private key was pasted. That key can withdraw funds;
+    copycat must only ever hold an agent (API) wallet key, which can trade
+    but cannot withdraw."""
+
+
+MAIN_WALLET_KEY_ERROR = (
+    "COPYCAT_AGENT_KEY is the private key of COPYCAT_ACCOUNT_ADDRESS itself (your main wallet). "
+    "copycat refuses to use it: that key can withdraw your funds. Create an API wallet at "
+    "https://app.hyperliquid.xyz/API, authorize it, and put ITS private key in COPYCAT_AGENT_KEY."
+)
+
+
+def check_agent_key(key: str, account: str) -> Optional[str]:
+    """None when `key` is a usable agent key for `account`, else the error
+    to show the user. Never raises."""
+    try:
+        derived = Account.from_key(key.removeprefix("0x")).address
+    except Exception as exc:
+        return f"COPYCAT_AGENT_KEY is not a valid private key: {type(exc).__name__}"
+    if derived.lower() == account.strip().lower():
+        return MAIN_WALLET_KEY_ERROR
+    return None
+
+
+def _build_exchange(key: str, account: str) -> Exchange:
+    """Construct a fully timeout-guarded Exchange. Network-bound: the SDK's
+    Exchange.__init__ builds an Info that reads spotMeta, perpDexs and one
+    meta per dex right in the constructor. `timeout=` is passed so every
+    one of those calls is bounded (the SDK's default None would let a dead
+    socket hang the engine forever), and both sessions also get the
+    `timeout None -> default` guard for every later call."""
+    timeout_s = env.request_timeout_s()
+    wallet = Account.from_key(key.removeprefix("0x"))
+    ex = Exchange(
+        wallet=wallet,
+        base_url=env.base_url(),
+        account_address=account,
+        perp_dexs=_perp_dexs_arg(),
+        timeout=timeout_s,
+    )
+    set_session_timeout(ex, timeout_s)
+    info = getattr(ex, "info", None)
+    if info is not None:
+        set_session_timeout(info, timeout_s)
+    return ex
+
+
 def get_exchange() -> Exchange:
     """The shared Exchange singleton for the active network.
 
     Raises RuntimeError if COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS are
-    unset. Callers in venue.py check `env.has_write_creds()` BEFORE calling
-    this and turn a missing key into `{ok: False, error}` -- this function
-    raising is a second line of defense, not the primary contract path.
+    unset, and MainWalletKeyError if the key is the main wallet's own key.
+    Callers in venue.py check `env.has_write_creds()` first and turn any
+    raise here into `{ok: False, error}` before anything is sent.
+
+    The lock only guards the singleton slot, never the construction: the
+    Exchange constructor does ~13 network reads, and holding a lock across
+    them would stall every other writer thread behind a slow HL. Two
+    threads racing a cold start may both build one; the first stored wins
+    and the other is dropped, which is harmless (no state, no orders).
     """
     global _exchange
-    if _exchange is not None:
-        return _exchange
+    ex = _exchange
+    if ex is not None:
+        return ex
+    key = env.agent_key()
+    account = env.account_address()
+    if not (key and account):
+        raise RuntimeError("COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set")
+    err = check_agent_key(key, account)
+    if err:
+        raise MainWalletKeyError(err) if err == MAIN_WALLET_KEY_ERROR else RuntimeError(err)
+    built = _build_exchange(key, account)
     with _lock:
-        if _exchange is not None:
-            return _exchange
-        key = env.agent_key()
-        account = env.account_address()
-        if not (key and account):
-            raise RuntimeError("COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set")
-        key_hex = key.removeprefix("0x")
-        wallet = Account.from_key(key_hex)
-        _exchange = set_session_timeout(Exchange(
-            wallet=wallet,
-            base_url=env.base_url(),
-            account_address=account,
-            perp_dexs=_perp_dexs_arg(),
-        ))
+        if _exchange is None:
+            _exchange = built
         return _exchange

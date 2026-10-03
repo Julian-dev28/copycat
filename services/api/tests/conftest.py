@@ -9,9 +9,9 @@ from api.config import Config
 from api.deps import get_discovery_client, get_engine_client
 from api.main import create_app
 
-from api_fakes import FakeDiscoveryClient, FakeEngineClient
+from api_fakes import OUR_ADDRESS, FakeDiscoveryClient, FakeEngineClient
 
-TOKEN = "test-token"
+TOKEN = "test-token-0123456789abcdef0123456789"   # >= 32 chars, like a real one
 
 
 @pytest.fixture
@@ -39,6 +39,8 @@ def config(data_dir: Path) -> Config:
         api_port=0,
         web_origin="http://localhost:3000",
         sse_poll_s=0.01,
+        allowed_hosts=["localhost", "127.0.0.1", "testserver"],
+        our_address=OUR_ADDRESS,
     )
 
 

@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: .:services/hl:services/engine:services/discovery:services/api
+
+jobs:
+  python:
+    name: python 3.13 (pytest gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv venv .venv
+      - run: uv pip install -r pyproject.toml --extra dev
+      - run: .venv/bin/python -m pytest
+
+  web:
+    name: node 22 (lint, typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run
+      - run: npm run build
+
+  openapi:
+    name: openapi.json and web types are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+      - run: uv venv .venv && uv pip install -r pyproject.toml
+      - run: npm ci
+        working-directory: services/web
+      - run: make openapi
+      - name: fail if regenerated files differ from the commit
+        run: |
+          git diff --exit-code -- services/api/openapi.json services/web/src/lib/api/schema.gen.ts \
+            || { echo "::error::openapi.json or schema.gen.ts is stale. Run 'make openapi' and commit."; exit 1; }

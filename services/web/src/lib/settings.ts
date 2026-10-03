@@ -25,3 +25,17 @@ export function applySettingsPatch(current: Settings, patch: SettingsPatch): Set
 
   return next;
 }
+
+/** True when the settings would place real orders. */
+export function isLiveTrading(s: Pick<Settings, "enabled" | "dry_run">): boolean {
+  return s.enabled && !s.dry_run;
+}
+
+/**
+ * A patch needs the "trade with real money?" confirm when it moves the book
+ * from not-live to live, whichever switch does it: enabling with dry run
+ * already off, or turning dry run off while already enabled, or both at once.
+ */
+export function patchGoesLive(current: Settings, patch: SettingsPatch): boolean {
+  return !isLiveTrading(current) && isLiveTrading(applySettingsPatch(current, patch));
+}

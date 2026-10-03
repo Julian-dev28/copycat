@@ -15,6 +15,29 @@
         "title": "AddLeaderRequest",
         "type": "object"
       },
+      "CloseAllResponse": {
+        "description": "POST /api/engine/close-all. `settings` has `enabled` false already;\nthe closes themselves happen on the engine's next cycle (watch\n/api/events for `close` events with reason \"close-all\", then a `halt`\nevent \"close-all complete ...\").",
+        "properties": {
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "requested_ms": {
+            "title": "Requested Ms",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/Settings"
+          }
+        },
+        "required": [
+          "requested_ms",
+          "pending",
+          "settings"
+        ],
+        "title": "CloseAllResponse",
+        "type": "object"
+      },
       "CopyPosition": {
         "properties": {
           "coin": {
@@ -643,7 +666,7 @@
         "description": "The whole user-editable configuration. Stored at data/settings.json,\nowned by the api service (the only writer), read by the engine every cycle.",
         "properties": {
           "contract_version": {
-            "default": 1,
+            "default": 2,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -1297,6 +1320,28 @@
         "summary": "Get Run",
         "tags": [
           "discovery"
+        ]
+      }
+    },
+    "/api/engine/close-all": {
+      "post": {
+        "description": "Emergency flatten. Flips `enabled` false FIRST (so nothing new opens\neven before the engine sees the flag), then writes\n`data/close_all.flag`. The engine's next cycle closes every copy it\nopened, reduce-only, regardless of `dry_run`; positions copycat did not\nopen are never touched. Idempotent: a second call while one is pending\njust refreshes the timestamp.",
+        "operationId": "close_all_api_engine_close_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseAllResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Close All",
+        "tags": [
+          "engine"
         ]
       }
     },

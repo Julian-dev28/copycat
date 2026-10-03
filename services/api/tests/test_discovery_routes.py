@@ -86,3 +86,17 @@ def test_discovery_503_when_unavailable(client: TestClient, auth_headers: dict, 
     assert r.status_code == 503
     r = client.get("/api/discovery/runs/abc", headers=auth_headers)
     assert r.status_code == 503
+
+
+def test_get_unknown_run_is_404_not_500(client: TestClient, auth_headers: dict) -> None:
+    r = client.get("/api/discovery/runs/does-not-exist", headers=auth_headers)
+    assert r.status_code == 404
+
+
+def test_start_run_while_one_is_running_is_409(
+    client: TestClient, auth_headers: dict, fake_discovery: FakeDiscoveryClient
+) -> None:
+    fake_discovery.busy = True
+    r = client.post("/api/discovery/runs", headers=auth_headers,
+                    json={"sim_equity_usd": 100.0, "top_n": 1})
+    assert r.status_code == 409

@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/Slider";
 import { Input } from "@/components/ui/Input";
 import { formatLeverage, formatPct, formatUsd } from "@/lib/format";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { compactOverride, hasActiveOverride, isOverrideSet } from "@/lib/forLeader";
 
 const SIZING_OPTIONS = [
   { value: "fixed_margin" as const, label: "Fixed margin" },
@@ -34,7 +35,8 @@ export function LeaderOverridePanel({
   address: string;
   onChange: (override: LeaderOverride | null) => void;
 }) {
-  const stored = settings.leader_overrides[address] ?? {};
+  // The api returns unset fields as null; compact to only the real overrides.
+  const stored = compactOverride(settings.leader_overrides[address]);
   const storedKey = `${address}:${JSON.stringify(stored)}`;
   const [draft, setDraft] = useState<LeaderOverride>(stored);
   const [syncedKey, setSyncedKey] = useState(storedKey);
@@ -46,8 +48,7 @@ export function LeaderOverridePanel({
   }
 
   const commit = useDebouncedCallback((next: LeaderOverride) => {
-    const hasAnyField = Object.values(next).some((v) => v !== undefined && v !== null);
-    onChange(hasAnyField ? next : null);
+    onChange(hasActiveOverride(next) ? compactOverride(next) : null);
   }, 350);
 
   function update<K extends keyof LeaderOverride>(key: K, value: LeaderOverride[K]) {
@@ -68,7 +69,7 @@ export function LeaderOverridePanel({
       <OverrideRow
         label="Sizing mode"
         id={`${address}-sizing_mode`}
-        overridden={draft.sizing_mode !== undefined}
+        overridden={isOverrideSet(draft.sizing_mode)}
         onToggle={(on) => (on ? update("sizing_mode", settings.sizing_mode) : clearField("sizing_mode"))}
         inheritedLabel={settings.sizing_mode.replace("_", " ")}
       >
@@ -81,13 +82,15 @@ export function LeaderOverridePanel({
       </OverrideRow>
 
       <OverrideRow
-        label="Fixed margin ($)"
+        label="Fixed margin"
         id={`${address}-fixed_margin_usd`}
-        overridden={draft.fixed_margin_usd !== undefined}
+        overridden={isOverrideSet(draft.fixed_margin_usd)}
         onToggle={(on) => (on ? update("fixed_margin_usd", settings.fixed_margin_usd) : clearField("fixed_margin_usd"))}
         inheritedLabel={formatUsd(settings.fixed_margin_usd)}
       >
         <Input
+          leading="$"
+          aria-label="Fixed margin override in dollars"
           type="number"
           min={0.01}
           step={0.5}
@@ -97,15 +100,17 @@ export function LeaderOverridePanel({
       </OverrideRow>
 
       <OverrideRow
-        label="Fixed notional ($)"
+        label="Fixed notional"
         id={`${address}-fixed_notional_usd`}
-        overridden={draft.fixed_notional_usd !== undefined}
+        overridden={isOverrideSet(draft.fixed_notional_usd)}
         onToggle={(on) =>
           on ? update("fixed_notional_usd", settings.fixed_notional_usd) : clearField("fixed_notional_usd")
         }
         inheritedLabel={formatUsd(settings.fixed_notional_usd)}
       >
         <Input
+          leading="$"
+          aria-label="Fixed notional override in dollars"
           type="number"
           min={10.5}
           step={1}
@@ -115,13 +120,15 @@ export function LeaderOverridePanel({
       </OverrideRow>
 
       <OverrideRow
-        label="Size multiplier (x)"
+        label="Size multiplier"
         id={`${address}-size_multiplier`}
-        overridden={draft.size_multiplier !== undefined}
+        overridden={isOverrideSet(draft.size_multiplier)}
         onToggle={(on) => (on ? update("size_multiplier", settings.size_multiplier) : clearField("size_multiplier"))}
         inheritedLabel={`${settings.size_multiplier}x`}
       >
         <Input
+          trailing="x"
+          aria-label="Size multiplier override"
           type="number"
           min={0}
           max={100}
@@ -134,7 +141,7 @@ export function LeaderOverridePanel({
       <OverrideRow
         label="Leverage mode"
         id={`${address}-leverage_mode`}
-        overridden={draft.leverage_mode !== undefined}
+        overridden={isOverrideSet(draft.leverage_mode)}
         onToggle={(on) => (on ? update("leverage_mode", settings.leverage_mode) : clearField("leverage_mode"))}
         inheritedLabel={settings.leverage_mode}
       >
@@ -149,7 +156,7 @@ export function LeaderOverridePanel({
       <OverrideRow
         label="Leverage"
         id={`${address}-leverage`}
-        overridden={draft.leverage !== undefined}
+        overridden={isOverrideSet(draft.leverage)}
         onToggle={(on) => (on ? update("leverage", settings.leverage) : clearField("leverage"))}
         inheritedLabel={formatLeverage(settings.leverage)}
       >
@@ -159,14 +166,14 @@ export function LeaderOverridePanel({
           max={MAX_LEVERAGE_CAP}
           value={draft.leverage ?? settings.leverage}
           onChange={(v) => update("leverage", v)}
-          formatValue={(v) => `${v}x`}
+          formatValue={(v) => `${v} x`}
         />
       </OverrideRow>
 
       <OverrideRow
         label="Margin mode"
         id={`${address}-margin_mode`}
-        overridden={draft.margin_mode !== undefined}
+        overridden={isOverrideSet(draft.margin_mode)}
         onToggle={(on) => (on ? update("margin_mode", settings.margin_mode) : clearField("margin_mode"))}
         inheritedLabel={settings.margin_mode}
       >
@@ -181,7 +188,7 @@ export function LeaderOverridePanel({
       <OverrideRow
         label="Max worse entry"
         id={`${address}-max_worse_entry_pct`}
-        overridden={draft.max_worse_entry_pct !== undefined}
+        overridden={isOverrideSet(draft.max_worse_entry_pct)}
         onToggle={(on) =>
           on ? update("max_worse_entry_pct", settings.max_worse_entry_pct) : clearField("max_worse_entry_pct")
         }
@@ -193,7 +200,7 @@ export function LeaderOverridePanel({
           max={100}
           value={draft.max_worse_entry_pct ?? settings.max_worse_entry_pct}
           onChange={(v) => update("max_worse_entry_pct", v)}
-          formatValue={(v) => `${v}%`}
+          formatValue={(v) => `${v} %`}
         />
       </OverrideRow>
     </div>

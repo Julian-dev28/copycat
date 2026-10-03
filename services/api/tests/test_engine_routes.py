@@ -68,3 +68,28 @@ def test_halt_flips_enabled_false_and_persists(client: TestClient, auth_headers:
 
     r = client.get("/api/settings", headers=auth_headers)
     assert r.json()["enabled"] is False
+
+
+def test_close_all_disables_then_writes_the_flag(client: TestClient, auth_headers: dict, data_dir) -> None:
+    client.patch("/api/settings", headers=auth_headers, json={"enabled": True, "dry_run": False})
+    r = client.post("/api/engine/close-all", headers=auth_headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pending"] is True and body["settings"]["enabled"] is False
+    assert body["settings"]["dry_run"] is False          # only `enabled` is touched
+    flag = data_dir / "close_all.flag"
+    assert flag.exists()
+    import json
+    assert json.loads(flag.read_text())["requested_ms"] == body["requested_ms"]
+    assert client.get("/api/settings", headers=auth_headers).json()["enabled"] is False
+
+
+def test_close_all_is_idempotent(client: TestClient, auth_headers: dict, data_dir) -> None:
+    assert client.post("/api/engine/close-all", headers=auth_headers).status_code == 200
+    assert client.post("/api/engine/close-all", headers=auth_headers).status_code == 200
+    assert [p.name for p in data_dir.iterdir() if "close_all" in p.name] == ["close_all.flag"]
+
+
+def test_close_all_requires_auth(client: TestClient) -> None:
+    assert client.post("/api/engine/close-all").status_code == 401
+

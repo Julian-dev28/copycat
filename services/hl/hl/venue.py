@@ -9,15 +9,17 @@ exchange. See services/hl/README.md for the full contract write-up.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
-import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from hyperliquid.utils.error import ServerError
 from hyperliquid.utils.signing import OrderType
+from hyperliquid.utils.types import Cloid
 
-from . import env, meta, sdk, sizing
+from . import env, meta, rate_limit, sdk, sizing
 from .http import http_post
 
 logger = logging.getLogger(__name__)
@@ -36,50 +38,143 @@ _MS_PER_CANDLE: Dict[str, int] = {
 }
 
 
-def _order_result(result: Any) -> Dict[str, Any]:
-    """Normalize a raw SDK order/leverage response into the OrderResult
-    shape {ok, error?, avg_px?, filled_sz?}."""
-    if not (isinstance(result, dict) and result.get("status") == "ok"):
-        return {"ok": False, "error": str(result)}
-    statuses = result.get("response", {}).get("data", {}).get("statuses", [])
-    if statuses:
-        st = statuses[0]
-        if st.get("filled"):
-            f = st["filled"]
-            out: Dict[str, Any] = {"ok": True}
-            try:
-                if "avgPx" in f:
-                    out["avg_px"] = float(f["avgPx"])
-                if "totalSz" in f:
-                    out["filled_sz"] = float(f["totalSz"])
-            except (TypeError, ValueError):
-                pass
-            return out
-        if st.get("error"):
-            return {"ok": False, "error": st["error"]}
-    return {"ok": True}
+def _size_tolerance(sz_dec: Optional[int]) -> float:
+    """Half a size tick: a fill this close to the requested size IS the
+    requested size (HL reports totalSz as a decimal string at szDecimals)."""
+    if sz_dec is None:
+        return 1e-9
+    return 0.5 * 10.0 ** (-int(sz_dec))
 
 
-def _ioc_cross_price(coin: str, is_buy: bool, mid_price: float) -> float:
-    """Limit price for an IOC order that reliably crosses the live book.
+def _order_result(result: Any, requested_sz: Optional[float] = None,
+                  sz_dec: Optional[int] = None) -> Dict[str, Any]:
+    """Normalize a raw SDK order response into contracts.venue.OrderResult.
 
-    Anchors to the current best bid/ask from a fresh L2 read and steps 1%
-    past the touch. An IOC fills at the resting price, so that 1% is
-    headroom absorbing price movement between this read and the order
-    landing, not real slippage paid. Falls back to mid +/- 1% if the L2
-    read fails.
+    * {"filled": {totalSz, avgPx}}: filled_sz/avg_px always set. ok is True
+      only when totalSz >= requested_sz (within half a size tick). An IOC
+      that matched part of the size and cancelled the rest is ok False with
+      error "partial fill a/b" and the real filled_sz, so the caller books
+      exactly what it holds.
+    * {"resting": {oid}}: ok True (a GTC that rested; an IOC never rests).
+    * {"error": msg} or a non-"ok" top-level status: a clean HL rejection,
+      ok False, ambiguous False.
+    * "ok" with no statuses at all: HL accepted the request but did not say
+      what happened to the order. ok False, ambiguous True.
     """
+    if not (isinstance(result, dict) and result.get("status") == "ok"):
+        err = result.get("response") if isinstance(result, dict) and "response" in result else result
+        return {"ok": False, "error": str(err), "ambiguous": False}
+    statuses = (result.get("response") or {}).get("data", {}).get("statuses", [])
+    if not statuses or not isinstance(statuses[0], dict):
+        return {"ok": False, "error": f"no order status in response: {result}", "ambiguous": True}
+    st = statuses[0]
+    if st.get("filled"):
+        f = st["filled"]
+        out: Dict[str, Any] = {"ok": False, "ambiguous": False}
+        try:
+            out["filled_sz"] = float(f["totalSz"])
+            if "avgPx" in f:
+                out["avg_px"] = float(f["avgPx"])
+        except (KeyError, TypeError, ValueError):
+            # HL said "filled" but we cannot read how much. Unknown size is
+            # exactly the ambiguous case: resolve with a fresh account read.
+            return {"ok": False, "error": f"unreadable fill: {f}", "ambiguous": True}
+        if requested_sz is None or out["filled_sz"] >= requested_sz - _size_tolerance(sz_dec):
+            out["ok"] = True
+        else:
+            out["error"] = f"partial fill {out['filled_sz']:g}/{requested_sz:g}"
+        return out
+    if st.get("resting"):
+        return {"ok": True, "ambiguous": False, "filled_sz": 0.0}
+    if st.get("error"):
+        return {"ok": False, "error": str(st["error"]), "ambiguous": False}
+    return {"ok": False, "error": f"unrecognized order status: {st}", "ambiguous": True}
+
+
+# Exceptions from the /exchange POST that mean "the request may have
+# reached HL": a read timeout after the bytes went out, a dropped
+# connection, a 5xx from a proxy in front of HL. Treated conservatively:
+# even a connect timeout (which in practice was never sent) is ambiguous,
+# because the price of a wrong "not sent" is a duplicate order, and the
+# price of a wrong "maybe sent" is one order_status read.
+_AMBIGUOUS_EXC = (
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+    TimeoutError,
+    ConnectionError,
+    ServerError,
+)
+
+
+def _is_ambiguous_exc(exc: BaseException) -> bool:
+    return isinstance(exc, _AMBIGUOUS_EXC)
+
+
+def _l2_touch(coin: str, is_buy: bool) -> Optional[float]:
+    """Best ask (buy) or best bid (sell) from a fresh l2Book read, or None
+    if the read failed or that side is empty."""
     raw = http_post("/info", {"type": "l2Book", "coin": coin})
     try:
         levels = (raw or {}).get("levels") or []
-        bids, asks = levels[0], levels[1]
-        if is_buy and asks:
-            return float(asks[0]["px"]) * 1.01
-        if not is_buy and bids:
-            return float(bids[0]["px"]) * 0.99
+        side = levels[1] if is_buy else levels[0]
+        if side:
+            px = float(side[0]["px"])
+            return px if px > 0 else None
     except Exception as exc:
         logger.warning(f"[hl.venue] l2Book lookup failed for {coin}: {exc}")
-    return mid_price * (1.01 if is_buy else 0.99)
+    return None
+
+
+def _ioc_limit(coin: str, is_buy: bool, mid_price: float, sz_dec: int,
+               max_slippage_pct: float) -> Tuple[Optional[str], Optional[str]]:
+    """(price_str, None) for an IOC limit capped at
+    mid * (1 +/- max_slippage_pct/100), or (None, "slippage cap") when the
+    live touch is already past that cap, so the order is never sent.
+
+    The limit IS the cap: an IOC fills at resting prices, so the cap is the
+    worst price we accept, not the price we pay. Rounding goes INSIDE the cap
+    (buy down, sell up) so the rounded limit never exceeds it; the touch is
+    a valid tick-aligned price at or inside the cap, so rounding inward can
+    never cross back over it (re-checked below anyway).
+
+    With no l2Book (read failed or empty side) the order still goes out at
+    the cap: HL will match what it can within it, and the cap still bounds
+    the worst fill.
+    """
+    s = max_slippage_pct / 100.0
+    cap = mid_price * (1 + s) if is_buy else mid_price * (1 - s)
+    if cap <= 0:
+        return None, "slippage cap"
+    touch = _l2_touch(coin, is_buy)
+    if touch is not None and ((is_buy and touch > cap) or (not is_buy and touch < cap)):
+        logger.warning(
+            f"[hl.venue] {coin} {'BUY' if is_buy else 'SELL'}: touch {touch} past "
+            f"{max_slippage_pct:g}% cap {cap:.8g} from mid {mid_price} -- not sending"
+        )
+        return None, "slippage cap"
+    price_str = sizing.round_price(cap, sz_dec, is_perp=True, is_buy=not is_buy)
+    px = float(price_str)
+    if px <= 0 or (touch is not None and ((is_buy and px < touch) or (not is_buy and px > touch))):
+        return None, "slippage cap"
+    return price_str, None
+
+
+# HL orderStatus "status" values (docs: info endpoint, "Query order status
+# by oid or cloid"), collapsed to the contract's small set. Every
+# "...Canceled" (marginCanceled, reduceOnlyCanceled, selfTradeCanceled,
+# siblingFilledCanceled, ...) and "scheduledCancel" -> "canceled"; every
+# "...Rejected" (tickRejected, minTradeNtlRejected, perpMarginRejected,
+# iocCancelRejected, ...) -> "rejected". "open", "filled", "triggered" pass
+# through. An IOC that matched PART of its size and cancelled the rest
+# reports "canceled", so "canceled" does not mean zero fill.
+def _normalize_order_status(raw: str) -> str:
+    if raw in ("open", "filled", "triggered"):
+        return raw
+    if raw.endswith("Canceled") or raw in ("canceled", "scheduledCancel"):
+        return "canceled"
+    if raw.endswith("Rejected") or raw == "rejected":
+        return "rejected"
+    return raw
 
 
 # ── per-user active-dex cache ───────────────────────────────────────────────
@@ -465,66 +560,162 @@ class HlVenue:
         return {"ok": False, "error": str(err)}
 
     def market(self, coin: str, is_buy: bool, size: float, mid: float,
-               reduce_only: bool = False) -> Dict[str, Any]:
-        """IOC (immediate-or-cancel) limit order, priced to cross the live
-        book (best bid/ask + 1%) and sized up to HL's $10 floor.
-        `reduce_only=True` for closes: without it, the size floor below
-        could overshoot a sub-$10 position and flip it to the opposite
-        side instead of flattening it."""
+               reduce_only: bool = False, cloid: Optional[str] = None,
+               max_slippage_pct: float = 1.0) -> Dict[str, Any]:
+        """IOC limit order capped at mid * (1 +/- max_slippage_pct/100).
+
+        * Opens are bumped up to HL's $10.50 floor; reduce_only orders are
+          sent at their own size, never bumped (sizing.order_size).
+        * If the live touch is already past the cap: ok False, error
+          "slippage cap", nothing sent.
+        * cloid (0x + 32 hex) is attached as HL's client order id, so an
+          ambiguous result can be resolved with order_status(cloid).
+        * ok True only on a FULL fill; partial fills return ok False with
+          filled_sz/avg_px set. A timeout or dropped connection on the
+          /exchange POST returns ambiguous True: the order may be live.
+        """
         if not env.has_write_creds():
             return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
         if mid <= 0:
             return {"ok": False, "error": f"invalid mid price for {coin}"}
+        if not (size > 0):
+            return {"ok": False, "error": f"invalid size {size} for {coin}"}
+        if not (max_slippage_pct > 0):
+            return {"ok": False, "error": f"invalid max_slippage_pct {max_slippage_pct}"}
+        hl_cloid = None
+        if cloid is not None:
+            try:
+                hl_cloid = Cloid.from_str(cloid)
+            except Exception:
+                return {"ok": False, "error": f"invalid cloid {cloid!r} (need 0x + 32 hex)"}
 
+        side = "BUY" if is_buy else "SELL"
         try:
             sz_dec = meta.sz_decimals(coin)
-            price = _ioc_cross_price(coin, is_buy, mid)
-            price_str = sizing.round_price(price, sz_dec, is_perp=True, is_buy=is_buy)
-            size = max(size, sizing.min_order_size(mid, sz_dec))
-            size_str = f"{size:.{sz_dec}f}"
-
+            send_sz = sizing.order_size(size, mid, sz_dec, reduce_only)
+            if send_sz <= 0:
+                return {"ok": False, "error": f"size {size} rounds to 0 at {sz_dec} decimals"}
+            price_str, err = _ioc_limit(coin, is_buy, mid, sz_dec, max_slippage_pct)
+            if err:
+                return {"ok": False, "error": err, "ambiguous": False}
             exchange = sdk.get_exchange()
-            order_type = OrderType(limit={"tif": "Ioc"})
-            result = exchange.order(
-                coin, is_buy, float(size_str), float(price_str), order_type,
-                reduce_only=reduce_only,
-            )
-            parsed = _order_result(result)
-            if not parsed.get("ok"):
-                logger.warning(
-                    f"[hl.venue] market {coin} {'BUY' if is_buy else 'SELL'} "
-                    f"size={size_str} px={price_str} rejected: {parsed.get('error')}"
-                )
-            return parsed
         except Exception as exc:
-            logger.error(f"[hl.venue] market({coin}) failed: {exc}")
-            return {"ok": False, "error": str(exc)}
+            logger.error(f"[hl.venue] market({coin}) failed before send: {exc}")
+            return {"ok": False, "error": str(exc), "ambiguous": False}
 
-    def close(self, coin: str) -> Dict[str, Any]:
+        # /exchange counts against the same per-IP budget (weight 1 per
+        # unbatched action). Never block an order on our own estimate.
+        try:
+            rate_limit.HL_LIMITER.acquire(1, max_wait=2.0)
+        except Exception as exc:
+            logger.warning(f"[hl.venue] limiter charge for /exchange failed, sending anyway: {exc}")
+
+        try:
+            result = exchange.order(
+                coin, is_buy, send_sz, float(price_str), OrderType(limit={"tif": "Ioc"}),
+                reduce_only=reduce_only, cloid=hl_cloid,
+            )
+        except Exception as exc:
+            amb = _is_ambiguous_exc(exc)
+            logger.error(
+                f"[hl.venue] market {coin} {side} size={send_sz} px={price_str} cloid={cloid} "
+                f"raised {type(exc).__name__}: {exc} (ambiguous={amb})"
+            )
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "ambiguous": amb}
+
+        parsed = _order_result(result, requested_sz=send_sz, sz_dec=sz_dec)
+        if not parsed.get("ok"):
+            logger.warning(
+                f"[hl.venue] market {coin} {side} size={send_sz} px={price_str} cloid={cloid} "
+                f"not ok: {parsed.get('error')} filled_sz={parsed.get('filled_sz')}"
+            )
+        return parsed
+
+    def order_status(self, cloid: str) -> Optional[str]:
+        """Status of OUR order (COPYCAT_ACCOUNT_ADDRESS) by client order id.
+
+        /info {"type": "orderStatus", "user": ACCOUNT, "oid": "<cloid hex>"}:
+        HL accepts either the numeric oid or the 0x cloid string in "oid"
+        (the SDK's Info.query_order_by_cloid sends exactly this). Returns
+        "filled" | "open" | "canceled" | "rejected" | "triggered" | other
+        raw HL status, "unknown" when HL answers unknownOid, None when the
+        read failed (no account set, bad cloid, network, bad shape)."""
+        account = env.account_address()
+        if not account:
+            logger.error("[hl.venue] order_status: COPYCAT_ACCOUNT_ADDRESS not set")
+            return None
+        try:
+            Cloid.from_str(cloid)
+        except Exception:
+            logger.error(f"[hl.venue] order_status: invalid cloid {cloid!r}")
+            return None
+        raw = http_post("/info", {"type": "orderStatus", "user": account, "oid": cloid})
+        if not isinstance(raw, dict):
+            logger.error(f"[hl.venue] order_status: read failed for cloid={cloid}")
+            return None
+        top = raw.get("status")
+        if top == "unknownOid":
+            return "unknown"
+        if top == "order":
+            inner = (raw.get("order") or {}).get("status")
+            if isinstance(inner, str) and inner:
+                return _normalize_order_status(inner)
+        logger.error(f"[hl.venue] order_status: unexpected response for cloid={cloid}: {raw}")
+        return None
+
+    def _own_szi(self, coin: str) -> Tuple[Optional[float], Optional[str]]:
+        """(signed size, None) of our own live position (0.0 when flat), or
+        (None, error) when the read failed."""
+        state = self.account_state(env.account_address())
+        if state is None:
+            return None, "account_state read failed"
+        pos = state["raw_positions"].get(coin)
+        if pos is None:
+            return 0.0, None
+        try:
+            return float(pos.get("szi") or 0), None
+        except (TypeError, ValueError):
+            return None, "bad_szi"
+
+    def close(self, coin: str, cloid: Optional[str] = None) -> Dict[str, Any]:
         """Reduce-only full close at market (IOC), sized off our OWN live
-        position (never a caller-supplied size) so a stale size can't
-        overshoot the floor and flip the position. {ok: True} with no
-        error when there is nothing to close."""
+        position (never a caller-supplied size), then confirmed with a
+        FRESH read: ok True only if the position is now flat.
+
+        * Already flat before sending: {ok: True, filled_sz: 0.0}.
+        * Still open after the order (partial fill, slippage cap, rejection):
+          ok False with the order's error and filled_sz.
+        * Post-order read failed: ok False, error says so; the order's own
+          fields (filled_sz, ambiguous) are kept.
+        Retrying is always safe: every call re-reads the size it closes, and
+        reduce_only can never flip the position.
+        """
         if not env.has_write_creds():
             return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
 
-        account = env.account_address()
-        state = self.account_state(account)
-        if state is None:
-            return {"ok": False, "error": "account_state read failed"}
-
-        pos = state["raw_positions"].get(coin)
-        if pos is None:
-            return {"ok": True}  # already flat
-        try:
-            szi = float(pos.get("szi") or 0)
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "bad_szi"}
+        szi, err = self._own_szi(coin)
+        if szi is None:
+            return {"ok": False, "error": err}
         if szi == 0:
-            return {"ok": True}  # already flat
+            return {"ok": True, "filled_sz": 0.0}  # already flat
 
-        is_long = szi > 0
         mid_price = self.mid(coin)
         if mid_price <= 0:
             return {"ok": False, "error": f"invalid price for {coin}"}
-        return self.market(coin, is_buy=not is_long, size=abs(szi), mid=mid_price, reduce_only=True)
+        order = self.market(coin, is_buy=szi < 0, size=abs(szi), mid=mid_price,
+                            reduce_only=True, cloid=cloid,
+                            max_slippage_pct=env.close_max_slippage_pct())
+
+        out: Dict[str, Any] = {k: v for k, v in order.items() if k in ("avg_px", "filled_sz", "ambiguous")}
+        after, read_err = self._own_szi(coin)
+        if after is None:
+            out.update(ok=False, error=f"close sent ({order.get('error') or 'ok'}) but post-close read failed: {read_err}")
+            return out
+        if after == 0:
+            out["ok"] = True
+            out.pop("ambiguous", None)   # the fresh read resolved it: flat
+            out.setdefault("filled_sz", abs(szi))
+            return out
+        out.update(ok=False, error=order.get("error") or f"position not flat after close: szi {after:g}")
+        out.setdefault("filled_sz", 0.0)
+        return out

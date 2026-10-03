@@ -145,3 +145,44 @@ def liq_distance_pct(leverage: int, is_cross: bool, maint_frac: float) -> float:
     possibly closer," never as exact.
     """
     return max(0.0, (1.0 / leverage - maint_frac) * 100.0)
+
+
+# Hyperliquid account abstraction modes in which ONE spot balance per asset
+# collateralizes every perp dex (HL docs, "Account abstraction modes":
+# "unified account and portfolio margin show all balances and holds in the
+# spot clearinghouse state. Individual perp dex user states are not
+# meaningful."). `userAbstraction` returns one of
+# "unifiedAccount" | "portfolioMargin" | "disabled" | "default" | "dexAbstraction".
+UNIFIED_ABSTRACTIONS = frozenset({"unifiedAccount", "portfolioMargin"})
+
+
+def account_equity(account: dict) -> float:
+    """Equity in USD for one `contracts.venue.AccountState`.
+
+    - Standard / dex-abstraction / unknown mode: perp `accountValue` summed
+      over the dexes read, plus spot USDC. Spot and perp are separate
+      balances in these modes, so the sum is the account.
+    - Unified account / portfolio margin (`account["abstraction"]` in
+      `UNIFIED_ABSTRACTIONS`): spot USDC `total` already holds the perp
+      collateral (HL reserves it as spot `hold`), so adding perp
+      `accountValue` on top double counts it. Measured on mainnet
+      2026-10-03 on a USDC-only unified wallet: perp+spot = $966k against
+      HL's own portfolio value of $534k. Spot `total` does NOT include
+      open-position PnL, so it is added back from each position's
+      `unrealizedPnl`: spot USDC + uPnL = $527k, within 1.5% of HL's value.
+
+    The mode comes from an optional `abstraction` key on the account read.
+    When it is missing (the hl service does not populate it yet) this
+    falls back to the standard formula, which is the pre-existing behavior.
+    """
+    perp = float(account.get("equity_perp_usd") or 0.0)
+    spot = float(account.get("spot_usdc") or 0.0)
+    if account.get("abstraction") in UNIFIED_ABSTRACTIONS:
+        upnl = 0.0
+        for raw in (account.get("raw_positions") or {}).values():
+            try:
+                upnl += float((raw or {}).get("unrealizedPnl") or 0.0)
+            except (TypeError, ValueError):
+                continue
+        return spot + upnl
+    return perp + spot

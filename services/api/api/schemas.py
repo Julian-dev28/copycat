@@ -80,3 +80,13 @@ class DiscoveryRunResponse(BaseModel):
 class HealthResponse(BaseModel):
     ok: bool
     version: str
+
+
+class CloseAllResponse(BaseModel):
+    """POST /api/engine/close-all. `settings` has `enabled` false already;
+    the closes themselves happen on the engine's next cycle (watch
+    /api/events for `close` events with reason "close-all", then a `halt`
+    event "close-all complete ...")."""
+    requested_ms: int
+    pending: bool
+    settings: Settings

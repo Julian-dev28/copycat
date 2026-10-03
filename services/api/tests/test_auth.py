@@ -37,17 +37,29 @@ def test_health_needs_no_token_either_way(client: TestClient, auth_headers: dict
     assert client.get("/api/health", headers=auth_headers).status_code == 200
 
 
-def test_auth_off_when_no_token_configured(data_dir: Path) -> None:
-    """COPYCAT_BIND=127.0.0.1 with no token is the documented localhost-only
-    dev mode: every route works with no Authorization header at all.
-    """
-    config = Config(data_dir=data_dir, api_token=None, bind="127.0.0.1")
+def test_no_token_configured_still_requires_one(data_dir: Path) -> None:
+    """There is no unauthenticated dev mode any more, even on 127.0.0.1: a
+    token is generated into data/api_token and required on every route."""
+    config = Config(data_dir=data_dir, api_token=None, bind="127.0.0.1",
+                    allowed_hosts=["testserver"])
     app = create_app(config)
     app.dependency_overrides[get_engine_client] = lambda: FakeEngineClient()
     app.dependency_overrides[get_discovery_client] = lambda: FakeDiscoveryClient()
     client = TestClient(app)
 
-    r = client.get("/api/settings")
+    assert client.get("/api/settings").status_code == 401
+    token = (data_dir / "api_token").read_text().strip()
+    r = client.get("/api/settings", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    r = client.get("/api/status")
+
+
+def test_foreign_host_header_is_rejected_dns_rebinding(client: TestClient, auth_headers: dict) -> None:
+    r = client.patch("/api/settings", headers={**auth_headers, "Host": "evil.com:8787"},
+                     json={"enabled": True})
+    assert r.status_code == 400
+    assert client.get("/api/health", headers={"Host": "evil.com"}).status_code == 400
+
+
+def test_localhost_host_header_with_port_is_allowed(client: TestClient, auth_headers: dict) -> None:
+    r = client.get("/api/settings", headers={**auth_headers, "Host": "localhost:8787"})
     assert r.status_code == 200

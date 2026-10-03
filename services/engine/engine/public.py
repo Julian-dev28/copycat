@@ -13,9 +13,14 @@ Paths all come from `$COPYCAT_DATA_DIR` (default `./data`):
   engine.db       SQLite state (services/engine/engine/state.py)
   events.jsonl    the append-only event log (services/engine/engine/events.py)
   settings.json   written by the api, read-only here (services/engine/engine/settings_io.py)
+  close_all.flag  written by the api (POST /api/engine/close-all), deleted here
+                  once every copy is closed
+  engine.lock     flock held by the one running worker (run_forever)
 """
 from __future__ import annotations
 
+import errno
+import fcntl
 import logging
 import os
 import signal
@@ -51,6 +56,19 @@ def _settings_path() -> Path:
     return _data_dir() / "settings.json"
 
 
+CLOSE_ALL_FLAG = "close_all.flag"
+LOCK_FILE = "engine.lock"
+
+
+def _close_all_path() -> Path:
+    return _data_dir() / CLOSE_ALL_FLAG
+
+
+class EngineAlreadyRunning(RuntimeError):
+    """Another worker holds `data/engine.lock`. Two workers on one data dir
+    would each diff the same leaders and both place the same orders."""
+
+
 def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
     """Run exactly one cycle against `venue` and return a summary dict
     (opened/added/reduced/closed/skipped + leaders_ok/leaders_total +
@@ -70,15 +88,35 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
         our_address = os.environ.get("COPYCAT_ACCOUNT_ADDRESS", "")
         settings, settings_error = settings_io.load_settings(_settings_path(), state)
 
-        pending_events: List[EngineEvent] = []
-
+        # Written as they happen, not batched at the end: if the cycle raises
+        # after an order went through, the open/close event must still be in
+        # the log, or the feed would disagree with the exchange.
         def log_event(e: EngineEvent) -> None:
-            pending_events.append(e)
+            events_mod.append_event(_events_path(), e)
 
         if settings_error:
             log_event(EngineEvent(ts_ms=now_ms, action="error", reason=settings_error))
 
+        close_all_summary = None
+        if _close_all_path().exists():
+            # Emergency close-all: flatten every copy first, then run the
+            # normal cycle with entries forced off so exits keep mirroring
+            # and nothing new opens while the flag stands. The api already
+            # flipped `enabled` false in settings.json (it is the only writer).
+            close_all_summary = core.close_all(venue, state, our_address, now_ms, log_event)
+            settings = settings.model_copy(update={"enabled": False})
+            if close_all_summary["remaining"] == 0:
+                try:
+                    _close_all_path().unlink()
+                except FileNotFoundError:
+                    pass
+                log_event(EngineEvent(
+                    ts_ms=now_ms, action="halt",
+                    reason=f"close-all complete: closed {len(close_all_summary['closed'])} "
+                           f"copies, entries disabled"))
+
         summary = core.run_cycle(settings, venue, state, our_address, now_ms, log_event)
+        summary["close_all"] = close_all_summary
         duration_ms = int((time.monotonic() - t0) * 1000)
         summary["ts_ms"] = now_ms
         summary["duration_ms"] = duration_ms
@@ -103,9 +141,6 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             "poll_interval_s": settings.poll_interval_s,
         })
 
-        for e in pending_events:
-            events_mod.append_event(_events_path(), e)
-
         logger.info(
             "cycle ts=%d duration_ms=%d leaders=%d/%d opened=%d added=%d reduced=%d closed=%d "
             "skipped=%d enabled=%s dry_run=%s halted=%s",
@@ -128,7 +163,42 @@ def run_forever(venue: Venue, max_cycles: Optional[int] = None) -> None:
     Production callers (`python -m engine`) never pass this; it exists so
     tests can bound the loop deterministically instead of relying on
     signal timing.
+
+    No overlap, by construction: one thread runs cycles back to back, and
+    the next one starts only after the previous returned. A slow cycle
+    (the ~20s first full dex scan) makes the following sleep
+    `max(0, poll_interval_s - elapsed)` = 0, so cycles never stack or
+    queue up; they run late, never twice. Across processes, an exclusive
+    non-blocking flock on `data/engine.lock` makes a second worker on the
+    same data dir raise `EngineAlreadyRunning` instead of double-trading.
     """
+    lock_fh = _acquire_worker_lock()
+    try:
+        _run_loop(venue, max_cycles)
+    finally:
+        try:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_fh.close()
+
+
+def _acquire_worker_lock():
+    data_dir = _data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    fh = open(data_dir / LOCK_FILE, "a+")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        fh.close()
+        if exc.errno in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
+            raise EngineAlreadyRunning(
+                f"another engine worker holds {data_dir / LOCK_FILE}; refusing to start a second "
+                f"one on the same data dir") from exc
+        raise
+    return fh
+
+
+def _run_loop(venue: Venue, max_cycles: Optional[int]) -> None:
     stop = {"flag": False}
 
     def _handle_sigterm(signum: int, frame: object) -> None:

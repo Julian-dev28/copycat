@@ -8,8 +8,10 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from contracts.models import DiscoveryRun, EngineEvent, EngineStatus, Settings
-from api.discovery_client import DiscoveryUnavailable
+from api.discovery_client import DiscoveryBusy, DiscoveryUnavailable
 from api.engine_client import EngineUnavailable
+
+OUR_ADDRESS = "0x" + "1" * 40      # the fixture app's COPYCAT_ACCOUNT_ADDRESS
 
 
 class FakeEngineClient:
@@ -44,7 +46,11 @@ class FakeDiscoveryClient:
         self._latest: Optional[DiscoveryRun] = None
         self._next_id = 0
 
+    busy = False
+
     def start_run(self, settings: Settings, sim_equity_usd: float, top_n: int) -> str:
+        if self.busy:
+            raise DiscoveryBusy("a discovery run is already in progress")
         self.calls.append((settings, sim_equity_usd, top_n))
         self._next_id += 1
         run_id = f"run-{self._next_id}"
@@ -61,10 +67,8 @@ class FakeDiscoveryClient:
         self._latest = run
         return run_id
 
-    def get_run(self, run_id: str) -> DiscoveryRun:
-        if run_id not in self.runs:
-            raise KeyError(run_id)
-        return self.runs[run_id]
+    def get_run(self, run_id: str) -> Optional[DiscoveryRun]:
+        return self.runs.get(run_id)      # like discovery.public.get_run: None when unknown
 
     def latest(self) -> Optional[DiscoveryRun]:
         return self._latest

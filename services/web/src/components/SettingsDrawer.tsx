@@ -1,16 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { getApiBase } from "@/lib/api/client";
+import { useSyncedState } from "@/hooks/useSyncedState";
+import { TokenWhereToFind } from "@/components/RequireToken";
 
 export function SettingsDrawer() {
   const { drawerOpen, closeDrawer, token, setToken, clearToken, unauthorized, hasToken } = useAuth();
-  const [draft, setDraft] = useState(token ?? "");
+  // Follows the stored token: it's undefined during hydration, so a plain
+  // useState initializer would leave the field empty with a token stored.
+  const [draft, setDraft] = useSyncedState(token ?? "");
   const qc = useQueryClient();
 
   function handleSave() {
@@ -40,7 +43,7 @@ export function SettingsDrawer() {
 
         {unauthorized ? (
           <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            The api rejected the last request (401). Enter a valid bearer token below.
+            The api rejected the last request (401). The token may have been regenerated: paste the current one below.
           </div>
         ) : null}
 
@@ -59,10 +62,8 @@ export function SettingsDrawer() {
               if (e.key === "Enter") handleSave();
             }}
           />
-          <p className="text-xs text-muted">
-            Stored only in this browser&apos;s localStorage. Matches <span className="font-num">COPYCAT_API_TOKEN</span> on
-            the api.
-          </p>
+          <TokenWhereToFind className="" />
+          <p className="text-xs text-muted">Stored only in this browser&apos;s localStorage.</p>
         </div>
 
         <div className="flex gap-2">

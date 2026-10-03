@@ -56,7 +56,7 @@ export function formatLiquidationHint(
   const { adverseMovePct } = estimateLiquidationDistance(leverage, marginMode, referenceMaxLeverage);
   const modeLabel = marginMode === "isolated" ? "isolated" : "cross";
   if (adverseMovePct === null) {
-    return `${leverage}x ${modeLabel} — liquidation depends on total account equity`;
+    return `${leverage}x ${modeLabel}: liquidation depends on total account equity`;
   }
   const pct = adverseMovePct < 1 ? adverseMovePct.toFixed(2) : adverseMovePct.toFixed(1);
   return `${leverage}x ${modeLabel} ~ ${pct}% adverse move liquidates`;

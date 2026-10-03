@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/Slider";
 import { Switch } from "@/components/ui/Switch";
 import { LiquidationHint } from "./LiquidationHint";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
+import { leverageVibe, worseEntryVibe } from "@/lib/copyRecipe";
 
 export function CopyBehaviorPanel({
   settings,
@@ -19,12 +20,11 @@ export function CopyBehaviorPanel({
   const [maxPositionLeverage, setMaxPositionLeverage] = useSyncedState(settings.max_position_leverage);
   const [maxWorseEntryPct, setMaxWorseEntryPct] = useSyncedState(settings.max_worse_entry_pct);
 
-
   const debouncedPatch = useDebouncedCallback((patch: SettingsPatch) => onPatch(patch), 350);
 
   return (
     <Panel>
-      <PanelHeader title="Copy behavior" description="How closely a copy tracks each leader's position." />
+      <PanelHeader title="Copy behavior" description="How closely each copy tracks the leader." />
       <SettingRow
         title="Maximum position leverage"
         description="Caps the leverage any single copied position can open at, across every sizing mode."
@@ -39,15 +39,17 @@ export function CopyBehaviorPanel({
             setMaxPositionLeverage(v);
             debouncedPatch({ max_position_leverage: v });
           }}
-          formatValue={(v) => `${v}x`}
+          formatValue={(v) => `${v} x`}
+          vibe={leverageVibe}
         />
       </SettingRow>
       <SettingRow
         title="Include spot & staked assets"
         description="Count spot balances and staked HYPE toward the leader's equity when sizing proportional copies."
         htmlFor="include_spot_staked"
+        inline
       >
-        <div className="flex justify-end sm:justify-end">
+        <div className="flex justify-end">
           <Switch
             id="include_spot_staked"
             checked={settings.include_spot_staked}
@@ -60,8 +62,9 @@ export function CopyBehaviorPanel({
         title="Only copy newly opened positions"
         description="Ignore a leader's positions that were already open when you started following them."
         htmlFor="only_new_positions"
+        inline
       >
-        <div className="flex justify-end sm:justify-end">
+        <div className="flex justify-end">
           <Switch
             id="only_new_positions"
             checked={settings.only_new_positions}
@@ -84,7 +87,8 @@ export function CopyBehaviorPanel({
             setMaxWorseEntryPct(v);
             debouncedPatch({ max_worse_entry_pct: v });
           }}
-          formatValue={(v) => `${v}%`}
+          formatValue={(v) => `${v} %`}
+          vibe={worseEntryVibe}
         />
       </SettingRow>
       <div className="border-t border-border px-4 py-3 sm:px-5">

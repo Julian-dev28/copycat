@@ -1,0 +1,17 @@
+# Root build context (both Dockerfile.python and services/web/Dockerfile).
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+docs
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.log
+**/tsconfig.tsbuildinfo
+services/web/out

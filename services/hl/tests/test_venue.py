@@ -2,8 +2,8 @@
 <2s. Covers every read/write contract rule from contracts/venue.py:
 account_state multi-dex aggregation, extras pricing-by-index + illiquid
 exclusion, fills pagination, leaderboard/candles parsing, set_leverage
-strict + isolated-only fallback, market IOC sizing, close(), and the
-no-key write refusal.
+strict + isolated-only fallback, and the no-key write refusal.
+market/close/order_status (contract v2) live in test_venue_writes.py.
 """
 from __future__ import annotations
 
@@ -424,7 +424,7 @@ class _FakeExchange:
         self.leverage_calls.append((leverage, coin, is_cross))
         return self.leverage_result
 
-    def order(self, coin, is_buy, sz, px, order_type, reduce_only=False):
+    def order(self, coin, is_buy, sz, px, order_type, reduce_only=False, cloid=None):
         self.order_calls.append((coin, is_buy, sz, px, order_type, reduce_only))
         return self.order_result
 
@@ -469,133 +469,6 @@ def test_set_leverage_exception_from_exchange_is_caught(write_creds, monkeypatch
     out = HlVenue().set_leverage("BTC", 10, True)
     assert out["ok"] is False
     assert "signing blew up" in out["error"]
-
-
-# ── market: IOC pricing + min-size bump ─────────────────────────────────────
-
-def _filled_result(avg_px="100.5", total_sz="1.0"):
-    return {"status": "ok", "response": {"data": {"statuses": [
-        {"filled": {"avgPx": avg_px, "totalSz": total_sz, "oid": 1}},
-    ]}}}
-
-
-def test_market_happy_path(write_creds, monkeypatch):
-    monkeypatch.setattr(meta, "sz_decimals", lambda coin: 2)
-    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: None)  # l2Book fails -> mid fallback
-    fake = _FakeExchange(order_result=_filled_result())
-    monkeypatch.setattr(sdk, "get_exchange", lambda: fake)
-    out = HlVenue().market("BTC", True, 1.0, 100.0)
-    assert out == {"ok": True, "avg_px": 100.5, "filled_sz": 1.0}
-    coin, is_buy, sz, px, _, reduce_only = fake.order_calls[0]
-    assert coin == "BTC" and is_buy is True and reduce_only is False
-    assert px > 100.0  # buy priced above mid (1% headroom)
-    assert sz == 1.0
-
-
-def test_market_bumps_size_to_min_order_floor(write_creds, monkeypatch):
-    monkeypatch.setattr(meta, "sz_decimals", lambda coin: 2)
-    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: None)
-    fake = _FakeExchange(order_result=_filled_result())
-    monkeypatch.setattr(sdk, "get_exchange", lambda: fake)
-    # size 0.001 at mid $100 is $0.10 notional, far under the $10.50 floor
-    HlVenue().market("BTC", True, 0.001, 100.0)
-    _, _, sz, _, _, _ = fake.order_calls[0]
-    assert sz * 100.0 >= 10.5
-
-
-def test_market_reduce_only_passthrough(write_creds, monkeypatch):
-    monkeypatch.setattr(meta, "sz_decimals", lambda coin: 2)
-    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: None)
-    fake = _FakeExchange(order_result=_filled_result())
-    monkeypatch.setattr(sdk, "get_exchange", lambda: fake)
-    HlVenue().market("BTC", False, 1.0, 100.0, reduce_only=True)
-    assert fake.order_calls[0][5] is True
-
-
-def test_market_invalid_mid_refused(write_creds):
-    out = HlVenue().market("BTC", True, 1.0, 0.0)
-    assert out == {"ok": False, "error": "invalid mid price for BTC"}
-
-
-def test_market_rejected_order_surfaces_error(write_creds, monkeypatch):
-    monkeypatch.setattr(meta, "sz_decimals", lambda coin: 2)
-    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: None)
-    fake = _FakeExchange(order_result={"status": "ok", "response": {"data": {"statuses": [
-        {"error": "could not immediately match"},
-    ]}}})
-    monkeypatch.setattr(sdk, "get_exchange", lambda: fake)
-    out = HlVenue().market("BTC", True, 1.0, 100.0)
-    assert out == {"ok": False, "error": "could not immediately match"}
-
-
-def test_market_ioc_price_uses_l2_book_touch(write_creds, monkeypatch):
-    monkeypatch.setattr(meta, "sz_decimals", lambda coin: 1)
-
-    def fake_post(path, payload, **kw):
-        if payload.get("type") == "l2Book":
-            return {"levels": [[{"px": "99.0"}], [{"px": "101.0"}]]}
-        return None
-
-    monkeypatch.setattr(venue_mod, "http_post", fake_post)
-    fake = _FakeExchange(order_result=_filled_result())
-    monkeypatch.setattr(sdk, "get_exchange", lambda: fake)
-    HlVenue().market("BTC", True, 1.0, 100.0)  # buy -> crosses the ask (101) * 1.01
-    _, _, _, px, _, _ = fake.order_calls[0]
-    assert px == 101.0 * 1.01
-
-
-# ── close ─────────────────────────────────────────────────────────────────────
-
-def test_close_noop_when_already_flat(write_creds, monkeypatch):
-    monkeypatch.setattr(HlVenue, "account_state", lambda self, user: {
-        "equity_perp_usd": 0.0, "spot_usdc": 0.0, "positions": {}, "available": {}, "raw_positions": {},
-    })
-    out = HlVenue().close("BTC")
-    assert out == {"ok": True}
-
-
-def test_close_fails_when_account_state_unavailable(write_creds, monkeypatch):
-    monkeypatch.setattr(HlVenue, "account_state", lambda self, user: None)
-    out = HlVenue().close("BTC")
-    assert out == {"ok": False, "error": "account_state read failed"}
-
-
-def test_close_sells_a_long_position_reduce_only(write_creds, monkeypatch):
-    monkeypatch.setattr(HlVenue, "account_state", lambda self, user: {
-        "equity_perp_usd": 0.0, "spot_usdc": 0.0, "positions": {},
-        "available": {}, "raw_positions": {"BTC": {"szi": "2.0"}},
-    })
-    monkeypatch.setattr(HlVenue, "mid", lambda self, coin: 100.0)
-    captured = {}
-    monkeypatch.setattr(HlVenue, "market", lambda self, coin, is_buy, size, mid, reduce_only=False:
-                         captured.update(coin=coin, is_buy=is_buy, size=size, mid=mid, reduce_only=reduce_only)
-                         or {"ok": True})
-    out = HlVenue().close("BTC")
-    assert out == {"ok": True}
-    assert captured == {"coin": "BTC", "is_buy": False, "size": 2.0, "mid": 100.0, "reduce_only": True}
-
-
-def test_close_buys_back_a_short_position(write_creds, monkeypatch):
-    monkeypatch.setattr(HlVenue, "account_state", lambda self, user: {
-        "equity_perp_usd": 0.0, "spot_usdc": 0.0, "positions": {},
-        "available": {}, "raw_positions": {"BTC": {"szi": "-3.0"}},
-    })
-    monkeypatch.setattr(HlVenue, "mid", lambda self, coin: 100.0)
-    captured = {}
-    monkeypatch.setattr(HlVenue, "market", lambda self, coin, is_buy, size, mid, reduce_only=False:
-                         captured.update(is_buy=is_buy, size=size) or {"ok": True})
-    HlVenue().close("BTC")
-    assert captured == {"is_buy": True, "size": 3.0}
-
-
-def test_close_invalid_price_refused(write_creds, monkeypatch):
-    monkeypatch.setattr(HlVenue, "account_state", lambda self, user: {
-        "equity_perp_usd": 0.0, "spot_usdc": 0.0, "positions": {},
-        "available": {}, "raw_positions": {"BTC": {"szi": "1.0"}},
-    })
-    monkeypatch.setattr(HlVenue, "mid", lambda self, coin: 0.0)
-    out = HlVenue().close("BTC")
-    assert out == {"ok": False, "error": "invalid price for BTC"}
 
 
 # ── active-dex cache: fewer reads per cycle, exits never missed ─────────────

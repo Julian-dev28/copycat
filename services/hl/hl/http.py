@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any, Dict, Optional
 
 import requests
@@ -98,6 +99,25 @@ def reset_session() -> None:
         _session = None
 
 
+# 429 handling: HL said our pacing estimate was too optimistic. Drain the
+# (shared) bucket so every copycat process backs off, sleep, retry. Bounded:
+# at most RETRY_429_MAX retries, each sleep capped at RETRY_429_MAX_SLEEP_S,
+# so a persistent 429 costs a caller ~7s worst case, then None.
+RETRY_429_MAX = 3
+RETRY_429_BASE_S = 1.0
+RETRY_429_MAX_SLEEP_S = 4.0
+
+
+def _retry_after_s(resp: Any, attempt: int) -> float:
+    backoff = RETRY_429_BASE_S * (2 ** attempt)
+    try:
+        hdr = float((getattr(resp, "headers", None) or {}).get("Retry-After"))
+        backoff = max(backoff, hdr)
+    except (TypeError, ValueError):
+        pass
+    return min(backoff, RETRY_429_MAX_SLEEP_S)
+
+
 def http_post(
     path: str,
     payload: Dict[str, Any],
@@ -108,26 +128,45 @@ def http_post(
     """POST `payload` to `{base_url}{path}` for the active network.
 
     Returns the parsed JSON body, or None on ANY failure: rate-budget
-    exhaustion, a network timeout, an HTTP error status, or unparseable
-    JSON. Every failure is logged; nothing here ever raises into the
-    caller -- callers decide what "no data" means for their own contract
-    (None for a whole read, 0.0 for a price, etc).
+    exhaustion, a network timeout, an HTTP error status, persistent 429s,
+    or unparseable JSON. Every failure is logged; nothing here ever raises
+    into the caller -- callers decide what "no data" means for their own
+    contract (None for a whole read, 0.0 for a price, etc).
+
+    A 429 is retried up to RETRY_429_MAX times with exponential backoff
+    (honoring Retry-After, capped), draining the shared limiter first so the
+    other copycat process backs off too. Each retry re-acquires its weight.
     """
     req_type = payload.get("type")
     weight = rate_limit.endpoint_weight(req_type, item_count)
-    if not rate_limit.HL_LIMITER.acquire(weight, max_wait=max_wait):
-        logger.warning(
-            f"[hl.http] rate budget exhausted for {req_type or 'unknown'} "
-            f"(weight={weight}, waited {max_wait:g}s) -- returning None"
-        )
-        return None
     if timeout is None:
         timeout = env.request_timeout_s()
     url = f"{env.base_url()}{path}"
-    try:
-        resp = get_session().post(url, json=payload, timeout=timeout)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        logger.error(f"[hl.http] POST {path} type={req_type!r} failed: {exc}")
-        return None
+    for attempt in range(RETRY_429_MAX + 1):
+        if not rate_limit.HL_LIMITER.acquire(weight, max_wait=max_wait):
+            logger.warning(
+                f"[hl.http] rate budget exhausted for {req_type or 'unknown'} "
+                f"(weight={weight}, waited {max_wait:g}s) -- returning None"
+            )
+            return None
+        try:
+            resp = get_session().post(url, json=payload, timeout=timeout)
+            if getattr(resp, "status_code", 200) == 429:
+                if attempt >= RETRY_429_MAX:
+                    logger.error(f"[hl.http] POST {path} type={req_type!r}: 429 after {attempt} retries -- returning None")
+                    return None
+                sleep_s = _retry_after_s(resp, attempt)
+                logger.warning(f"[hl.http] POST {path} type={req_type!r}: 429, backing off {sleep_s:g}s "
+                               f"(retry {attempt + 1}/{RETRY_429_MAX})")
+                try:
+                    rate_limit.HL_LIMITER.drain()
+                except Exception as drain_exc:
+                    logger.warning(f"[hl.http] could not drain limiter after 429: {drain_exc}")
+                time.sleep(sleep_s)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            logger.error(f"[hl.http] POST {path} type={req_type!r} failed: {exc}")
+            return None
+    return None

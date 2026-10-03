@@ -17,7 +17,7 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from contracts.models import MAX_LEADERS, Settings, norm_addr
 
@@ -33,8 +33,14 @@ class LeaderLimitError(Exception):
     """Raised by add_leader() at MAX_LEADERS. Routes map this to HTTP 409."""
 
 
+class OwnAddressError(ValueError):
+    """Our own account (COPYCAT_ACCOUNT_ADDRESS) was given as a leader.
+    Copying ourselves would mirror every copy back onto itself. HTTP 400."""
+
+
 class SettingsStore:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, our_address: Optional[str] = None):
+        self.our_address = norm_addr(our_address) if our_address else None
         self.data_dir = Path(data_dir)
         self.path = self.data_dir / "settings.json"
         self.lock_path = self.data_dir / "settings.json.lock"
@@ -56,6 +62,12 @@ class SettingsStore:
         with self.path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return Settings(**data)
+
+    def _check_not_us(self, settings: Settings) -> None:
+        if self.our_address and self.our_address in settings.leaders:
+            raise OwnAddressError(
+                f"{self.our_address} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); "
+                f"it cannot be a leader")
 
     def _write_atomic(self, settings: Settings) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +94,7 @@ class SettingsStore:
         instance (FastAPI validates the PUT body against Settings before
         this is ever called), so there's nothing left to validate here.
         """
+        self._check_not_us(settings)
         with self._locked():
             self._write_atomic(settings)
         return settings
@@ -121,6 +134,8 @@ class SettingsStore:
                 data["leader_overrides"] = overrides
 
             merged = Settings(**data)  # raises ValidationError -> nothing written
+            if "leaders" in provided:   # never block an unrelated PATCH on a legacy file
+                self._check_not_us(merged)
             self._write_atomic(merged)
             return merged
 
@@ -131,6 +146,9 @@ class SettingsStore:
         addr = norm_addr(address)
         if not _ADDR_RE.match(addr):
             raise ValueError(f"not a 0x address: {address!r}")
+        if self.our_address and addr == self.our_address:
+            raise OwnAddressError(
+                f"{addr} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); it cannot be a leader")
         with self._locked():
             current = self.load()
             if addr in current.leaders:

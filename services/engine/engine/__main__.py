@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 
 
 def main() -> None:
@@ -30,12 +31,22 @@ def main() -> None:
         logger.error("COPYCAT_ACCOUNT_ADDRESS is not set, refusing to start")
         sys.exit(1)
 
+    # Every process must agree on one absolute data dir: hl's shared rate
+    # bucket file lives there, and "./data" means different things from
+    # different working directories. Resolve it before `hl` is imported.
+    data_dir = Path(os.environ.get("COPYCAT_DATA_DIR", "./data")).resolve()
+    os.environ["COPYCAT_DATA_DIR"] = str(data_dir)
+
     from hl import HlVenue  # services/hl, built in parallel -- see module docstring
 
-    from .public import run_forever
+    from .public import EngineAlreadyRunning, run_forever
 
     logger.info("engine starting, account=%s", our_address)
-    run_forever(HlVenue())
+    try:
+        run_forever(HlVenue())
+    except EngineAlreadyRunning as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

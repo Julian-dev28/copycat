@@ -5,7 +5,7 @@
  * ::backdrop, instead of reimplementing a modal from scratch or pulling in
  * a dialog library for something the platform already does.
  */
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 export interface DialogProps {
   open: boolean;
@@ -18,6 +18,7 @@ export interface DialogProps {
 
 export function Dialog({ open, onClose, title, description, children, footer }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const el = ref.current;
@@ -31,7 +32,7 @@ export function Dialog({ open, onClose, title, description, children, footer }: 
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
       className={[
         "m-0 w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-foreground",
         "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
@@ -39,10 +40,10 @@ export function Dialog({ open, onClose, title, description, children, footer }: 
       ].join(" ")}
     >
       <div className="p-5">
-        <h2 id="dialog-title" className="text-base font-semibold">
+        <h2 id={titleId} className="text-base font-semibold">
           {title}
         </h2>
-        {description ? <p className="mt-2 text-sm text-muted">{description}</p> : null}
+        {description ? <div className="mt-2 text-sm text-muted">{description}</div> : null}
         {children ? <div className="mt-4">{children}</div> : null}
         {footer ? <div className="mt-5 flex justify-end gap-2">{footer}</div> : null}
       </div>

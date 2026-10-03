@@ -11,9 +11,8 @@ from __future__ import annotations
 from contracts.models import Settings
 
 from engine import core
-from engine.state import EngineState
 
-from engine_fakes import LEADER1, LEADER2, OUR, FakeVenue
+from engine_fakes import LEADER1, LEADER2, OUR
 
 
 def cfg(**overrides) -> Settings:
@@ -277,18 +276,23 @@ def test_our_copy_vanished_stops_mirroring_until_he_goes_flat_and_reopens(engine
 
     venue.hold(LEADER1, "BTC", 1500.0, entry_px=100.0)    # he adds; our copy is gone by hand
     out = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=1)
-    assert out["skipped"]["BTC"] == "our copy vanished"
+    # first missing read: pending, nothing traded, row kept
+    assert out["skipped"]["BTC"].startswith("our copy is missing")
+    assert not venue.orders[1:] and len(engine_state.all_copies()) == 1
+    out = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=2)
+    # second missing read: confirmed and forgotten
+    assert out["vanished"] == ["BTC"]
     assert engine_state.all_copies() == []
 
     venue.hold(LEADER1, "BTC", 2000.0, entry_px=100.0)    # still ignored while he holds it
-    out_ignored = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=2)
+    out_ignored = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=3)
     assert not out_ignored["opened"]
 
     venue.hold(LEADER1, "BTC", 0.0)                       # he goes flat -- clears the ignore
-    run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=3)
+    run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=4)
 
     venue.hold(LEADER1, "BTC", 500.0, entry_px=100.0)     # he reopens -- copyable again
-    out2 = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=4)
+    out2 = run(venue, cfg(leaders=[LEADER1]), engine_state, now_ms=5)
     assert out2["opened"] == ["BTC"]
 
 
@@ -603,6 +607,7 @@ def test_dry_run_blocks_exits_too_no_writes_means_no_writes(engine_state, venue)
     venue.hold(OUR, "BTC", 5.0, entry_px=100.0)
     out = run(venue, cfg(leaders=[LEADER1], dry_run=True), engine_state, now_ms=1)
     assert venue.closes == []                           # no real close fired
+    assert out["skipped"]["BTC"].startswith("real copy held")   # deferred, not forgotten
     assert engine_state.get_copy("BTC") is not None      # the REAL copy row is untouched by dry_run
 
 

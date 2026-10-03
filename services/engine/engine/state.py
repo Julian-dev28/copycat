@@ -18,7 +18,12 @@ Tables:
   copies      one row per coin WE actually hold a real position in, opened
               by this engine. The source of truth for "which leader owns
               this coin" and for `EngineStatus.positions`. Never touched
-              while `Settings.dry_run` is true.
+              while `Settings.dry_run` is true (except by close-all).
+              `pending_cloid` is non-NULL for an open whose outcome is not
+              known yet: the row is written BEFORE the order is sent, so a
+              crash or an ambiguous (timed out) result can never leave a
+              real position with no row (which would make it "not ours"
+              and never closed). Resolved at the next cycle's start.
   dry_copies  the dry-run shadow of `copies` -- same shape plus a simulated
               `size`, since there is no real exchange position to read size
               from. Exists purely so a SEQUENCE of dry-run cycles classifies
@@ -32,7 +37,12 @@ Tables:
               `public.status()` can answer from a fresh process with no
               venue), `day_anchor` (today's UTC day key + the equity it
               started at, for the daily-loss gate), `halted` (bool, to emit
-              halt/resume events only on the transition).
+              halt/resume events only on the transition), `last_skips`
+              (skip-reason dedup), `last_marks` (last liq/mark px per copy,
+              for the "vanished" event), `vanish_pending` (copies missing
+              from one read, confirmed on the next), `pending_reduces`
+              (reduces whose result was ambiguous, resolved next cycle),
+              `last_dry_run` (to clear dry_copies when the mode flips).
 """
 from __future__ import annotations
 
@@ -55,7 +65,8 @@ CREATE TABLE IF NOT EXISTS copies (
     opened_ms INTEGER NOT NULL,
     leverage INTEGER NOT NULL,
     is_cross INTEGER NOT NULL,
-    sizing_mode TEXT NOT NULL
+    sizing_mode TEXT NOT NULL,
+    pending_cloid TEXT
 );
 CREATE TABLE IF NOT EXISTS dry_copies (
     coin TEXT PRIMARY KEY,
@@ -86,16 +97,18 @@ class LeaderState:
 
 class Copy:
     """A real (or, as `DryCopy`, simulated) position this engine opened."""
-    __slots__ = ("coin", "leader", "opened_ms", "leverage", "is_cross", "sizing_mode")
+    __slots__ = ("coin", "leader", "opened_ms", "leverage", "is_cross", "sizing_mode",
+                 "pending_cloid")
 
     def __init__(self, coin: str, leader: str, opened_ms: int, leverage: int,
-                 is_cross: bool, sizing_mode: str):
+                 is_cross: bool, sizing_mode: str, pending_cloid: Optional[str] = None):
         self.coin = coin
         self.leader = leader
         self.opened_ms = opened_ms
         self.leverage = leverage
         self.is_cross = is_cross
         self.sizing_mode = sizing_mode
+        self.pending_cloid = pending_cloid
 
 
 class DryCopy(Copy):
@@ -120,6 +133,9 @@ class EngineState:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(copies)").fetchall()}
+        if "pending_cloid" not in cols:   # engine.db from before the pending-row protocol
+            self._conn.execute("ALTER TABLE copies ADD COLUMN pending_cloid TEXT")
         self._conn.commit()
         self._lock = threading.Lock()
 
@@ -160,19 +176,21 @@ class EngineState:
 
     def get_copy(self, coin: str) -> Optional[Copy]:
         row = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode "
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid "
             "FROM copies WHERE coin = ?", (coin,)).fetchone()
         return self._row_to_copy(row) if row else None
 
     def put_copy(self, c: Copy) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO copies (coin, leader, opened_ms, leverage, is_cross, sizing_mode) "
-                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
+                "INSERT INTO copies "
+                "(coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
                 "leader = excluded.leader, opened_ms = excluded.opened_ms, "
                 "leverage = excluded.leverage, is_cross = excluded.is_cross, "
-                "sizing_mode = excluded.sizing_mode",
-                (c.coin, c.leader, c.opened_ms, c.leverage, int(c.is_cross), c.sizing_mode))
+                "sizing_mode = excluded.sizing_mode, pending_cloid = excluded.pending_cloid",
+                (c.coin, c.leader, c.opened_ms, c.leverage, int(c.is_cross), c.sizing_mode,
+                 getattr(c, "pending_cloid", None)))
             self._conn.commit()
 
     def delete_copy(self, coin: str) -> None:
@@ -180,14 +198,26 @@ class EngineState:
             self._conn.execute("DELETE FROM copies WHERE coin = ?", (coin,))
             self._conn.commit()
 
+    def promote_copy(self, coin: str) -> None:
+        """Pending -> confirmed: the order filled (fully or partly)."""
+        with self._lock:
+            self._conn.execute("UPDATE copies SET pending_cloid = NULL WHERE coin = ?", (coin,))
+            self._conn.commit()
+
     def all_copies(self) -> List[Copy]:
         rows = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode FROM copies").fetchall()
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid "
+            "FROM copies").fetchall()
         return [self._row_to_copy(r) for r in rows]
+
+    def clear_dry_copies(self) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM dry_copies")
+            self._conn.commit()
 
     @staticmethod
     def _row_to_copy(row: Any) -> Copy:
-        return Copy(row[0], row[1], row[2], row[3], bool(row[4]), row[5])
+        return Copy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6])
 
     # ── dry_copies (shadow) ──────────────────────────────────────────────
 
