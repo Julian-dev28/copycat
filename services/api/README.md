@@ -22,6 +22,14 @@ writer) and the bearer token. Never signs orders, never holds the agent key.
 | POST | /engine/close-all | `enabled=false`, then writes `data/close_all.flag`; returns `{requested_ms, pending, settings}`. The engine's next cycle closes every copy |
 | POST | /discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}`; 409 if one is running |
 | GET | /discovery/runs/latest, /discovery/runs/{id} | `DiscoveryRun`; 404 when none / unknown |
+| GET | /scout/traders | `TraderPage`; filters/sorts below; `in_book` from `Settings.leaders`; `ETag` + 304 |
+| GET | /scout/traders/{address} | `TraderProfile`; 404 bad address or no data; 202 + `ScoutStatus` while being built |
+| GET | /scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]`, limit 1..500 (100) |
+| GET | /scout/traders/{address}/orders | live open orders (untyped list) |
+| POST | /scout/traders/{address}/what-if | `WhatIfRequest` -> `WhatIfResult` at the current settings file; 409 while one runs |
+| GET | /scout/presets | coin chips + hip3 count (untyped object) |
+| GET | /scout/status | `ScoutStatus` |
+| POST | /scout/refresh | `ScoutStatus`; 409 if running |
 
 ## Auth
 
@@ -57,3 +65,45 @@ key. The child sends back the run id (or busy/error) over a pipe and lives
 until the run finishes. The api reads progress from `discovery.db` via
 `discovery.public.get_run/latest`. Keeps discovery's CPU and HL reads away
 from the halt/close-all routes and the engine's rate reserve.
+
+## Scout
+
+Spec: `docs/research/copytrading_page_spec.md` sections 5, 7.3, 8. Routes in
+`api/routes/scout.py`, adapter in `api/scout_client.py` (lazy import of
+`discovery.scout.public`; 503 when it isn't importable, its `ScoutBusy` ->
+409). Tests use `tests/api_fakes.FakeScoutClient`.
+
+`GET /scout/traders` query params, validated by `api.schemas.ScoutQuery` and
+passed to `scout_page(query)` as a plain dict with exactly these keys:
+
+| param | type | default |
+|---|---|---|
+| window | `1d` `7d` `30d` `all` | `30d` |
+| preset | `all`, `hip3`, `coin:<COIN>` | `all` |
+| coin, style | repeatable; style in algo/scalp/intraday/swing/position | `[]` |
+| min_av, max_av | USD >= 0 | none |
+| min_pnl, max_pnl | USD | none |
+| min_fit, max_fit | 0..100 | none |
+| max_dd | 0..100 (%) | none |
+| min_trips | >= 0 | none |
+| active_within_h | 1..8784 | none |
+| hide_flagged | bool | false |
+| q | 1..64 chars, stripped | none |
+| sort | fit, sim_return, sim_dd, pnl, roi, account_value, sharpe, max_dd, win_rate, trips, last_active, volume | fit |
+| order | asc, desc | desc |
+| limit, offset | 1..200, >= 0 | 50, 0 |
+
+Unknown params and any min > max are 422 (a typo'd filter must not look
+like "no filter"). Repeated coin/style values are deduped.
+
+Where it runs: the board is built by a separate process,
+`python -m discovery.scout serve` (`make dev`, compose `scout`), background
+HL priority, no agent key. The api only reads: every Scout route is a sync
+`def`, so FastAPI runs it on its threadpool, never on the event loop that
+serves halt/close-all. Reads are one SQL query or a stored blob, so a
+spawned child per request would cost more than the read. what-if is one
+wallet's sim on cached data (seconds), also on the threadpool, guarded by
+`app.state.scout_what_if_lock` (non-blocking: second request is 409, never
+queued). The first real Scout call sets `COPYCAT_HL_PRIORITY=background` in
+the api process, so live reads such as open orders only spend down to the
+engine's reserve.

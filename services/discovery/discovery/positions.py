@@ -117,3 +117,94 @@ def median_hold_hours(by_coin: Dict[str, List[PositionEvent]]) -> Tuple[Optional
 
 def coins_traded(by_coin: Dict[str, List[PositionEvent]]) -> List[str]:
     return sorted(by_coin.keys())
+
+
+# ── perp filter, poll coalescing, trips ───────────────────────────────────
+
+def is_perp_coin(coin: str) -> bool:
+    """Perp coins are a main-dex name ("BTC", "kPEPE") or a HIP-3 "dex:NAME".
+    Fills also carry spot pairs ("@151", "PURR/USDC") and outcome markets
+    ("#12100"); candleSnapshot 500s on those and the engine never copies them."""
+    if not coin or coin[0] in "@#" or "/" in coin:
+        return False
+    return True
+
+
+def split_perp(fills: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    perp, other = [], []
+    for f in fills:
+        (perp if is_perp_coin(str(f["coin"])) else other).append(f)
+    return perp, other
+
+
+def _signed(f: Dict[str, Any]) -> float:
+    return abs(float(f["sz"])) * (1.0 if f["side"] == "B" else -1.0)
+
+
+def coalesce_by_poll(fills: List[Dict[str, Any]], poll_ms: int) -> List[Dict[str, Any]]:
+    """Collapse each coin's fills inside one engine poll interval into one
+    net synthetic fill, because the live engine only sees the leader's
+    position once per `poll_interval_s`: 40 partial fills of one TWAP slice
+    are one "add" to it, and an open+close inside one poll is invisible.
+
+    The synthetic fill keeps the bucket's first start_position, the net
+    signed size, the size-weighted average price, the last fill's time, and
+    the summed fee / closed_pnl. A bucket that nets to zero change is kept
+    (classify drops 0 -> 0 itself). Fills at the same ms are ordered by
+    chaining start_position -> end so the bucket's start is the true start.
+    """
+    if poll_ms <= 0:
+        return sorted(fills, key=lambda f: f["time_ms"])
+    buckets: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+    for f in fills:
+        buckets.setdefault((f["coin"], int(f["time_ms"]) // poll_ms), []).append(f)
+    out: List[Dict[str, Any]] = []
+    for (coin, _), fs in buckets.items():
+        fs.sort(key=lambda f: f["time_ms"])
+        if len(fs) == 1:
+            out.append(fs[0])
+            continue
+        t0 = fs[0]["time_ms"]
+        firsts = [f for f in fs if f["time_ms"] == t0]
+        ends = {round(float(f["start_position"]) + _signed(f), 12) for f in fs}
+        first = next((f for f in firsts if round(float(f["start_position"]), 12) not in ends), firsts[0])
+        net = sum(_signed(f) for f in fs)
+        gross = sum(abs(float(f["sz"])) for f in fs)
+        px = sum(abs(float(f["sz"])) * float(f["px"]) for f in fs) / gross if gross else float(fs[-1]["px"])
+        out.append({
+            "time_ms": int(fs[-1]["time_ms"]), "coin": coin, "px": px, "sz": abs(net),
+            "side": "B" if net >= 0 else "A", "start_position": float(first["start_position"]),
+            "fee": sum(float(f.get("fee", 0.0)) for f in fs),
+            "closed_pnl": sum(float(f.get("closed_pnl", 0.0)) for f in fs),
+        })
+    out.sort(key=lambda f: f["time_ms"])
+    return out
+
+
+def final_positions(fills: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Signed position per coin right after the last fill we have for it:
+    last fill's start_position + its signed size. This is what the leader's
+    live account must show for every coin he traded in-window, unless he
+    traded it again after our fetch."""
+    last: Dict[str, Dict[str, Any]] = {}
+    for f in sorted(fills, key=lambda r: r["time_ms"]):
+        last[f["coin"]] = f
+    return {c: float(f["start_position"]) + _signed(f) for c, f in last.items()}
+
+
+def trip_spans(by_coin: Dict[str, List[PositionEvent]], window_end_ms: int) -> Dict[str, List[Tuple[int, int]]]:
+    """Per coin, the [open, close] time ranges of every trip that OPENS in
+    the window (still-open trips run to window_end_ms). Only these can carry
+    a copy, so only these need candles."""
+    out: Dict[str, List[Tuple[int, int]]] = {}
+    for coin, events in by_coin.items():
+        open_t: Optional[int] = None
+        for e in events:
+            if e.kind == "open":
+                open_t = e.time_ms
+            elif e.kind == "close" and open_t is not None:
+                out.setdefault(coin, []).append((open_t, e.time_ms))
+                open_t = None
+        if open_t is not None:
+            out.setdefault(coin, []).append((open_t, window_end_ms))
+    return out

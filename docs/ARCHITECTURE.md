@@ -53,6 +53,14 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | POST | /api/discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}` (409 if one is running) |
 | GET | /api/discovery/runs/latest | `DiscoveryRun` |
 | GET | /api/discovery/runs/{id} | `DiscoveryRun` (404 unknown id) |
+| GET | /api/scout/traders | `TraderPage`. Query (spec section 5): `window` 1d/7d/30d/all, `preset` all/hip3/coin:X, `coin` (repeat), `min_av` `max_av` `min_pnl` `max_pnl`, `style` (repeat), `min_fit` `max_fit` 0..100, `max_dd` 0..100, `min_trips`, `active_within_h`, `hide_flagged`, `q`, `sort` (fit default, sim_return, sim_dd, pnl, roi, account_value, sharpe, max_dd, win_rate, trips, last_active, volume), `order` asc/desc, `limit` 1..200, `offset`. Unknown param or min > max is 422. `in_book` filled from `Settings.leaders`. Weak `ETag` = refresh_id:settings_hash:book, `If-None-Match` -> 304 |
+| GET | /api/scout/traders/{address} | `TraderProfile`; 404 not a 0x address or no data; 202 + `ScoutStatus` while discovery builds it (poll) |
+| GET | /api/scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]` from the fills cache, `limit` 1..500 (default 100) |
+| GET | /api/scout/traders/{address}/orders | open orders as discovery returns them (untyped list; no contract model yet) |
+| POST | /api/scout/traders/{address}/what-if | `WhatIfRequest` -> `WhatIfResult`, sim at the current `data/settings.json` + `override`. One at a time per api process, 409 while one runs |
+| GET | /api/scout/presets | coin chips + hip3 count (untyped object; no contract model yet) |
+| GET | /api/scout/status | `ScoutStatus` |
+| POST | /api/scout/refresh | `ScoutStatus`; 409 if a refresh is running |
 
 ## Processes, data files, HL rate budget
 - `data/` must be the same absolute path for every process (`python -m api` / `python -m engine`
@@ -64,6 +72,12 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
   `COPYCAT_HL_PRIORITY=background` and no agent key: its HL reads only take rate tokens while the
   engine's reserve (`COPYCAT_HL_RESERVE_FRAC`, default 40%) stays in the shared bucket, and its CPU never
   competes with the api's halt/close-all routes. The api reads results from `discovery.db`.
+- Scout: `python -m discovery.scout serve` (Makefile `dev`, compose service `scout`) is its own process,
+  `COPYCAT_HL_PRIORITY=background`, no agent key, the single writer of the `scout_*` tables in
+  `discovery.db`. The api only reads them through `discovery.scout.public` (`api.scout_client`), on
+  FastAPI's threadpool (sync routes), never on the event loop. what-if (one wallet, cached data) also
+  runs on the threadpool, one at a time. The first Scout call flips the api process to
+  `COPYCAT_HL_PRIORITY=background` so the few live reads it makes (open orders) never touch the engine's reserve.
 
 ## Keys
 Hyperliquid API ("agent") wallet: approve it at app.hyperliquid.xyz/API. It can
@@ -71,7 +85,7 @@ trade but cannot withdraw. `.env`: `COPYCAT_ACCOUNT_ADDRESS` (your main wallet),
 `COPYCAT_AGENT_KEY` (the agent wallet's private key). Never the main wallet's key.
 
 ## Running
-`docker compose up` runs api, engine worker, web. `make dev` runs them locally.
+`docker compose up` runs api, engine worker, scout scheduler, web. `make dev` runs them locally.
 `make test` runs every service's gate tests (<2s each, no network).
 `make eval` runs the live read-only evals (engine dry-run against real leaders,
 discovery smoke run).

@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Gauge, Moon, Radar, Settings as SettingsIcon, Sun } from "lucide-react";
+import { Copy, Gauge, Moon, Radar, Settings as SettingsIcon, Sun, Telescope } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,6 +9,7 @@ import { clsx } from "clsx";
 import { useAuth } from "@/context/AuthContext";
 
 const LINKS = [
+  { href: "/scout", label: "Scout", icon: Telescope },
   { href: "/copy", label: "Copy", icon: Copy },
   { href: "/positions", label: "Positions", icon: Gauge },
   { href: "/discover", label: "Discover", icon: Radar },

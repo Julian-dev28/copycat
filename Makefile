@@ -24,11 +24,12 @@ install: ## python venv (uv) + web deps (npm ci)
 	VIRTUAL_ENV=.venv uv pip install -r pyproject.toml --extra dev
 	cd $(WEB_DIR) && npm ci
 
-dev: ## api + engine + web together; Ctrl-C stops all three
+dev: ## api + engine + scout + web together; Ctrl-C stops all four
 	@test -f .env || echo "warning: no .env (copy .env.example). The engine exits without COPYCAT_ACCOUNT_ADDRESS."
 	@trap 'kill $$(jobs -p) 2>/dev/null; wait' INT TERM EXIT; \
 	$(PY) -m api & \
 	$(PY) -m engine & \
+	env -u COPYCAT_AGENT_KEY COPYCAT_HL_PRIORITY=background $(PY) -m discovery.scout serve & \
 	(cd $(WEB_DIR) && NEXT_PUBLIC_COPYCAT_API=$(NEXT_PUBLIC_COPYCAT_API) exec ./node_modules/.bin/next dev -p $(WEB_PORT)) & \
 	wait
 
@@ -43,7 +44,7 @@ openapi: ## regenerate services/api/openapi.json and the web client types
 	$(PY) -m api.openapi_export
 	cd $(WEB_DIR) && npm run gen:api
 
-up: ## docker compose up (api, engine, web)
+up: ## docker compose up (api, engine, scout, web)
 	docker compose up -d --build
 
 down: ## docker compose down

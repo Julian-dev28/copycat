@@ -85,6 +85,44 @@
         "title": "AddLeaderRequest",
         "type": "object"
       },
+      "CandleView": {
+        "properties": {
+          "c": {
+            "title": "C",
+            "type": "number"
+          },
+          "h": {
+            "title": "H",
+            "type": "number"
+          },
+          "l": {
+            "title": "L",
+            "type": "number"
+          },
+          "o": {
+            "title": "O",
+            "type": "number"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "v": {
+            "title": "V",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t_ms",
+          "o",
+          "h",
+          "l",
+          "c",
+          "v"
+        ],
+        "title": "CandleView",
+        "type": "object"
+      },
       "CloseAllResponse": {
         "description": "POST /api/engine/close-all. `settings` has `enabled` false already;\nthe closes themselves happen on the engine's next cycle (watch\n/api/events for `close` events with reason \"close-all\", then a `halt`\nevent \"close-all complete ...\").",
         "properties": {
@@ -615,6 +653,75 @@
         "title": "EngineStatus",
         "type": "object"
       },
+      "EntryContext": {
+        "description": "Market state at one entry, from candles. All deterministic.",
+        "properties": {
+          "breakout": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakout"
+          },
+          "hour_utc": {
+            "title": "Hour Utc",
+            "type": "integer"
+          },
+          "move_24h_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move 24H Pct"
+          },
+          "pullback": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pullback"
+          },
+          "rsi_14": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rsi 14"
+          },
+          "trend_aligned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend Aligned"
+          }
+        },
+        "required": [
+          "hour_utc"
+        ],
+        "title": "EntryContext",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -876,6 +983,106 @@
         "title": "MarginMode",
         "type": "string"
       },
+      "OpenOrderView": {
+        "properties": {
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "is_trigger": {
+            "default": false,
+            "title": "Is Trigger",
+            "type": "boolean"
+          },
+          "limit_px": {
+            "title": "Limit Px",
+            "type": "number"
+          },
+          "notional_usd": {
+            "title": "Notional Usd",
+            "type": "number"
+          },
+          "oid": {
+            "title": "Oid",
+            "type": "integer"
+          },
+          "order_type": {
+            "default": "Limit",
+            "title": "Order Type",
+            "type": "string"
+          },
+          "orig_sz": {
+            "title": "Orig Sz",
+            "type": "number"
+          },
+          "reduce_only": {
+            "default": false,
+            "title": "Reduce Only",
+            "type": "boolean"
+          },
+          "side": {
+            "enum": [
+              "B",
+              "A"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "sz": {
+            "title": "Sz",
+            "type": "number"
+          },
+          "tif": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tif"
+          },
+          "time_ms": {
+            "title": "Time Ms",
+            "type": "integer"
+          },
+          "trigger_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Condition"
+          },
+          "trigger_px": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Px"
+          }
+        },
+        "required": [
+          "oid",
+          "coin",
+          "side",
+          "limit_px",
+          "sz",
+          "orig_sz",
+          "notional_usd",
+          "time_ms"
+        ],
+        "title": "OpenOrderView",
+        "type": "object"
+      },
       "PnlTier": {
         "enum": [
           "losing",
@@ -1017,6 +1224,47 @@
           "win"
         ],
         "title": "RoundTrip",
+        "type": "object"
+      },
+      "ScoutPresets": {
+        "properties": {
+          "coin_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Coin Counts",
+            "type": "object"
+          },
+          "coins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coins",
+            "type": "array"
+          },
+          "hip3_count": {
+            "default": 0,
+            "title": "Hip3 Count",
+            "type": "integer"
+          },
+          "refresh_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Id"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "ScoutPresets",
         "type": "object"
       },
       "ScoutSort": {
@@ -1536,6 +1784,482 @@
         ],
         "title": "SizingMode",
         "type": "string"
+      },
+      "StrategyFingerprint": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "as_of_ms": {
+            "title": "As Of Ms",
+            "type": "integer"
+          },
+          "avg_adds_per_trip": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Adds Per Trip"
+          },
+          "avg_leverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Leverage"
+          },
+          "avg_loss_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Loss Usd"
+          },
+          "avg_rsi_long_entry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Rsi Long Entry"
+          },
+          "avg_rsi_short_entry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Rsi Short Entry"
+          },
+          "avg_win_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Win Usd"
+          },
+          "breakout_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakout Pct"
+          },
+          "caveats": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/TradeExample"
+            },
+            "maxItems": 8,
+            "title": "Examples",
+            "type": "array"
+          },
+          "hour_hist_utc": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Hour Hist Utc",
+            "type": "array"
+          },
+          "long_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Pct"
+          },
+          "loser_hold_vs_winner": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loser Hold Vs Winner"
+          },
+          "max_leverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Leverage"
+          },
+          "median_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hold H"
+          },
+          "p90_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Hold H"
+          },
+          "payoff_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff Ratio"
+          },
+          "pnl_from_top_coin_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl From Top Coin Pct"
+          },
+          "pullback_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pullback Pct"
+          },
+          "scales_in_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scales In Pct"
+          },
+          "scales_out_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scales Out Pct"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "top_coins": {
+            "items": {
+              "$ref": "#/components/schemas/CoinStat"
+            },
+            "title": "Top Coins",
+            "type": "array"
+          },
+          "trend_aligned_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend Aligned Pct"
+          },
+          "trips_analyzed": {
+            "title": "Trips Analyzed",
+            "type": "integer"
+          },
+          "weekday_hist": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Weekday Hist",
+            "type": "array"
+          },
+          "win_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Rate Pct"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "worst_trip_pct_of_equity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst Trip Pct Of Equity"
+          }
+        },
+        "required": [
+          "address",
+          "as_of_ms",
+          "window_days",
+          "trips_analyzed",
+          "summary"
+        ],
+        "title": "StrategyFingerprint",
+        "type": "object"
+      },
+      "Thesis": {
+        "description": "A written strategy thesis for one trader. `ta` ones are regenerated\nfrom the fingerprint; `claude_code` ones are saved through the MCP\nserver and kept until replaced.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "created_ms": {
+            "title": "Created Ms",
+            "type": "integer"
+          },
+          "fingerprint_as_of_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint As Of Ms"
+          },
+          "markdown": {
+            "maxLength": 20000,
+            "title": "Markdown",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "ta",
+              "claude_code"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "source",
+          "created_ms",
+          "title",
+          "markdown"
+        ],
+        "title": "Thesis",
+        "type": "object"
+      },
+      "ThesisWrite": {
+        "additionalProperties": false,
+        "description": "PUT /api/scout/traders/{address}/thesis. The server sets `source`\n(\"claude_code\", always), `address` and `created_ms`; a body carrying\nany of them is a 422 (extra=\"forbid\"), so a client can never write a\n\"ta\" thesis.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "markdown": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Markdown",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "markdown"
+        ],
+        "title": "ThesisWrite",
+        "type": "object"
+      },
+      "TradeExample": {
+        "description": "One representative round trip shown as evidence for a fingerprint claim.",
+        "properties": {
+          "adds": {
+            "title": "Adds",
+            "type": "integer"
+          },
+          "closed_ms": {
+            "title": "Closed Ms",
+            "type": "integer"
+          },
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "context": {
+            "$ref": "#/components/schemas/EntryContext"
+          },
+          "hold_h": {
+            "title": "Hold H",
+            "type": "number"
+          },
+          "max_leverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Leverage"
+          },
+          "net_pnl_usd": {
+            "title": "Net Pnl Usd",
+            "type": "number"
+          },
+          "opened_ms": {
+            "title": "Opened Ms",
+            "type": "integer"
+          },
+          "return_pct": {
+            "title": "Return Pct",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "why_shown": {
+            "title": "Why Shown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "coin",
+          "side",
+          "opened_ms",
+          "closed_ms",
+          "hold_h",
+          "adds",
+          "net_pnl_usd",
+          "return_pct",
+          "context",
+          "why_shown"
+        ],
+        "title": "TradeExample",
+        "type": "object"
       },
       "TradeStats": {
         "properties": {
@@ -2599,18 +3323,109 @@
         ]
       }
     },
+    "/api/market/candles": {
+      "get": {
+        "description": "OHLCV bars in [start_ms, end_ms], oldest first, at most 5000 bars.\nBad interval, end <= start, or a range over the cap is 422.",
+        "operationId": "get_candles_api_market_candles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "coin",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_:.\\-]{1,32}$",
+              "title": "Coin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "enum": [
+                "1m",
+                "3m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "2h",
+                "4h",
+                "8h",
+                "12h",
+                "1d"
+              ],
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_ms",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Start Ms",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_ms",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "End Ms",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CandleView"
+                  },
+                  "title": "Response Get Candles Api Market Candles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.public.candles isn't available"
+          }
+        },
+        "summary": "Get Candles",
+        "tags": [
+          "market"
+        ]
+      }
+    },
     "/api/scout/presets": {
       "get": {
-        "description": "Coin chips + hip3 count from the current `scout_rows`. Passed through\nas discovery returns it; contracts/models.py has no typed model yet.",
+        "description": "Coin chips + hip3 count from the current `scout_rows`.",
         "operationId": "get_presets_api_scout_presets_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Presets Api Scout Presets Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ScoutPresets"
                 }
               }
             },
@@ -3129,9 +3944,86 @@
         ]
       }
     },
+    "/api/scout/traders/{address}/fingerprint": {
+      "get": {
+        "description": "Deterministic strategy fingerprint from fills + candles. Cached 15 min\nper (address, window_days); a stale one is served while a refresh runs.",
+        "operationId": "get_fingerprint_api_scout_traders__address__fingerprint_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 7,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyFingerprint"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "fingerprint is being computed; poll again"
+          },
+          "404": {
+            "description": "not a 0x address"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "fingerprint queue full; retry later"
+          },
+          "502": {
+            "description": "the fingerprint compute failed (next GET retries)"
+          },
+          "503": {
+            "description": "discovery.thesis isn't importable"
+          }
+        },
+        "summary": "Get Fingerprint",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
     "/api/scout/traders/{address}/orders": {
       "get": {
-        "description": "Live open orders (HL weight 20, cached 30 s by discovery). The shape\nis HL's open order as discovery passes it on; contracts/models.py has no\ntyped model for it yet.",
+        "description": "Live open orders (HL weight 20, cached 30 s by discovery).",
         "operationId": "get_trader_orders_api_scout_traders__address__orders_get",
         "parameters": [
           {
@@ -3150,8 +4042,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/OpenOrderView"
                   },
                   "title": "Response Get Trader Orders Api Scout Traders  Address  Orders Get",
                   "type": "array"
@@ -3180,6 +4071,197 @@
         "summary": "Get Trader Orders",
         "tags": [
           "scout"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}/thesis": {
+      "get": {
+        "description": "Latest thesis per source, \"ta\" first then \"claude_code\". Empty list\nwhen none exist. Never computes: the \"ta\" one is refreshed by each\nfingerprint compute.",
+        "operationId": "get_thesis_api_scout_traders__address__thesis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Thesis"
+                  },
+                  "title": "Response Get Thesis Api Scout Traders  Address  Thesis Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a 0x address"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.thesis isn't importable"
+          }
+        },
+        "summary": "Get Thesis",
+        "tags": [
+          "thesis"
+        ]
+      },
+      "put": {
+        "description": "Saves a \"claude_code\" thesis (the copycat MCP server's write path).\n`source`, `address`, `created_ms` are server-set; `fingerprint_as_of_ms`\nlinks it to the cached 30d fingerprint when there is one.",
+        "operationId": "put_thesis_api_scout_traders__address__thesis_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThesisWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thesis"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a 0x address"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.thesis isn't importable"
+          }
+        },
+        "summary": "Put Thesis",
+        "tags": [
+          "thesis"
+        ]
+      }
+    },
+    "/api/scout/traders/{address}/trades": {
+      "get": {
+        "description": "Representative round trips WITH entry context (`TradeExample`), the\nevidence behind the 30d fingerprint's claims (largest win, typical\nbreakout entry, ...). TradeExample, not RoundTrip, because the entry\ncontext is the point for a thesis; the full RoundTrip list (no context)\nis `TraderProfile.recent_trips`. Same 202 while the fingerprint builds.",
+        "operationId": "get_trades_api_scout_traders__address__trades_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 8,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TradeExample"
+                  },
+                  "title": "Response Get Trades Api Scout Traders  Address  Trades Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "fingerprint is being computed; poll again"
+          },
+          "404": {
+            "description": "not a 0x address"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "fingerprint queue full; retry later"
+          },
+          "502": {
+            "description": "the fingerprint compute failed (next GET retries)"
+          },
+          "503": {
+            "description": "discovery.thesis isn't importable"
+          }
+        },
+        "summary": "Get Trades",
+        "tags": [
+          "thesis"
         ]
       }
     },

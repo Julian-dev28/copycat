@@ -11,6 +11,7 @@ this module from a test must never write into the repo's ./data.
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any, Optional
 
 from fastapi import FastAPI
@@ -21,8 +22,12 @@ from .auth import BearerAuth
 from .config import API_VERSION, Config
 from .discovery_client import RealDiscoveryClient
 from .engine_client import RealEngineClient
+from .fingerprint_jobs import FingerprintJobs
+from .market_client import RealMarketClient
+from .scout_client import RealScoutClient
+from .thesis_client import RealThesisClient
 from .errors import register_exception_handlers
-from .routes import discovery, engine, events_stream, health
+from .routes import discovery, engine, events_stream, health, market, scout, thesis
 from .routes import leaders as leaders_routes
 from .routes import settings as settings_routes
 from .settings_store import SettingsStore
@@ -46,6 +51,14 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     # lazily-imported engine/discovery module reload is picked up.
     app.state.engine_client_factory = RealEngineClient
     app.state.discovery_client_factory = lambda: RealDiscoveryClient(config.data_dir)
+    app.state.scout_client_factory = RealScoutClient
+    # POST /api/scout/traders/{address}/what-if runs one at a time per api
+    # process; a second concurrent request is 409 (api.routes.scout).
+    app.state.scout_what_if_lock = threading.Lock()
+    app.state.thesis_client_factory = lambda: RealThesisClient(config.data_dir)
+    app.state.market_client_factory = RealMarketClient
+    # slow fingerprint computes: one at a time, in a child process, cached 15 min
+    app.state.fingerprint_jobs = FingerprintJobs()
 
     app.add_middleware(
         CORSMiddleware,
@@ -66,6 +79,9 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(engine.router)
     app.include_router(events_stream.router)
     app.include_router(discovery.router)
+    app.include_router(scout.router)
+    app.include_router(thesis.router)
+    app.include_router(market.router)
 
     return app
 

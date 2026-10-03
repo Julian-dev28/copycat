@@ -1,13 +1,19 @@
 """sqlite persistence for discovery: data/discovery.db.
 
 Everything the service needs to survive a restart lives here: the fills
-cache (per wallet, incremental), the candle cache (per coin+interval, shared
-across every wallet that touches that coin), and discovery runs + their
-ranked results.
+cache (per wallet, coverage-tracked, incremental), the candle cache (per
+coin+interval, coverage-tracked, shared across every wallet), a leaderboard
+snapshot cache, and discovery runs + their ranked results.
 
-Single-writer, single-file sqlite in WAL mode. The background run thread
-(see discovery.public) is the only writer during a run; reads from the api
-or CLI are safe to interleave because of WAL.
+Coverage, not "rows present", decides a cache hit. HL only serves the most
+recent ~5000 bars per candle interval, and illiquid markets skip bars with
+no trades, so "every expected bar is on disk" is never true for most
+ranges; the old row-based gap check refetched those holes on every run.
+`fills_coverage` / `candle_coverage` record the ranges we asked HL for and
+got a successful answer; a failed fetch records nothing.
+
+WAL mode: readers (api, CLI) never block the run's writers. Each thread
+gets its own connection (see `connect`).
 """
 from __future__ import annotations
 
@@ -15,15 +21,17 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS fills_cursor (
+CREATE TABLE IF NOT EXISTS fills_coverage (
     wallet TEXT PRIMARY KEY,
-    last_ms INTEGER NOT NULL
+    first_ms INTEGER NOT NULL,
+    last_ms INTEGER NOT NULL,
+    fetched_ms INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS fills (
+CREATE TABLE IF NOT EXISTS fills_v2 (
     wallet TEXT NOT NULL,
     time_ms INTEGER NOT NULL,
     coin TEXT NOT NULL,
@@ -34,9 +42,9 @@ CREATE TABLE IF NOT EXISTS fills (
     start_position REAL NOT NULL,
     closed_pnl REAL NOT NULL DEFAULT 0,
     fee REAL NOT NULL DEFAULT 0,
-    PRIMARY KEY (wallet, time_ms, coin, side, sz, px)
+    PRIMARY KEY (wallet, time_ms, coin, side, sz, px, start_position)
 );
-CREATE INDEX IF NOT EXISTS idx_fills_wallet_time ON fills (wallet, time_ms);
+CREATE INDEX IF NOT EXISTS idx_fills_v2_wallet_time ON fills_v2 (wallet, time_ms);
 
 CREATE TABLE IF NOT EXISTS candles (
     coin TEXT NOT NULL,
@@ -48,6 +56,20 @@ CREATE TABLE IF NOT EXISTS candles (
     c REAL NOT NULL,
     v REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (coin, interval, t_ms)
+);
+
+CREATE TABLE IF NOT EXISTS candle_coverage (
+    coin TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    PRIMARY KEY (coin, interval, start_ms)
+);
+
+CREATE TABLE IF NOT EXISTS kv (
+    k TEXT PRIMARY KEY,
+    ts_ms INTEGER NOT NULL,
+    v TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -73,13 +95,18 @@ CREATE TABLE IF NOT EXISTS results (
 CREATE INDEX IF NOT EXISTS idx_results_run_score ON results (run_id, score);
 """
 
+# Columns added after the first schema. sqlite has no ADD COLUMN IF NOT EXISTS.
+_MIGRATIONS = [
+    "ALTER TABLE runs ADD COLUMN heartbeat_ms INTEGER",
+    "ALTER TABLE runs ADD COLUMN params_json TEXT",
+]
+
 _local = threading.local()
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """One connection per (thread, path). sqlite connections are not
-    thread-safe to share; the background run thread and the calling thread
-    (api/CLI) each get their own."""
+    """One connection per (thread, path): sqlite connections are not safe
+    to share across threads."""
     key = f"{threading.get_ident()}:{db_path}"
     conn = getattr(_local, key, None)
     if conn is not None:
@@ -90,54 +117,95 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    for stmt in _MIGRATIONS:
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass   # already migrated
     conn.commit()
     setattr(_local, key, conn)
     return conn
 
 
+# ── closed-range arithmetic ───────────────────────────────────────────────
+
+def subtract_ranges(want: Tuple[int, int], have: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """Parts of closed range `want` not covered by any closed range in `have`."""
+    lo, hi = want
+    if hi < lo:
+        return []
+    out: List[Tuple[int, int]] = []
+    cur = lo
+    for a, b in sorted(have):
+        if b < cur:
+            continue
+        if a > hi:
+            break
+        if a > cur:
+            out.append((cur, min(hi, a - 1)))
+        cur = max(cur, b + 1)
+        if cur > hi:
+            break
+    if cur <= hi:
+        out.append((cur, hi))
+    return out
+
+
+def merge_ranges(ranges: List[Tuple[int, int]], join_gap: int = 1) -> List[Tuple[int, int]]:
+    """Union of closed ranges; ranges within `join_gap` of each other are joined."""
+    out: List[Tuple[int, int]] = []
+    for a, b in sorted(ranges):
+        if out and a <= out[-1][1] + join_gap:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
 # ── fills ─────────────────────────────────────────────────────────────────
 
-def get_fills_cursor(conn: sqlite3.Connection, wallet: str) -> Optional[int]:
-    row = conn.execute("SELECT last_ms FROM fills_cursor WHERE wallet = ?", (wallet,)).fetchone()
-    return int(row["last_ms"]) if row else None
+def get_fills_coverage(conn: sqlite3.Connection, wallet: str) -> Optional[Dict[str, int]]:
+    row = conn.execute("SELECT first_ms, last_ms, fetched_ms FROM fills_coverage WHERE wallet = ?",
+                       (wallet,)).fetchone()
+    return dict(row) if row else None
 
 
-def set_fills_cursor(conn: sqlite3.Connection, wallet: str, last_ms: int) -> None:
+def set_fills_coverage(conn: sqlite3.Connection, wallet: str, first_ms: int, last_ms: int,
+                       fetched_ms: int) -> None:
     conn.execute(
-        "INSERT INTO fills_cursor (wallet, last_ms) VALUES (?, ?) "
-        "ON CONFLICT(wallet) DO UPDATE SET last_ms = excluded.last_ms",
-        (wallet, last_ms),
+        "INSERT INTO fills_coverage (wallet, first_ms, last_ms, fetched_ms) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(wallet) DO UPDATE SET first_ms = excluded.first_ms, last_ms = excluded.last_ms, "
+        "fetched_ms = excluded.fetched_ms",
+        (wallet, first_ms, last_ms, fetched_ms),
     )
     conn.commit()
 
 
 def insert_fills(conn: sqlite3.Connection, wallet: str, fills: List[Dict[str, Any]]) -> int:
-    """INSERT OR IGNORE: the composite key dedupes retried/overlapping fetches.
-    Two genuinely distinct fills for the same wallet at the same millisecond,
-    same coin, same side, same size and same price would collide and the
-    second would be dropped; this is a documented, accepted approximation
-    (see README) since HL fills carry no other stable id in our Fill
-    contract."""
-    n = 0
-    for f in fills:
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO fills "
-            "(wallet, time_ms, coin, px, sz, side, dir, start_position, closed_pnl, fee) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                wallet, int(f["time_ms"]), f["coin"], float(f["px"]), float(f["sz"]),
-                f["side"], f.get("dir"), float(f["start_position"]),
-                float(f.get("closed_pnl", 0.0)), float(f.get("fee", 0.0)),
-            ),
-        )
-        n += cur.rowcount
+    """INSERT OR IGNORE: the composite key dedupes overlapping fetches. It
+    includes start_position: a TWAP/iceberg leader produces many fills at
+    the same ms, size and price, and without it those collapsed into one
+    (the v1 `fills` table). Two fills can now only collide if they also
+    started from the identical position, which a real fill sequence can't
+    do (each fill moves the position)."""
+    rows = [
+        (wallet, int(f["time_ms"]), f["coin"], float(f["px"]), float(f["sz"]), f["side"],
+         f.get("dir"), float(f["start_position"]), float(f.get("closed_pnl", 0.0)),
+         float(f.get("fee", 0.0)))
+        for f in fills
+    ]
+    before = conn.total_changes
+    conn.executemany(
+        "INSERT OR IGNORE INTO fills_v2 "
+        "(wallet, time_ms, coin, px, sz, side, dir, start_position, closed_pnl, fee) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
     conn.commit()
-    return n
+    return conn.total_changes - before
 
 
 def get_cached_fills(conn: sqlite3.Connection, wallet: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
     rows = conn.execute(
-        "SELECT * FROM fills WHERE wallet = ? AND time_ms >= ? AND time_ms <= ? ORDER BY time_ms ASC",
+        "SELECT * FROM fills_v2 WHERE wallet = ? AND time_ms >= ? AND time_ms <= ? ORDER BY time_ms ASC",
         (wallet, start_ms, end_ms),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -146,62 +214,66 @@ def get_cached_fills(conn: sqlite3.Connection, wallet: str, start_ms: int, end_m
 # ── candles ───────────────────────────────────────────────────────────────
 
 def insert_candles(conn: sqlite3.Connection, coin: str, interval: str, rows: List[Dict[str, Any]]) -> int:
-    n = 0
-    for r in rows:
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO candles (coin, interval, t_ms, o, h, l, c, v) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (coin, interval, int(r["t_ms"]), float(r["o"]), float(r["h"]), float(r["l"]),
-             float(r["c"]), float(r.get("v", 0.0))),
-        )
-        n += cur.rowcount
+    """INSERT OR REPLACE: the newest bar is still forming when fetched and a
+    later fetch must overwrite it with its final values."""
+    data = [(coin, interval, int(r["t_ms"]), float(r["o"]), float(r["h"]), float(r["l"]),
+             float(r["c"]), float(r.get("v", 0.0))) for r in rows]
+    conn.executemany(
+        "INSERT OR REPLACE INTO candles (coin, interval, t_ms, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        data)
     conn.commit()
-    return n
+    return len(data)
 
 
-def get_cached_candles(conn: sqlite3.Connection, coin: str, interval: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
+def get_cached_candles(conn: sqlite3.Connection, coin: str, interval: str, start_ms: int,
+                       end_ms: int) -> List[Dict[str, Any]]:
     rows = conn.execute(
-        "SELECT * FROM candles WHERE coin = ? AND interval = ? AND t_ms >= ? AND t_ms <= ? ORDER BY t_ms ASC",
+        "SELECT t_ms, o, h, l, c, v FROM candles WHERE coin = ? AND interval = ? AND t_ms >= ? AND t_ms <= ? "
+        "ORDER BY t_ms ASC",
         (coin, interval, start_ms, end_ms),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def candle_coverage_gaps(conn: sqlite3.Connection, coin: str, interval: str, start_ms: int,
-                          end_ms: int, step_ms: int) -> List[tuple[int, int]]:
-    """Return a minimal list of [start, end] sub-ranges within [start_ms, end_ms]
-    that are NOT fully covered by cached candles, so callers only fetch what's
-    missing. Deterministic set-difference over expected bar timestamps."""
-    have = {
-        int(r["t_ms"]) for r in conn.execute(
-            "SELECT t_ms FROM candles WHERE coin = ? AND interval = ? AND t_ms >= ? AND t_ms <= ?",
-            (coin, interval, start_ms, end_ms),
-        ).fetchall()
-    }
-    expected = range(start_ms, end_ms + 1, step_ms)
-    missing = [t for t in expected if t not in have]
-    if not missing:
-        return []
-    gaps: List[tuple[int, int]] = []
-    gap_start = missing[0]
-    prev = missing[0]
-    for t in missing[1:]:
-        if t - prev > step_ms:
-            gaps.append((gap_start, prev))
-            gap_start = t
-        prev = t
-    gaps.append((gap_start, prev))
-    return gaps
+def get_candle_coverage(conn: sqlite3.Connection, coin: str, interval: str) -> List[Tuple[int, int]]:
+    rows = conn.execute("SELECT start_ms, end_ms FROM candle_coverage WHERE coin = ? AND interval = ? "
+                        "ORDER BY start_ms", (coin, interval)).fetchall()
+    return [(int(r["start_ms"]), int(r["end_ms"])) for r in rows]
+
+
+def add_candle_coverage(conn: sqlite3.Connection, coin: str, interval: str, start_ms: int, end_ms: int,
+                        join_gap: int = 1) -> None:
+    if end_ms < start_ms:
+        return
+    merged = merge_ranges(get_candle_coverage(conn, coin, interval) + [(start_ms, end_ms)], join_gap=join_gap)
+    conn.execute("DELETE FROM candle_coverage WHERE coin = ? AND interval = ?", (coin, interval))
+    conn.executemany("INSERT INTO candle_coverage (coin, interval, start_ms, end_ms) VALUES (?, ?, ?, ?)",
+                     [(coin, interval, a, b) for a, b in merged])
+    conn.commit()
+
+
+# ── kv (leaderboard snapshot) ─────────────────────────────────────────────
+
+def kv_get(conn: sqlite3.Connection, k: str) -> Optional[Tuple[int, Any]]:
+    row = conn.execute("SELECT ts_ms, v FROM kv WHERE k = ?", (k,)).fetchone()
+    return (int(row["ts_ms"]), json.loads(row["v"])) if row else None
+
+
+def kv_set(conn: sqlite3.Connection, k: str, ts_ms: int, v: Any) -> None:
+    conn.execute("INSERT INTO kv (k, ts_ms, v) VALUES (?, ?, ?) "
+                 "ON CONFLICT(k) DO UPDATE SET ts_ms = excluded.ts_ms, v = excluded.v",
+                 (k, ts_ms, json.dumps(v)))
+    conn.commit()
 
 
 # ── runs ──────────────────────────────────────────────────────────────────
 
 def create_run(conn: sqlite3.Connection, run_id: str, started_ms: int, sim_equity_usd: float,
-               top_n: int, sim_settings_json: str) -> None:
+               top_n: int, sim_settings_json: str, params_json: str = "{}") -> None:
     conn.execute(
         "INSERT INTO runs (run_id, started_ms, status, sim_equity_usd, top_n, sim_settings_json, "
-        "candidates, scored) VALUES (?, ?, 'running', ?, ?, ?, 0, 0)",
-        (run_id, started_ms, sim_equity_usd, top_n, sim_settings_json),
+        "candidates, scored, heartbeat_ms, params_json) VALUES (?, ?, 'running', ?, ?, ?, 0, 0, ?, ?)",
+        (run_id, started_ms, sim_equity_usd, top_n, sim_settings_json, started_ms, params_json),
     )
     conn.commit()
 
@@ -238,3 +310,7 @@ def get_results(conn: sqlite3.Connection, run_id: str) -> List[Dict[str, Any]]:
 def latest_run_id(conn: sqlite3.Connection) -> Optional[str]:
     row = conn.execute("SELECT run_id FROM runs ORDER BY started_ms DESC LIMIT 1").fetchone()
     return row["run_id"] if row else None
+
+
+def running_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    return [dict(r) for r in conn.execute("SELECT * FROM runs WHERE status = 'running'").fetchall()]

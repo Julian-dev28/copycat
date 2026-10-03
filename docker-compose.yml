@@ -1,4 +1,4 @@
-# copycat: api + engine worker + web.
+# copycat: api + engine worker + scout scheduler + web.
 #   cp .env.example .env   # fill COPYCAT_ACCOUNT_ADDRESS, COPYCAT_AGENT_KEY, optionally COPYCAT_API_TOKEN
 #   docker compose up -d --build
 # Only the engine signs, so only the engine gets .env (and COPYCAT_AGENT_KEY). The api gets an
@@ -49,6 +49,19 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  scout:
+    <<: *python
+    # Scout board builder (docs/research/copytrading_page_spec.md section 7.2): the single writer
+    # of the scout_* tables in /data/discovery.db. Read-only on Hyperliquid, so no env_file and no
+    # COPYCAT_AGENT_KEY. COPYCAT_HL_PRIORITY=background: it only spends the shared HL rate bucket
+    # down to the engine's reserve, so its ~15k weight/hour never starves the engine.
+    command: ["python", "-m", "discovery.scout", "serve"]
+    environment:
+      COPYCAT_DATA_DIR: /data
+      COPYCAT_HL_PRIORITY: background
+      COPYCAT_NETWORK: ${COPYCAT_NETWORK:-mainnet}
+      COPYCAT_LOG_LEVEL: ${COPYCAT_LOG_LEVEL:-INFO}
 
   web:
     build:

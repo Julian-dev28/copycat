@@ -1,218 +1,241 @@
-"""Orchestrates one discovery run end to end: pull candidates from the
-leaderboard, sync each wallet's fills cache, reconstruct his positions,
-run the copy-sim against engine.sizing, score, persist.
+"""One discovery run end to end: leaderboard -> per wallet (fills, perp
+filter, poll coalescing, reconstruct, HFT gate, candles for trip spans,
+copy-sim, score) -> persist.
 
-Rate-limit aware per the task spec: hl owns the actual limiter, this module
-just logs progress (n/total, ETA) so a 50-wallet run doesn't look stuck.
-ETA/rate math is plain arithmetic in `_eta` -- deterministic, not eyeballed.
+Wallets run on a small thread pool (WORKERS). The HL budget is the real
+bottleneck and hl's shared limiter paces every call; the pool only hides
+round-trip latency (~0.3-2s per call) behind other wallets' calls. Each
+thread has its own sqlite connection; candle fetches for one coin are
+serialized by a per-coin lock so two wallets never fetch the same bars.
+
+Progress: `runs.scored / runs.candidates` plus `runs.heartbeat_ms`, updated
+after every wallet. The CLI turns those into an ETA (no contract change).
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
+import threading
 import time
-from typing import Any, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
-from contracts.models import DiscoveryRun, Settings, TraderScore
+from contracts.models import LeverageMode, Settings, TraderScore
 from contracts.venue import Venue
 
-from . import db, fills_cache, leaderboard, positions, scoring, sim
+from . import candles_cache, config, db, fills_cache, leaderboard, positions, scoring, sim
 
 logger = logging.getLogger(__name__)
 
 DAY_MS = 86_400_000
 HFT_OPENS_PER_DAY = 100.0
+WORKERS = 4
+FILLS_RETRY_S = 3.0
 
 
 def _default_sizing() -> Any:
-    """Lazy import: discovery must not hard-depend on services/engine at
-    module import time (so discovery's own tests/CLI --help work even if
-    engine isn't on disk), only when a run actually executes."""
-    from engine import sizing as engine_sizing
+    from engine import sizing as engine_sizing   # lazy: discovery imports without engine on disk
     return engine_sizing
 
 
-def _eta(done: int, total: int, elapsed_s: float) -> float:
-    if done <= 0 or total <= 0:
-        return 0.0
-    rate = done / elapsed_s if elapsed_s > 0 else 0.0
-    remaining = max(0, total - done)
-    return remaining / rate if rate > 0 else 0.0
+def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
+    """Seconds left at the average rate so far. None before the first wallet."""
+    if done <= 0 or total <= 0 or elapsed_s <= 0:
+        return None
+    return max(0, total - done) * (elapsed_s / done)
 
 
-def score_one_wallet(
-    conn: sqlite3.Connection,
-    venue: Venue,
-    candidate: "leaderboard.Candidate",
-    settings: Settings,
-    sim_equity_usd: float,
-    window_days: int,
-    sizing_module: Any,
-    now_ms: Optional[int] = None,
-) -> TraderScore:
-    """Fetch/cache fills, reconstruct, simulate, score one wallet. Never
-    raises for a per-wallet data problem -- a wallet that can't be scored
-    comes back with a reason in `flags` instead (every candidate must end
-    up scored or flagged, per the live eval's pass criteria)."""
-    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-    window_start_ms = now_ms - window_days * DAY_MS
-    effective = settings.for_leader(candidate.address)
+@dataclass
+class RunOptions:
+    window_days: int = config.DEFAULT_WINDOW_DAYS
+    min_account_value_usd: float = config.DEFAULT_MIN_ACCOUNT_VALUE_USD
+    min_volume_30d_usd: float = config.DEFAULT_MIN_VOLUME_30D_USD
+    include_hft: bool = False
+    fresh_s: float = config.CACHE_FRESH_S
+    leaderboard_ttl_s: float = config.LEADERBOARD_TTL_S
+    workers: int = WORKERS
 
-    flags = list(candidate.flags)
-    try:
-        fills = fills_cache.sync_fills(conn, venue, candidate.address, window_days, now_ms)
-    except Exception as exc:
-        logger.warning("discovery: fills sync failed for %s: %s", candidate.address, exc)
-        return _flagged_score(candidate, flags + [f"error:fills:{type(exc).__name__}"])
+    def to_json(self) -> str:
+        return json.dumps(self.__dict__)
 
-    by_coin = positions.reconstruct(fills)
-    opens_per_day = positions.opens_per_day(by_coin, window_days)
-    median_hold, _ = positions.median_hold_hours(by_coin)
-    coins = positions.coins_traded(by_coin)
+    @classmethod
+    def from_json(cls, s: Optional[str]) -> "RunOptions":
+        try:
+            d = json.loads(s or "{}")
+        except ValueError:
+            d = {}
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
-    if opens_per_day > HFT_OPENS_PER_DAY:
-        flags.append("hft")
 
-    events = positions.merged_timeline(by_coin)
-    if not events:
-        return _flagged_score(candidate, flags + ["too_few_trades"], fills_30d=len(fills),
-                               opens_per_day=opens_per_day, median_hold_h=median_hold, coins=coins)
+@dataclass
+class WalletTrace:
+    """What happened to one wallet, for the CLI's --trace and the sanity check."""
+    lines: List[str] = field(default_factory=list)
 
-    leader_leverage_by_coin = _leader_leverage_by_coin(venue, candidate.address, coins)
+    def __call__(self, line: str) -> None:
+        self.lines.append(line)
 
-    try:
-        result = sim.simulate_wallet(
-            conn=conn, venue=venue, events=events, leader_equity_usd=candidate.account_value_usd,
-            leader_leverage_by_coin=leader_leverage_by_coin, settings=effective,
-            sim_equity_usd=sim_equity_usd, window_start_ms=window_start_ms, window_end_ms=now_ms,
-            sizing=sizing_module,
-        )
-    except Exception as exc:
-        logger.warning("discovery: sim failed for %s: %s", candidate.address, exc)
-        return _flagged_score(candidate, flags + [f"error:sim:{type(exc).__name__}"], fills_30d=len(fills),
-                               opens_per_day=opens_per_day, median_hold_h=median_hold, coins=coins)
 
-    if result.flags:
-        logger.debug("discovery: %s sim flags (skips/liquidations, not all bubbled to TraderScore): %s",
-                      candidate.address, result.flags)
-    # TraderScore.flags stays high-level (hft/vault/too_few_trades/liquidated) per the contract's own
-    # examples; per-event skip noise (worse_entry/margin_room/max_open_copies/no_candle_data) is already
-    # reflected quantitatively via sim_copies/sim_skipped_min_order and is logged above for debugging.
-    flags.extend(f for f in result.flags if f.split(":")[0] == "liquidated")
-    scored = scoring.score_candidate(result.sim_return_pct, result.sim_max_drawdown_pct,
-                                      result.sim_liquidations, result.sim_copies)
-    flags.extend(scored.flags)
-
+def _flagged(c: "leaderboard.Candidate", flags: List[str], fills_n: int = 0, opd: float = 0.0,
+             hold: Optional[float] = None, coins: Optional[List[str]] = None) -> TraderScore:
+    """A wallet we did not simulate: lowest band, with the reason in flags."""
     return TraderScore(
-        address=candidate.address,
-        display_name=candidate.display_name,
-        account_value_usd=candidate.account_value_usd,
-        pnl_30d_usd=candidate.pnl_30d_usd,
-        roi_30d_pct=candidate.roi_30d_pct,
-        pnl_all_time_usd=candidate.pnl_all_time_usd,
-        volume_30d_usd=candidate.volume_30d_usd,
-        fills_30d=len(fills),
-        opens_per_day=opens_per_day,
-        median_hold_h=median_hold,
-        coins=coins,
-        sim_return_pct=result.sim_return_pct,
-        sim_max_drawdown_pct=result.sim_max_drawdown_pct,
-        sim_liquidations=result.sim_liquidations,
-        sim_copies=result.sim_copies,
-        sim_skipped_min_order=result.sim_skipped_min_order,
-        sim_fees_usd=result.sim_fees_usd,
-        score=scored.score,
-        flags=sorted(set(flags)),
+        address=c.address, display_name=c.display_name, account_value_usd=c.account_value_usd,
+        pnl_30d_usd=c.pnl_30d_usd, roi_30d_pct=c.roi_30d_pct, pnl_all_time_usd=c.pnl_all_time_usd,
+        volume_30d_usd=c.volume_30d_usd, fills_30d=fills_n, opens_per_day=opd, median_hold_h=hold,
+        coins=coins or [], sim_return_pct=0.0, sim_max_drawdown_pct=0.0, sim_liquidations=0, sim_copies=0,
+        sim_skipped_min_order=0, sim_fees_usd=0.0, score=scoring.UNSCORED, flags=sorted(set(flags)),
     )
 
 
-def _flagged_score(candidate: "leaderboard.Candidate", flags: List[str], fills_30d: int = 0,
-                    opens_per_day: float = 0.0, median_hold_h: Optional[float] = None,
-                    coins: Optional[List[str]] = None) -> TraderScore:
-    """A candidate we could not simulate (no in-window events, or a data
-    error) still comes back scored -- at the floor, heavily flagged -- so
-    the pipeline's contract ("every candidate scored or flagged") holds."""
-    return TraderScore(
-        address=candidate.address, display_name=candidate.display_name,
-        account_value_usd=candidate.account_value_usd, pnl_30d_usd=candidate.pnl_30d_usd,
-        roi_30d_pct=candidate.roi_30d_pct, pnl_all_time_usd=candidate.pnl_all_time_usd,
-        volume_30d_usd=candidate.volume_30d_usd, fills_30d=fills_30d, opens_per_day=opens_per_day,
-        median_hold_h=median_hold_h, coins=coins or [], sim_return_pct=0.0, sim_max_drawdown_pct=0.0,
-        sim_liquidations=0, sim_copies=0, sim_skipped_min_order=0, sim_fees_usd=0.0,
-        score=-1e9, flags=sorted(set(flags)),
-    )
+def _sync_fills_retry(conn: sqlite3.Connection, venue: Venue, address: str, opts: RunOptions,
+                      now_ms: int) -> List[Dict[str, Any]]:
+    try:
+        return fills_cache.sync_fills(conn, venue, address, opts.window_days, now_ms, opts.fresh_s)
+    except fills_cache.FillsFetchError:
+        time.sleep(FILLS_RETRY_S)
+        return fills_cache.sync_fills(conn, venue, address, opts.window_days, now_ms, opts.fresh_s)
 
 
-def _leader_leverage_by_coin(venue: Venue, address: str, coins: List[str]) -> dict:
-    """Current per-coin leverage snapshot (documented approximation: his
-    leverage at each historical fill time isn't recoverable from fills
-    alone). Falls back to the coin's own max leverage -- in match mode that
-    degrades to "max" mode for a coin he's since closed -- when he has no
-    open position in it right now."""
-    out: dict = {}
+def _leader_leverage(venue: Venue, address: str, settings: Settings, coins: List[str]) -> Dict[str, float]:
+    """Only leverage_mode=match needs his leverage (a CURRENT snapshot; his
+    leverage at each historical fill is not recoverable). Every other mode
+    ignores it, so no account_state read is spent."""
+    if settings.leverage_mode != LeverageMode.match:
+        return {}
     try:
         state = venue.account_state(address)
     except Exception:
         state = None
-    positions_now = (state or {}).get("positions", {}) if state else {}
-    for coin in coins:
-        pos = positions_now.get(coin)
-        out[coin] = float(pos["lev"]) if pos else float(max(1, venue.max_leverage(coin) or 1))
-    return out
+    now = (state or {}).get("positions", {}) or {}
+    return {c: float(now[c]["lev"]) for c in coins if c in now}
 
 
-def execute(
-    conn: sqlite3.Connection,
-    venue: Venue,
-    run_id: str,
-    settings: Settings,
-    sim_equity_usd: float,
-    top_n: int,
-    window_days: int = 30,
-    min_account_value_usd: float = 10_000.0,
-    min_volume_30d_usd: float = 50_000.0,
-    sizing_module: Optional[Any] = None,
-    progress_cb: Optional[Any] = None,
-) -> None:
-    """Runs synchronously in the caller's thread (discovery.public wraps
-    this in a background thread so only one run is ever in flight)."""
-    sizing_module = sizing_module or _default_sizing()
-    started = time.time()
+def score_one_wallet(conn: sqlite3.Connection, venue: Venue, c: "leaderboard.Candidate", settings: Settings,
+                     sim_equity_usd: float, opts: RunOptions, sizing_module: Any, now_ms: int,
+                     stats: Optional[Dict[str, int]] = None, trace: Optional[WalletTrace] = None) -> TraderScore:
+    """Never raises for a per-wallet data problem: every wallet comes back
+    scored, or in the lowest band with the reason in flags."""
+    ws = now_ms - opts.window_days * DAY_MS
+    es = settings.for_leader(c.address)
+    flags = list(c.flags)
+
     try:
-        candidates = leaderboard.pull_candidates(venue, min_account_value_usd, min_volume_30d_usd, top_n)
+        fills = _sync_fills_retry(conn, venue, c.address, opts, now_ms)
+    except fills_cache.FillsFetchError:
+        return _flagged(c, flags + ["error:fills_read_failed"])
+
+    perp, other = positions.split_perp(fills)
+    if other:
+        flags.append("non_perp_ignored")
+    coalesced = positions.coalesce_by_poll(perp, int(es.poll_interval_s * 1000))
+    by_coin = positions.reconstruct(coalesced)
+    opd = positions.opens_per_day(by_coin, opts.window_days)
+    hold, _ = positions.median_hold_hours(by_coin)
+    coins = positions.coins_traded(by_coin)
+    n_fills = len(fills)
+
+    if opd > HFT_OPENS_PER_DAY:
+        flags.append("hft")
+        if not opts.include_hft:
+            return _flagged(c, flags + ["hft_not_simulated"], n_fills, opd, hold, coins)
+
+    events = positions.merged_timeline(by_coin)
+    spans = positions.trip_spans(by_coin, now_ms)
+    if not spans:
+        return _flagged(c, flags + ["too_few_trades"], n_fills, opd, hold, coins)
+
+    series: Dict[str, candles_cache.Series] = {}
+    max_lev: Dict[str, int] = {}
+    for coin, sp in spans.items():
+        max_lev[coin] = int(venue.max_leverage(coin) or 0)
+        if max_lev[coin] < 1:
+            continue   # sim flags it; no candles needed for a coin it will never open
+        series[coin], ok = candles_cache.build_series(conn, venue, coin, sp, now_ms, opts.fresh_s, stats)
+        if not ok:
+            flags.append(f"candles_partial:{coin}")
+
+    try:
+        r = sim.simulate_wallet(events=[e for e in events if e.time_ms >= ws], series=series,
+                                coin_max_lev=max_lev, leader_equity_usd=c.account_value_usd,
+                                leader_leverage_by_coin=_leader_leverage(venue, c.address, es, coins),
+                                settings=es, sim_equity_usd=sim_equity_usd, window_end_ms=now_ms,
+                                sizing=sizing_module, trace=trace)
+    except Exception as exc:
+        logger.warning("discovery: sim failed for %s: %s", c.address, exc, exc_info=True)
+        return _flagged(c, flags + [f"error:sim:{type(exc).__name__}"], n_fills, opd, hold, coins)
+
+    flags.extend(sorted({f for f in r.flags if f.startswith(("liquidated:", "max_leverage_unknown:"))}))
+    sc = scoring.score_candidate(r.sim_return_pct, r.sim_max_drawdown_pct, r.sim_liquidations, r.sim_copies)
+    flags.extend(sc.flags)
+    return TraderScore(
+        address=c.address, display_name=c.display_name, account_value_usd=c.account_value_usd,
+        pnl_30d_usd=c.pnl_30d_usd, roi_30d_pct=c.roi_30d_pct, pnl_all_time_usd=c.pnl_all_time_usd,
+        volume_30d_usd=c.volume_30d_usd, fills_30d=n_fills, opens_per_day=opd, median_hold_h=hold,
+        coins=coins, sim_return_pct=round(r.sim_return_pct, 4),
+        sim_max_drawdown_pct=round(r.sim_max_drawdown_pct, 4), sim_liquidations=r.sim_liquidations,
+        sim_copies=r.sim_copies, sim_skipped_min_order=r.sim_skipped_min_order,
+        sim_fees_usd=round(r.sim_fees_usd, 6), score=round(sc.score, 6), flags=sorted(set(flags)),
+    )
+
+
+def execute(conn: sqlite3.Connection, venue: Venue, run_id: str, settings: Settings, sim_equity_usd: float,
+            top_n: int, opts: Optional[RunOptions] = None, sizing_module: Optional[Any] = None,
+            db_path: Optional[Any] = None,
+            progress_cb: Optional[Callable[[int, int, Optional[float]], None]] = None) -> None:
+    """Runs synchronously in the caller's thread. `db_path`: where worker
+    threads open their own connections (defaults to config.DB_PATH)."""
+    opts = opts or RunOptions()
+    sizing_module = sizing_module or _default_sizing()
+    db_path = db_path or config.DB_PATH
+    started = time.time()
+    now_ms = int(started * 1000)
+    try:
+        candidates = leaderboard.pull_candidates_cached(conn, venue, opts.min_account_value_usd,
+                                                        opts.min_volume_30d_usd, top_n, now_ms,
+                                                        opts.leaderboard_ttl_s)
     except Exception as exc:
         logger.error("discovery run %s: leaderboard pull failed: %s", run_id, exc)
         db.update_run(conn, run_id, status="failed", finished_ms=int(time.time() * 1000),
-                       error=f"leaderboard pull failed: {exc}")
+                      error=f"leaderboard pull failed: {exc}")
         return
 
-    db.update_run(conn, run_id, candidates=len(candidates))
     total = len(candidates)
-    scored = 0
-    now_ms = int(time.time() * 1000)
-    # Rough call budget: 1 fills() call + 1 account_state() call per wallet at minimum, plus
-    # paginated fills() and batched-per-coin candles() as needed. hl owns the actual rate limiter
-    # (it sleeps/retries internally); this is just an operator-visible sanity number so a top_n=50
-    # run's wall-clock ETA below isn't a surprise.
-    logger.info("discovery run %s: %d candidates pulled, simulating (hl rate-limits network calls "
-                "internally; progress below)", run_id, total)
+    db.update_run(conn, run_id, candidates=total, heartbeat_ms=int(time.time() * 1000))
+    logger.info("discovery run %s: %d candidates (leaderboard %.1fs)", run_id, total, time.time() - started)
+    stats: Dict[str, int] = {}
+    lock = threading.Lock()
+    done = 0
 
-    for i, candidate in enumerate(candidates, start=1):
+    def work(c: "leaderboard.Candidate") -> TraderScore:
+        wconn = db.connect(db_path)
+        t0 = time.time()
         try:
-            result = score_one_wallet(conn, venue, candidate, settings, sim_equity_usd, window_days,
-                                       sizing_module, now_ms=now_ms)
-        except Exception as exc:  # belt-and-suspenders: one bad wallet must never kill the run
-            logger.warning("discovery run %s: wallet %s failed uncaught: %s", run_id, candidate.address, exc)
-            result = _flagged_score(candidate, [f"error:uncaught:{type(exc).__name__}"])
+            res = score_one_wallet(wconn, venue, c, settings, sim_equity_usd, opts, sizing_module, now_ms, stats)
+        except Exception as exc:   # one bad wallet must never kill the run
+            logger.warning("discovery run %s: %s failed uncaught: %s", run_id, c.address, exc, exc_info=True)
+            res = _flagged(c, [f"error:uncaught:{type(exc).__name__}"])
+        logger.info("discovery run %s: %s scored in %.1fs (fills=%d copies=%d)", run_id, c.address,
+                    time.time() - t0, res.fills_30d, res.sim_copies)
+        return res
 
-        db.save_result(conn, run_id, result.address, result.score, result.model_dump_json())
-        scored += 1
-        db.update_run(conn, run_id, scored=scored)
+    with ThreadPoolExecutor(max_workers=max(1, opts.workers), thread_name_prefix="discovery") as pool:
+        futs = [pool.submit(work, c) for c in candidates]
+        for fut in as_completed(futs):
+            res = fut.result()
+            with lock:
+                db.save_result(conn, run_id, res.address, res.score, res.model_dump_json())
+                done += 1
+                db.update_run(conn, run_id, scored=done, heartbeat_ms=int(time.time() * 1000))
+                eta = eta_s(done, total, time.time() - started)
+                logger.info("discovery run %s: %d/%d scored, eta=%s", run_id, done, total,
+                            "?" if eta is None else f"{eta:.0f}s")
+                if progress_cb:
+                    progress_cb(done, total, eta)
 
-        elapsed = time.time() - started
-        eta_s = _eta(i, total, elapsed)
-        logger.info("discovery run %s: %d/%d wallets scored, eta=%.0fs", run_id, i, total, eta_s)
-        if progress_cb:
-            progress_cb(i, total, eta_s)
-
-    db.update_run(conn, run_id, status="done", finished_ms=int(time.time() * 1000))
+    db.update_run(conn, run_id, status="done", finished_ms=int(time.time() * 1000),
+                  heartbeat_ms=int(time.time() * 1000))
+    logger.info("discovery run %s: done in %.1fs, %d candle calls", run_id, time.time() - started,
+                stats.get("candle_calls", 0))

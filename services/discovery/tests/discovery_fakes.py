@@ -15,6 +15,9 @@ class FakeVenue:
         self._max_lev: Dict[str, int] = {}
         self.fills_calls: List[tuple] = []
         self.candles_calls: List[tuple] = []
+        self.fail_fills: set = set()       # wallets whose fills() read fails (None)
+        self.fail_candles: set = set()     # coins whose candles() read fails (None)
+        self.account_state_calls = 0
 
     # ── fixture setters ─────────────────────────────────────────────────
     def set_leaderboard(self, rows: Optional[List[Dict[str, Any]]]) -> None:
@@ -34,6 +37,7 @@ class FakeVenue:
 
     # ── Venue protocol ───────────────────────────────────────────────────
     def account_state(self, user: str) -> Optional[Dict[str, Any]]:
+        self.account_state_calls += 1
         return self._account_state.get(user)
 
     def extras(self, user: str) -> Optional[Dict[str, Any]]:
@@ -43,6 +47,8 @@ class FakeVenue:
         return 0.0
 
     def max_leverage(self, coin: str) -> int:
+        if not coin[:1].isalpha():
+            return 0
         return self._max_lev.get(coin, 20)
 
     def is_isolated_only(self, coin: str) -> bool:
@@ -53,6 +59,8 @@ class FakeVenue:
 
     def fills(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
         self.fills_calls.append((user, start_ms, end_ms))
+        if user in self.fail_fills:
+            return None
         rows = self._fills.get(user, [])
         return [f for f in rows if start_ms <= f["time_ms"] <= end_ms]
 
@@ -61,9 +69,10 @@ class FakeVenue:
 
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
         self.candles_calls.append((coin, interval, start_ms, end_ms))
+        if coin in self.fail_candles or not coin[:1].isalpha():
+            return None   # HL 500s on spot/outcome ids like "@151" / "#12100"
         rows = self._candles.get((coin, interval), [])
-        out = [c for c in rows if start_ms <= c["t"] <= end_ms]
-        return out or None
+        return [dict(c) for c in rows if start_ms <= c["t"] <= end_ms]
 
     def set_leverage(self, coin: str, leverage: int, is_cross: bool):
         raise NotImplementedError("discovery never writes")

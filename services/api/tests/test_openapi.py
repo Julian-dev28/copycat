@@ -42,8 +42,32 @@ def test_openapi_has_every_documented_route() -> None:
         ("POST", "/api/discovery/runs"),
         ("GET", "/api/discovery/runs/latest"),
         ("GET", "/api/discovery/runs/{run_id}"),
+        ("GET", "/api/scout/traders"),
+        ("GET", "/api/scout/traders/{address}"),
+        ("GET", "/api/scout/traders/{address}/fills"),
+        ("GET", "/api/scout/traders/{address}/orders"),
+        ("POST", "/api/scout/traders/{address}/what-if"),
+        ("GET", "/api/scout/presets"),
+        ("GET", "/api/scout/status"),
+        ("POST", "/api/scout/refresh"),
+        ("GET", "/api/scout/traders/{address}/fingerprint"),
+        ("GET", "/api/scout/traders/{address}/trades"),
+        ("GET", "/api/scout/traders/{address}/thesis"),
+        ("PUT", "/api/scout/traders/{address}/thesis"),
+        ("GET", "/api/market/candles"),
     }
     actual = {
         (method.upper(), path) for path, methods in paths.items() for method in methods
     }
     assert expected <= actual, expected - actual
+
+
+def test_scout_list_query_params_are_documented() -> None:
+    """The web generates its filter types from these; every section 5 param
+    must show up as a query parameter, and the profile route documents 202."""
+    schema = build_schema()
+    params = {p["name"] for p in schema["paths"]["/api/scout/traders"]["get"]["parameters"]}
+    assert {"window", "preset", "coin", "min_av", "max_av", "min_pnl", "max_pnl", "style",
+            "min_fit", "max_fit", "max_dd", "min_trips", "active_within_h", "hide_flagged",
+            "q", "sort", "order", "limit", "offset"} <= params
+    assert "202" in schema["paths"]["/api/scout/traders/{address}"]["get"]["responses"]

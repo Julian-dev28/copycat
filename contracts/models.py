@@ -399,6 +399,30 @@ class ScoutStatus(BaseModel):
     error: Optional[str] = None
 
 
+class OpenOrderView(BaseModel):          # v3.1: display shape of a trader's resting order (GET .../orders)
+    oid: int
+    coin: str
+    side: Literal["B", "A"]               # B = bid (buy), A = ask (sell), as in LeaderFillView
+    order_type: str = "Limit"            # HL orderType, e.g. "Limit", "Stop Market", "Take Profit Limit"
+    limit_px: float
+    sz: float                            # remaining
+    orig_sz: float
+    notional_usd: float                  # limit_px * sz
+    reduce_only: bool = False
+    is_trigger: bool = False
+    trigger_px: Optional[float] = None
+    trigger_condition: Optional[str] = None
+    tif: Optional[str] = None            # "Gtc", "Alo", "Ioc"; None for triggers
+    time_ms: int                         # placed at
+
+class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /api/scout/presets)
+    refresh_id: Optional[str] = None     # the scout_rows refresh these counts come from
+    coins: List[str] = Field(default_factory=list)            # chip order, most traders first
+    coin_counts: Dict[str, int] = Field(default_factory=dict)  # coin -> traders with it in top coins
+    hip3_count: int = 0                  # traders with any HIP-3 coin in top coins
+    total: int = 0                       # rows in the "all" tab
+
+
 TraderScore.model_rebuild()
 DiscoveryRun.model_rebuild()
 

@@ -80,3 +80,47 @@ def test_median_hold_hours_none_when_no_complete_trips():
     median, n = median_hold_hours(by_coin)
     assert median is None
     assert n == 0
+
+
+from discovery.positions import (coalesce_by_poll, final_positions, is_perp_coin, split_perp,  # noqa: E402
+                                 trip_spans)
+
+
+def test_perp_filter_drops_spot_and_outcome_ids():
+    """Regression (coordinator bug 1): '#12100' / '@151' reached candleSnapshot and 500'd."""
+    assert is_perp_coin("BTC") and is_perp_coin("xyz:DRAM") and is_perp_coin("kPEPE")
+    assert not is_perp_coin("@151") and not is_perp_coin("#12100") and not is_perp_coin("PURR/USDC")
+    perp, other = split_perp([fill(1, "BTC", 1, 1, "B", 0), fill(2, "#12100", 1, 1, "B", 0)])
+    assert [f["coin"] for f in perp] == ["BTC"] and [f["coin"] for f in other] == ["#12100"]
+
+
+def test_coalesce_merges_fills_inside_one_poll_into_one_net_delta():
+    fills = [fill(1_000, "BTC", 100.0, 1.0, "B", 0.0),
+             fill(2_000, "BTC", 102.0, 1.0, "B", 1.0),
+             fill(4_000, "BTC", 101.0, 0.5, "A", 2.0),
+             fill(6_000, "BTC", 99.0, 1.0, "A", 1.5)]
+    out = coalesce_by_poll(fills, 5_000)
+    assert len(out) == 2
+    first = out[0]
+    assert first["start_position"] == 0.0 and first["side"] == "B" and first["sz"] == pytest.approx(1.5)
+    assert first["px"] == pytest.approx((100 + 102 + 0.5 * 101) / 2.5)
+    events = reconstruct(out)["BTC"]
+    assert [(e.kind, e.start_position, e.end_position) for e in events] == [("open", 0.0, 1.5), ("reduce", 1.5, 0.5)]
+
+
+def test_coalesce_open_and_close_inside_one_poll_is_invisible():
+    fills = [fill(1_000, "ETH", 10.0, 1.0, "B", 0.0), fill(2_000, "ETH", 11.0, 1.0, "A", 1.0)]
+    assert reconstruct(coalesce_by_poll(fills, 5_000)) == {}
+
+
+def test_coalesce_same_ms_ties_use_the_chain_start():
+    fills = [fill(1_000, "BTC", 100.0, 1.0, "B", 1.0), fill(1_000, "BTC", 100.0, 1.0, "B", 0.0)]
+    out = coalesce_by_poll(fills, 5_000)
+    assert out[0]["start_position"] == 0.0 and out[0]["sz"] == 2.0
+
+
+def test_final_positions_and_trip_spans():
+    fills = [fill(0, "BTC", 100.0, 1.0, "B", 0.0), fill(10, "BTC", 100.0, 1.0, "A", 1.0),
+             fill(20, "ETH", 10.0, 2.0, "A", 0.0)]
+    assert final_positions(fills) == {"BTC": 0.0, "ETH": -2.0}
+    assert trip_spans(reconstruct(fills), 99) == {"BTC": [(0, 10)], "ETH": [(20, 99)]}

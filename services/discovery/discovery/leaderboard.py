@@ -100,12 +100,16 @@ def pull_candidates(
     Vaults are kept but flagged "vault" (vault PnL isn't attributable to one
     trader's decisions in the same way; the caller may still want to see them
     ranked, so we don't drop them). HFT flagging (opens/day > 100) needs fill
-    history and happens later, once fills are cached (see discovery.stats).
+    history and happens later, once fills are cached (see discovery.runner).
     """
     raw = venue.leaderboard()
     if not raw:
         return []
+    return filter_rank(raw, min_account_value_usd, min_volume_30d_usd, top_n)
 
+
+def filter_rank(raw: List[Dict[str, Any]], min_account_value_usd: float, min_volume_30d_usd: float,
+                top_n: int) -> List[Candidate]:
     candidates: List[Candidate] = []
     seen: set[str] = set()
     for row in raw:
@@ -125,3 +129,36 @@ def pull_candidates(
 
     candidates.sort(key=lambda c: c.pnl_30d_usd, reverse=True)
     return candidates[:top_n]
+
+
+CACHE_KEY = "leaderboard_rows_v1"
+
+
+def _slim(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The fields _parse_row reads, for rows that could ever pass the
+    positive-PnL filter. ~47k raw rows shrink to a few thousand."""
+    c = _parse_row(row)
+    if c is None or not (c.pnl_30d_usd > 0 and c.pnl_all_time_usd > 0):
+        return None
+    return {"ethAddress": c.address, "accountValue": c.account_value_usd, "displayName": c.display_name,
+            "isVault": c.is_vault,
+            "windowPerformances": [["month", {"pnl": c.pnl_30d_usd, "roi": c.roi_30d_pct / 100.0,
+                                              "vlm": c.volume_30d_usd}],
+                                   ["allTime", {"pnl": c.pnl_all_time_usd}]]}
+
+
+def pull_candidates_cached(conn: Any, venue: Venue, min_account_value_usd: float, min_volume_30d_usd: float,
+                           top_n: int, now_ms: int, ttl_s: float) -> List[Candidate]:
+    """pull_candidates with a ttl_s snapshot in discovery.db. The stats-data
+    leaderboard GET is ~15s for ~47k rows; a re-run inside ttl_s skips it."""
+    from . import db
+    hit = db.kv_get(conn, CACHE_KEY)
+    if hit is not None and ttl_s > 0 and now_ms - hit[0] <= ttl_s * 1000:
+        rows = hit[1]
+    else:
+        raw = venue.leaderboard()
+        if not raw:
+            return []
+        rows = [r for r in (_slim(x) for x in raw) if r is not None]
+        db.kv_set(conn, CACHE_KEY, now_ms, rows)
+    return filter_rank(rows, min_account_value_usd, min_volume_30d_usd, top_n)

@@ -6,10 +6,24 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.config import Config
-from api.deps import get_discovery_client, get_engine_client
+from api.deps import (
+    get_discovery_client,
+    get_engine_client,
+    get_market_client,
+    get_scout_client,
+    get_thesis_client,
+)
+from api.fingerprint_jobs import FingerprintJobs
 from api.main import create_app
 
-from api_fakes import OUR_ADDRESS, FakeDiscoveryClient, FakeEngineClient
+from api_fakes import (
+    OUR_ADDRESS,
+    FakeDiscoveryClient,
+    FakeEngineClient,
+    FakeMarketClient,
+    FakeScoutClient,
+    FakeThesisClient,
+)
 
 TOKEN = "test-token-0123456789abcdef0123456789"   # >= 32 chars, like a real one
 
@@ -55,8 +69,48 @@ def fake_discovery() -> FakeDiscoveryClient:
 
 
 @pytest.fixture
-def app(config: Config, fake_engine: FakeEngineClient, fake_discovery: FakeDiscoveryClient):
+def fake_scout() -> FakeScoutClient:
+    return FakeScoutClient()
+
+
+@pytest.fixture
+def fake_thesis() -> FakeThesisClient:
+    return FakeThesisClient()
+
+
+@pytest.fixture
+def fake_market() -> FakeMarketClient:
+    return FakeMarketClient()
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.t = 1_000_000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+@pytest.fixture
+def clock() -> Clock:
+    return Clock()
+
+
+@pytest.fixture
+def jobs(clock: Clock) -> FingerprintJobs:
+    """No worker thread: tests run queued fingerprints with jobs.drain()."""
+    return FingerprintJobs(autostart=False, clock=clock, max_pending=3)
+
+
+@pytest.fixture
+def app(config: Config, fake_engine: FakeEngineClient, fake_discovery: FakeDiscoveryClient,
+        fake_scout: FakeScoutClient, fake_thesis: FakeThesisClient, fake_market: FakeMarketClient,
+        jobs: FingerprintJobs):
     application = create_app(config)
+    application.state.fingerprint_jobs = jobs
+    application.dependency_overrides[get_thesis_client] = lambda: fake_thesis
+    application.dependency_overrides[get_market_client] = lambda: fake_market
+    application.dependency_overrides[get_scout_client] = lambda: fake_scout
     application.dependency_overrides[get_engine_client] = lambda: fake_engine
     application.dependency_overrides[get_discovery_client] = lambda: fake_discovery
     return application
