@@ -580,6 +580,100 @@ class HlVenue:
             return None
         return raw
 
+    def portfolio(self, user: str) -> Optional[List[Any]]:
+        """POST /info {"type": "portfolio", "user": U}. Weight 20 (HL's
+        default for documented /info types; not in the weight-2 or 60 list).
+
+        Real shape (curled 2026-10-04 for 0xe2823659...df29, trimmed): a
+        list of 8 [window, dict] pairs, windows in this order: day, week,
+        month, allTime, perpDay, perpWeek, perpMonth, perpAllTime.
+
+            [
+              ["day", {
+                "accountValueHistory": [[1790975760052, "2420588.4847900001"],
+                                        [1790984160003, "2492036.7283669999"], ...],  # 13 points
+                "pnlHistory":          [[1790975760052, "0.0"],
+                                        [1790984160003, "71448.243577"], ...],
+                "vlm": "265999.99"
+              }],
+              ["week",    {... 63 points ...}],
+              ["month",   {... 47 points ...}],
+              ["allTime", {"accountValueHistory": [[1741213560044, "0.0"], ...], ...,
+                           "vlm": "174791463.2100000083"}],          # 89 points
+              ["perpDay", {...}], ["perpWeek", {...}], ["perpMonth", {...}], ["perpAllTime", {...}]
+            ]
+
+        Timestamps are int ms; every value (history points and vlm) is a
+        STRING. pnlHistory is cumulative from the window start (first point
+        "0.0"). The non-perp windows include spot; the perp* ones are
+        perp-only. Returned raw; None on a failed read or if the body is not
+        a list of [str, dict] pairs.
+        """
+        try:
+            raw = http_post("/info", {"type": "portfolio", "user": user})
+            if not isinstance(raw, list) or not all(
+                isinstance(p, list) and len(p) == 2 and isinstance(p[0], str) and isinstance(p[1], dict)
+                for p in raw
+            ):
+                logger.error(f"[hl.venue] portfolio: read failed or bad shape for user={user}: "
+                             f"{type(raw).__name__}")
+                return None
+            return raw
+        except Exception as exc:
+            logger.error(f"[hl.venue] portfolio: unexpected failure for user={user}: {exc}")
+            return None
+
+    def open_orders(self, user: str) -> Optional[List[Dict[str, Any]]]:
+        """POST /info {"type": "frontendOpenOrders", "user": U, "dex": D} for
+        main + every dex the active-dex cache says this user is on (the same
+        cache account_state uses; a cold or stale cache means every dex).
+        Weight 20 per dex read.
+
+        Row shape (curled 2026-10-04, main dex):
+            {"coin": "BTC", "side": "A", "limitPx": "89000.0", "sz": "10.0",
+             "oid": 563616501017, "timestamp": 1790954077641,
+             "triggerCondition": "N/A", "isTrigger": false, "triggerPx": "0.0",
+             "children": [], "isPositionTpsl": false, "reduceOnly": false,
+             "orderType": "Limit", "origSz": "10.0", "tif": "Gtc", "cloid": null}
+
+        Rows are raw except `coin`, which is namespaced "dex:COIN" for HIP-3
+        dexes (left alone if HL already prefixed it), matching
+        account_state's position keys. A dex found holding orders is added
+        to the active-dex cache (without resetting the rescan clock), so
+        the next incremental read keeps it. None if ANY dex read fails: a
+        partial list must never look like "no orders".
+
+        Gap: between full rescans (COPYCAT_HL_DEX_RESCAN_S), an order on a
+        dex where the user has no equity, no position, and had no orders at
+        the last scan is not seen until the next full rescan.
+        """
+        try:
+            dexes, _full = _dexes_to_read(user)
+            out: List[Dict[str, Any]] = []
+            with_orders: List[str] = []
+            for dex in dexes:
+                raw = http_post("/info", {"type": "frontendOpenOrders", "user": user, "dex": dex})
+                if not isinstance(raw, list):
+                    logger.error(f"[hl.venue] open_orders: frontendOpenOrders failed for user={user} dex={dex!r}")
+                    return None
+                for o in raw:
+                    if not isinstance(o, dict):
+                        logger.error(f"[hl.venue] open_orders: non-dict row for user={user} dex={dex!r}")
+                        return None
+                    row = dict(o)
+                    c = str(row.get("coin", ""))
+                    row["coin"] = c if (not dex or ":" in c) else f"{dex}:{c}"
+                    out.append(row)
+                if raw and dex:
+                    with_orders.append(dex)
+            if with_orders:
+                known = _active_dexes.setdefault(user, [])
+                known.extend(d for d in with_orders if d not in known)
+            return out
+        except Exception as exc:
+            logger.error(f"[hl.venue] open_orders: unexpected failure for user={user}: {exc}")
+            return None
+
     # ── writes ───────────────────────────────────────────────────────────
 
     def set_leverage(self, coin: str, leverage: int, is_cross: bool) -> Dict[str, Any]:

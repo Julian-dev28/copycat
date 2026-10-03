@@ -26,3 +26,9 @@ addopts = "-m 'not live' -q --import-mode=importlib"
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# Correctness and import hygiene. Style rules like typing.List -> list (UP006)
+# are off: the codebase uses typing generics on purpose, consistently.
+select = ["E9", "F", "B", "I"]
+ignore = ["B008"]   # FastAPI Depends() in defaults is the documented pattern

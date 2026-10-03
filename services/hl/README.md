@@ -3,7 +3,7 @@
 Every Hyperliquid call copycat makes lives here. Public surface: `hl.HlVenue`,
 implementing `contracts.venue.Venue` exactly. The engine and discovery
 services never talk to Hyperliquid directly or import anything from this
-package except that one class.
+package except that one class and the pure parser `hl.leaderboard.parse_rows`.
 
 ```python
 from hl import HlVenue
@@ -15,7 +15,8 @@ state = venue.account_state("0x...")   # None on failure, never raises
 
 | file | owns |
 |---|---|
-| `hl/venue.py` | `HlVenue` -- the contract surface, all 13 `Venue` methods (contract v2) |
+| `hl/venue.py` | `HlVenue` -- the contract surface, all 15 `Venue` methods (contract v3) |
+| `hl/leaderboard.py` | `parse_rows`: pure, string-numbers -> typed leaderboard rows (no network) |
 | `hl/env.py` | network selection (`COPYCAT_NETWORK`), credentials, timeout |
 | `hl/http.py` | shared session, the timeout guard, `http_post` (every read goes through this) |
 | `hl/rate_limit.py` | cross-process file-backed token bucket with engine priority, in-process fallback, the documented per-endpoint weight table |
@@ -231,6 +232,65 @@ list of `[label, dict]` pairs, not an object -- index it with
 `dict(row["windowPerformances"])`. `leaderboard()` returns the raw rows
 unnormalized; `discovery` owns turning this into `contracts.models.TraderScore`.
 
+### `hl.leaderboard.parse_rows(raw) -> List[LeaderboardRow]`
+
+Pure helper (no network) that discovery's Scout pipeline runs on
+`leaderboard()`'s output (or the whole `{"leaderboardRows": [...]}` body):
+
+```python
+{"address": "0x85ec...2052",          # lowercased
+ "display_name": None,                # str, or None for null/""
+ "account_value": 62330451.17,
+ "day":     {"pnl": 310963.16, "roi": 0.0055, "vlm": 1450003736.83},
+ "week":    {...}, "month": {...}, "allTime": {...}}
+```
+
+All floats. `roi` is a fraction as HL reports it. A row missing any of the
+four windows, with a non-finite/unparseable number, or a malformed address
+is **dropped** (count logged), never zero-filled: a zeroed window would
+score as a real flat trader. `None`/non-list input -> `[]`, so check
+`leaderboard()` for `None` first to tell a failed read from an empty board.
+Live (2026-10-04): 47,185 / 47,185 rows parsed.
+
+## Portfolio (`portfolio`)
+
+`POST /info {"type": "portfolio", "user": U}`, weight 20. Returns HL's raw
+list of 8 `[window, {accountValueHistory, pnlHistory, vlm}]` pairs, in order
+`day, week, month, allTime, perpDay, perpWeek, perpMonth, perpAllTime`
+(curled 2026-10-04 for `0xe282...df29`):
+
+```json
+[["day", {"accountValueHistory": [[1790975760052, "2420588.4847900001"], ...],
+          "pnlHistory":          [[1790975760052, "0.0"], [1790984160003, "71448.243577"], ...],
+          "vlm": "265999.99"}],
+ ["week", {...}], ["month", {...}], ["allTime", {...}],
+ ["perpDay", {...}], ["perpWeek", {...}], ["perpMonth", {...}], ["perpAllTime", {...}]]
+```
+
+Timestamps are int ms, every value is a **string**. `pnlHistory` is
+cumulative from the window start. Non-`perp` windows include spot. Point
+counts vary (13 for day, 89 for allTime on that wallet). `None` on a failed
+read or any element that is not a `[str, dict]` pair; `[]` is a valid
+answer (never-traded address).
+
+## Open orders (`open_orders`)
+
+`POST /info {"type": "frontendOpenOrders", "user": U, "dex": D}`, weight 20
+**per dex**, over main + the dexes from the same per-user active-dex cache
+`account_state` uses (cold or stale cache = every dex; `COPYCAT_HL_DEXES`
+pins the set). Rows are HL's raw dicts (`coin, side, limitPx, sz, oid,
+timestamp, triggerCondition, isTrigger, triggerPx, children,
+isPositionTpsl, reduceOnly, orderType, origSz, tif, cloid`) except `coin`,
+which becomes `"dex:COIN"` on HIP-3 dexes (never double-prefixed), matching
+`account_state` position keys. `None` if any dex read fails: a partial list
+must never look like "no orders".
+
+A dex found holding orders is added to the active-dex cache without
+resetting the rescan clock, so `account_state` still does its own full
+scan on schedule. Known gap: an order on a dex where the user has no
+equity, no position, and had no orders at the last scan is seen at the next
+full rescan (`COPYCAT_HL_DEX_RESCAN_S`, default 300s), not sooner.
+
 ## Extras: illiquid-mark exclusion
 
 `extras(user)` returns `{"spot_other_usd", "staked_hype_usd"}`. One real
@@ -300,7 +360,7 @@ leader pricing mid-cycle.
 .venv/bin/python -m pytest services/hl/tests -m live   # live eval: hits the real API
 ```
 
-Gate tests (189, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
+Gate tests (212, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
 network (conftest replaces the HTTP session with one that refuses every
 POST, so an unfaked read cannot leak to mainnet), deterministic (one test spawns a real child Python process to
 prove the rate-limit file is shared across processes). They cover:
@@ -319,9 +379,13 @@ exclusion, `fills` pagination, `leaderboard`/`candles` parsing,
 contract v2 writes (`tests/test_venue_writes.py`): cloid passthrough,
 `order_status` mapping, full vs partial fills, ambiguous vs clean
 failures, the slippage cap, `close` confirmed by a fresh read, the
-main-wallet-key guard, and the no-key write refusal.
+main-wallet-key guard, and the no-key write refusal. Contract v3
+(`tests/test_venue_scout.py`): `portfolio` raw passthrough + bad-shape and
+failure paths, `open_orders` multi-dex aggregation, HIP-3 namespacing,
+active-dex cache reuse, any-dex-fails -> None, and `parse_rows` typing and
+malformed-row dropping.
 
-`test_live.py` (6 tests, `@pytest.mark.live`, excluded from the default
+`test_live.py` (9 tests, `@pytest.mark.live`, excluded from the default
 gate by `pyproject.toml`'s `addopts = "-m 'not live'"`) hits the real
 Hyperliquid mainnet API against `0xe2823659be02e0f48a4660e4da008b5e1abfdf29`
 and asserts shape/sanity, not exact numbers (real balances move). Last run
@@ -329,3 +393,5 @@ and asserts shape/sanity, not exact numbers (real balances move). Last run
 positions including a HIP-3 `xyz:TSLA` position; `extras`
 spot_other_usd=$13.49, staked_hype_usd=$90,471.03; 128 fills in the last
 24h; leaderboard 46,953 rows; `mid(BTC)`=$84,862.50; `max_leverage(BTC)`=40.
+Run 2026-10-04 (all 9 green): `portfolio` 8 windows, allTime 89 points;
+`open_orders` 3 resting orders (BTC, ETH, GMX); `parse_rows` 47,185/47,185.

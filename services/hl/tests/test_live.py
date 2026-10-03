@@ -81,3 +81,39 @@ def test_live_max_leverage_btc():
     lev = v.max_leverage("BTC")
     assert lev >= 3, f"BTC max_leverage looks wrong (never silently 1): {lev}"
     print(f"\n[live] max_leverage(BTC) = {lev}")
+
+
+def test_live_portfolio():
+    v = HlVenue()
+    pf = v.portfolio(LEADER)
+    assert pf is not None, "portfolio returned None against the real API"
+    windows = dict(pf)
+    for w in ("day", "week", "month", "allTime", "perpDay", "perpWeek", "perpMonth", "perpAllTime"):
+        assert w in windows, f"missing window {w}"
+        assert set(windows[w]) >= {"accountValueHistory", "pnlHistory", "vlm"}
+    hist = windows["allTime"]["accountValueHistory"]
+    assert hist and isinstance(hist[0][0], int) and isinstance(hist[0][1], str)
+    print(f"\n[live] portfolio({LEADER}): windows={list(windows)} "
+          f"allTime points={len(hist)} allTime vlm={windows['allTime']['vlm']}")
+
+
+def test_live_open_orders():
+    v = HlVenue()
+    orders = v.open_orders(LEADER)
+    assert orders is not None, "open_orders returned None against the real API"
+    for o in orders:
+        assert o["side"] in ("B", "A")
+        assert float(o["sz"]) > 0
+        assert isinstance(o["oid"], int)
+    print(f"\n[live] open_orders({LEADER}): {len(orders)} orders "
+          f"coins={sorted({o['coin'] for o in orders})}")
+
+
+def test_live_leaderboard_parse_rows():
+    from hl.leaderboard import parse_rows
+    raw = HlVenue().leaderboard()
+    assert raw is not None
+    rows = parse_rows(raw)
+    assert len(rows) >= 0.99 * len(raw), f"parse_rows dropped too many: {len(rows)}/{len(raw)}"
+    assert isinstance(rows[0]["allTime"]["pnl"], float)
+    print(f"\n[live] parse_rows: {len(rows)}/{len(raw)} rows parsed")
