@@ -27,8 +27,9 @@ def test_add_leader_is_idempotent(client: TestClient, auth_headers: dict) -> Non
     assert r.json()["leaders"] == [ADDR_A]  # not duplicated, address normalized
 
 
-def test_add_leader_409_at_ten(client: TestClient, auth_headers: dict) -> None:
-    for i in range(10):
+def test_add_leader_409_at_the_cap(client: TestClient, auth_headers: dict) -> None:
+    from contracts.models import MAX_LEADERS
+    for i in range(MAX_LEADERS):
         addr = "0x" + f"{i:040x}"
         r = client.post("/api/leaders", headers=auth_headers, json={"address": addr})
         assert r.status_code == 200, r.text
@@ -38,7 +39,7 @@ def test_add_leader_409_at_ten(client: TestClient, auth_headers: dict) -> None:
     assert r.status_code == 409
 
     body = client.get("/api/settings", headers=auth_headers).json()
-    assert len(body["leaders"]) == 10
+    assert len(body["leaders"]) == MAX_LEADERS
     assert eleventh not in body["leaders"]
 
 

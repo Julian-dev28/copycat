@@ -948,6 +948,16 @@
               }
             ]
           },
+          "small_account_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmallAccountMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "target_leverage": {
             "anyOf": [
               {
@@ -1485,7 +1495,7 @@
             "type": "number"
           },
           "contract_version": {
-            "default": 4,
+            "default": 5,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -1548,7 +1558,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 10,
+            "maxItems": 25,
             "title": "Leaders",
             "type": "array"
           },
@@ -1574,12 +1584,26 @@
             "title": "Max Open Copies",
             "type": "integer"
           },
+          "max_order_volume_pct": {
+            "default": 0.5,
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Max Order Volume Pct",
+            "type": "number"
+          },
           "max_position_leverage": {
             "default": 50,
             "maximum": 50.0,
             "minimum": 1.0,
             "title": "Max Position Leverage",
             "type": "integer"
+          },
+          "max_slippage_pct": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 10.0,
+            "title": "Max Slippage Pct",
+            "type": "number"
           },
           "max_worse_entry_pct": {
             "default": 10.0,
@@ -1622,6 +1646,10 @@
             "minimum": 0.0,
             "title": "Sleeve Frac",
             "type": "number"
+          },
+          "small_account_mode": {
+            "$ref": "#/components/schemas/SmallAccountMode",
+            "default": "concentrate"
           },
           "target_leverage": {
             "default": 5,
@@ -1902,6 +1930,16 @@
           "allocation"
         ],
         "title": "SizingMode",
+        "type": "string"
+      },
+      "SmallAccountMode": {
+        "description": "What to do when a copy slice is under HL's $10.50 minimum (small allocations).\nconcentrate: copy only the positions that clear the minimum and spread the whole\n             allocation across those, in the leader's proportions (his biggest bets).\nbump:        round a small slice up to the minimum while it fits the allocation cap.\nskip:        drop slices under the minimum.",
+        "enum": [
+          "concentrate",
+          "bump",
+          "skip"
+        ],
+        "title": "SmallAccountMode",
         "type": "string"
       },
       "StrategyFingerprint": {

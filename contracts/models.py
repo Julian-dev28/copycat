@@ -12,11 +12,12 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CONTRACT_VERSION = 4   # v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
+CONTRACT_VERSION = 5   # v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
+# v4: v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
 # v3: Scout models (docs/research/copytrading_page_spec.md section 6)
 # v2: Venue cloid/order_status/ambiguous, partial-fill semantics
 
-MAX_LEADERS = 10
+MAX_LEADERS = 25                 # the engine stretches its poll interval to stay inside HL's read budget
 HL_MIN_ORDER_USD = 10.5          # Hyperliquid rejects orders under $10; 10.5 leaves rounding room
 MAX_LEVERAGE_CAP = 50            # >= every HL coin's max, so "max" mode == the coin's max
 
@@ -49,6 +50,17 @@ class ExposureMode(str, Enum):
     target = "target"
 
 
+class SmallAccountMode(str, Enum):
+    """What to do when a copy slice is under HL's $10.50 minimum (small allocations).
+    concentrate: copy only the positions that clear the minimum and spread the whole
+                 allocation across those, in the leader's proportions (his biggest bets).
+    bump:        round a small slice up to the minimum while it fits the allocation cap.
+    skip:        drop slices under the minimum."""
+    concentrate = "concentrate"
+    bump = "bump"
+    skip = "skip"
+
+
 class MarginMode(str, Enum):
     isolated = "isolated"
     cross = "cross"      # isolated-only markets are forced isolated by the hl service
@@ -70,6 +82,7 @@ class LeaderOverride(BaseModel):
     exposure_mode: Optional[ExposureMode] = None
     target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
     invested_ms: Optional[int] = None          # when this wallet was first invested in (set by the api)
+    small_account_mode: Optional[SmallAccountMode] = None
 
 
 class Settings(BaseModel):
@@ -102,6 +115,11 @@ class Settings(BaseModel):
     exposure_mode: ExposureMode = ExposureMode.match
     target_leverage: int = Field(5, ge=1, le=MAX_LEVERAGE_CAP)
     invested_ms: Optional[int] = None
+    small_account_mode: SmallAccountMode = SmallAccountMode.concentrate
+    # Large accounts: one order is capped at this % of the coin's 24h volume and at the book
+    # depth within the slippage cap; the rest fills over the next cycles.
+    max_order_volume_pct: float = Field(0.5, gt=0, le=100)
+    max_slippage_pct: float = Field(1.0, gt=0, le=10)
 
     @field_validator("leaders")
     @classmethod
@@ -550,6 +568,7 @@ class WalletCopyRequest(BaseModel):
     target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)   # required for target
     margin_mode: Optional[MarginMode] = None
     max_worse_entry_pct: Optional[float] = Field(None, ge=0, le=100)
+    small_account_mode: Optional[SmallAccountMode] = None
 
 
 class WalletStopRequest(BaseModel):

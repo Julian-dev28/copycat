@@ -31,6 +31,14 @@ class AccountState(TypedDict, total=False):
                                         # engine.sizing.account_equity then falls back to perp+spot)
 
 
+class MarketStats(TypedDict):
+    mark_px: float
+    mid_px: float
+    day_volume_usd: float     # dayNtlVlm
+    open_interest_usd: float  # openInterest x mark
+    max_leverage: int
+
+
 class Extras(TypedDict):
     spot_other_usd: float     # non-USDC spot tokens at mid (illiquid marks excluded)
     staked_hype_usd: float
@@ -68,6 +76,10 @@ class Venue(Protocol):
     def fills(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Fill]]: ...
     def leaderboard(self) -> Optional[List[Dict[str, Any]]]: ...   # raw HL leaderboard rows
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]: ...
+    def market_stats(self, coin: str) -> Optional[MarketStats]: ...
+        # from metaAndAssetCtxs (cached ~30s per dex). None on failure.
+    def depth_usd(self, coin: str, is_buy: bool, max_slippage_pct: float) -> Optional[float]: ...
+        # USD notional fillable on the book within max_slippage_pct of mid (l2Book). None on failure.
     def portfolio(self, user: str) -> Optional[List[Any]]: ...
         # raw HL {"type":"portfolio"}: [[window, {accountValueHistory, pnlHistory, vlm}], ...] for
         # day, week, month, allTime, perpDay, perpWeek, perpMonth, perpAllTime. None on failure.
