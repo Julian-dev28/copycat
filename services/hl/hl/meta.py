@@ -17,10 +17,14 @@ logger = logging.getLogger(__name__)
 META_TTL_S = float(os.environ.get("COPYCAT_HL_META_TTL_S", "3600"))
 DEX_LIST_TTL_S = float(os.environ.get("COPYCAT_HL_DEX_LIST_TTL_S", "86400"))
 SPOT_PRICE_TTL_S = float(os.environ.get("COPYCAT_HL_SPOT_PRICE_TTL_S", "30"))
+ASSET_CTX_TTL_S = float(os.environ.get("COPYCAT_HL_ASSET_CTX_TTL_S", "30"))
+L2_BOOK_TTL_S = float(os.environ.get("COPYCAT_HL_L2_BOOK_TTL_S", "2"))
 
 _universe_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 _dex_list_cache: Tuple[float, List[str]] = (0.0, [])
 _spot_price_cache: Tuple[float, Optional[Dict[str, Tuple[float, float]]]] = (0.0, None)
+_asset_ctx_cache: Dict[str, Tuple[float, Dict[str, Dict[str, Any]]]] = {}
+_l2_book_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 def reset_caches() -> None:
@@ -28,6 +32,8 @@ def reset_caches() -> None:
     actually exercised instead of serving a previous call's cached entry."""
     global _dex_list_cache, _spot_price_cache
     _universe_cache.clear()
+    _asset_ctx_cache.clear()
+    _l2_book_cache.clear()
     _dex_list_cache = (0.0, [])
     _spot_price_cache = (0.0, None)
 
@@ -241,3 +247,87 @@ def spot_prices(force_refresh: bool = False) -> Optional[Dict[str, Tuple[float, 
 
     _spot_price_cache = (now, prices)
     return prices
+
+
+def _f(v: Any) -> Optional[float]:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def asset_stats(dex: str = "", force_refresh: bool = False) -> Optional[Dict[str, Dict[str, Any]]]:
+    """{coin: MarketStats} for every listed coin on one dex ("" = main),
+    from ONE `metaAndAssetCtxs` call (weight 20) cached ASSET_CTX_TTL_S per
+    dex, so N coins on the same dex cost one request per TTL, not N.
+
+    Perp ctxs line up with `universe` by list position (unlike spot, perp
+    universe entries carry no `index` field). Real shape, curled
+    2026-10-04 for dex "xyz": [{"universe": [{"name": "xyz:XYZ100",
+    "maxLeverage": 30, ...}, ...]}, [{"markPx": "30867.0", "midPx":
+    "30866.5", "dayNtlVlm": "21044982.93", "openInterest": "7997.0106",
+    ...}, ...]] -- every number a STRING; openInterest is in coins.
+
+    midPx can be null on a thin/halted book: falls back to markPx. A coin
+    with no positive markPx is left out (its stats would be fiction).
+    None on a fetch/parse failure -- never stale data past the TTL.
+    """
+    key = dex or ""
+    hit = _asset_ctx_cache.get(key)
+    now = time.time()
+    if hit and not force_refresh and (now - hit[0]) < ASSET_CTX_TTL_S:
+        return hit[1]
+    payload: Dict[str, Any] = {"type": "metaAndAssetCtxs"}
+    if dex:
+        payload["dex"] = dex
+    raw = http_post("/info", payload)
+    if not (isinstance(raw, list) and len(raw) == 2 and isinstance(raw[0], dict)
+            and isinstance(raw[1], list)):
+        logger.warning(f"[hl.meta] metaAndAssetCtxs failed/bad shape for dex={dex!r}")
+        return None
+    uni = raw[0].get("universe")
+    ctxs = raw[1]
+    if not isinstance(uni, list):
+        return None
+    out: Dict[str, Dict[str, Any]] = {}
+    for u, ctx in zip(uni, ctxs):
+        if not isinstance(u, dict) or not isinstance(ctx, dict) or not u.get("name"):
+            continue
+        mark = _f(ctx.get("markPx"))
+        if not mark or mark <= 0:
+            continue
+        mid = _f(ctx.get("midPx")) or mark
+        oi = _f(ctx.get("openInterest")) or 0.0
+        try:
+            lev = int(u.get("maxLeverage") or 0)
+        except (TypeError, ValueError):
+            lev = 0
+        out[u["name"]] = {
+            "mark_px": mark,
+            "mid_px": mid,
+            "day_volume_usd": _f(ctx.get("dayNtlVlm")) or 0.0,
+            "open_interest_usd": oi * mark,
+            "max_leverage": lev,
+        }
+    _asset_ctx_cache[key] = (now, out)
+    return out
+
+
+def l2_book(coin: str, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+    """Raw `l2Book` (weight 2) for one coin, cached L2_BOOK_TTL_S. HIP-3
+    coins ("xyz:TSLA") go by their full name; no dex param needed. Shape:
+    {"coin", "time", "levels": [bids desc, asks asc]}, each level
+    {"px": str, "sz": str, "n": int}; HL returns at most 20 levels a side.
+    None on failure or bad shape."""
+    hit = _l2_book_cache.get(coin)
+    now = time.time()
+    if hit and not force_refresh and (now - hit[0]) < L2_BOOK_TTL_S:
+        return hit[1]
+    raw = http_post("/info", {"type": "l2Book", "coin": coin})
+    levels = raw.get("levels") if isinstance(raw, dict) else None
+    if not (isinstance(levels, list) and len(levels) == 2
+            and all(isinstance(side, list) for side in levels)):
+        logger.warning(f"[hl.meta] l2Book failed/bad shape for {coin!r}")
+        return None
+    _l2_book_cache[coin] = (now, raw)
+    return raw

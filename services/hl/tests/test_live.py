@@ -117,3 +117,24 @@ def test_live_leaderboard_parse_rows():
     assert len(rows) >= 0.99 * len(raw), f"parse_rows dropped too many: {len(rows)}/{len(raw)}"
     assert isinstance(rows[0]["allTime"]["pnl"], float)
     print(f"\n[live] parse_rows: {len(rows)}/{len(raw)} rows parsed")
+
+
+@pytest.mark.parametrize("coin", ["BTC", "xyz:TSLA"])
+def test_live_market_stats(coin):
+    s = HlVenue().market_stats(coin)
+    assert s is not None, f"market_stats({coin}) returned None against the real API"
+    assert s["mark_px"] > 0 and s["mid_px"] > 0
+    assert abs(s["mid_px"] / s["mark_px"] - 1) < 0.05   # mid and mark agree to within 5%
+    assert s["day_volume_usd"] > 0 and s["open_interest_usd"] > 0
+    assert s["max_leverage"] >= 1
+    print(f"\n[live] market_stats({coin}): {s}")
+
+
+@pytest.mark.parametrize("coin", ["BTC", "xyz:TSLA"])
+def test_live_depth_usd(coin):
+    v = HlVenue()
+    buy, sell = v.depth_usd(coin, True, 1.0), v.depth_usd(coin, False, 1.0)
+    assert buy is not None and sell is not None, f"depth_usd({coin}) returned None"
+    assert buy > 0 and sell > 0
+    assert v.depth_usd(coin, True, 0.1) <= buy   # wider band never holds less
+    print(f"\n[live] depth_usd({coin}, 1%): buy=${buy:,.0f} sell=${sell:,.0f}")

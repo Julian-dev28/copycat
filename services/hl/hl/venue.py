@@ -125,6 +125,36 @@ def _l2_touch(coin: str, is_buy: bool) -> Optional[float]:
     return None
 
 
+def _depth_within(levels: Any, is_buy: bool, max_slippage_pct: float) -> Optional[float]:
+    """USD notional (sum px*sz) resting on the side a taker of `is_buy`
+    would hit -- asks for a buy, bids for a sell -- at levels within
+    mid*(1 + pct/100) (buy) or mid*(1 - pct/100) (sell), bound inclusive.
+    mid = (best bid + best ask) / 2 from the same book, so both sides must
+    be non-empty. None on bad input; 0.0 is a real "nothing in the band"."""
+    if max_slippage_pct is None or max_slippage_pct < 0:
+        return None
+    try:
+        bids, asks = levels[0], levels[1]
+        if not bids or not asks:
+            return None
+        best_bid, best_ask = float(bids[0]["px"]), float(asks[0]["px"])
+        if best_bid <= 0 or best_ask <= 0:
+            return None
+        mid = (best_bid + best_ask) / 2
+        side = asks if is_buy else bids
+        bound = mid * (1 + max_slippage_pct / 100) if is_buy else mid * (1 - max_slippage_pct / 100)
+        total = 0.0
+        for lvl in side:
+            px, sz = float(lvl["px"]), float(lvl["sz"])
+            if (px > bound) if is_buy else (px < bound):
+                break   # sides are sorted best-first; everything after is further out
+            total += px * sz
+        return total
+    except (TypeError, ValueError, KeyError, IndexError) as exc:
+        logger.warning(f"[hl.venue] depth math failed on malformed book: {exc}")
+        return None
+
+
 def _ioc_limit(coin: str, is_buy: bool, mid_price: float, sz_dec: int,
                max_slippage_pct: float) -> Tuple[Optional[str], Optional[str]]:
     """(price_str, None) for an IOC limit capped at
@@ -447,6 +477,40 @@ class HlVenue:
 
     def is_isolated_only(self, coin: str) -> bool:
         return meta.is_isolated_only(coin)
+
+    def market_stats(self, coin: str) -> Optional[Dict[str, Any]]:
+        """MarketStats for one coin (contracts.venue.MarketStats): mark_px,
+        mid_px, day_volume_usd, open_interest_usd, max_leverage. One
+        metaAndAssetCtxs call per dex per ~30s serves every coin on that dex
+        (meta.asset_stats). HIP-3 "dex:COIN" reads that dex. None on a failed
+        read or a coin not listed there."""
+        try:
+            dex = coin.split(":", 1)[0] if ":" in coin else ""
+            stats = meta.asset_stats(dex)
+            if stats is None:
+                return None
+            s = stats.get(coin)
+            if s is None:
+                logger.warning(f"[hl.venue] market_stats: {coin!r} not on dex {dex!r}")
+                return None
+            return dict(s)
+        except Exception as exc:
+            logger.error(f"[hl.venue] market_stats: unexpected failure for {coin}: {exc}")
+            return None
+
+    def depth_usd(self, coin: str, is_buy: bool, max_slippage_pct: float) -> Optional[float]:
+        """USD notional fillable on the book within max_slippage_pct of mid:
+        ask side for a buy, bid side for a sell (l2Book, weight 2, cached 2s
+        per coin). Only sees HL's top 20 levels a side, so a wide band on a
+        deep book under-counts. None on a failed read or a one-sided book."""
+        try:
+            book = meta.l2_book(coin)
+            if book is None:
+                return None
+            return _depth_within(book.get("levels"), is_buy, max_slippage_pct)
+        except Exception as exc:
+            logger.error(f"[hl.venue] depth_usd: unexpected failure for {coin}: {exc}")
+            return None
 
     def size_for(self, coin: str, notional_usd: float, mid: float) -> float:
         return sizing.size_for_notional(coin, notional_usd, mid)

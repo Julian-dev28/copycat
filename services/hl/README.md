@@ -15,12 +15,12 @@ state = venue.account_state("0x...")   # None on failure, never raises
 
 | file | owns |
 |---|---|
-| `hl/venue.py` | `HlVenue` -- the contract surface, all 15 `Venue` methods (contract v3) |
+| `hl/venue.py` | `HlVenue` -- the contract surface, all 17 `Venue` methods (contract v5) |
 | `hl/leaderboard.py` | `parse_rows`: pure, string-numbers -> typed leaderboard rows (no network) |
 | `hl/env.py` | network selection (`COPYCAT_NETWORK`), credentials, timeout |
 | `hl/http.py` | shared session, the timeout guard, `http_post` (every read goes through this) |
 | `hl/rate_limit.py` | cross-process file-backed token bucket with engine priority, in-process fallback, the documented per-endpoint weight table |
-| `hl/meta.py` | per-dex perp-universe cache, HIP-3 dex-list cache, spot-price cache, `max_leverage`, `is_isolated_only` |
+| `hl/meta.py` | per-dex perp-universe cache, HIP-3 dex-list cache, spot-price cache, per-dex asset-ctx cache (`asset_stats`), 2s `l2_book` cache, `max_leverage`, `is_isolated_only` |
 | `hl/sizing.py` | pure price/size rounding math (no network) |
 | `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` singleton (writes only), timeout-guarded, refuses the main wallet's key |
 
@@ -315,6 +315,28 @@ price is missing from the price table, the whole `extras` read fails
 (HYPE always has a USDC market; a missing price means the price table
 itself is degraded) rather than silently valuing the stake at 0.
 
+## Market stats and depth (`market_stats`, `depth_usd`)
+
+`market_stats(coin) -> Optional[MarketStats]`: `mark_px`, `mid_px`,
+`day_volume_usd` (`dayNtlVlm`), `open_interest_usd` (`openInterest` coins x
+`markPx`), `max_leverage`. Built by `hl.meta.asset_stats(dex)` from ONE
+`metaAndAssetCtxs` call (weight 20) per dex, cached 30s
+(`COPYCAT_HL_ASSET_CTX_TTL_S`); that one call serves every coin on the dex.
+`"xyz:TSLA"` reads dex `xyz`; a bare coin reads main. Perp ctxs line up with
+`universe` by list position. `midPx` null -> falls back to `markPx`; a coin
+with no positive `markPx` is left out. None on a failed/malformed read or a
+coin not listed on its dex. Failures are not cached and nothing stale is
+served past the TTL.
+
+`depth_usd(coin, is_buy, max_slippage_pct) -> Optional[float]`: sum of
+`px * sz` on the asks (buy) or bids (sell) for levels at or inside
+`mid * (1 +/- pct/100)`, mid = (best bid + best ask) / 2 from the same book.
+`l2Book` (weight 2) per coin, cached 2s (`COPYCAT_HL_L2_BOOK_TTL_S`), so the
+buy and sell reads of one coin share a fetch. `0.0` = nothing in the band
+(e.g. band tighter than the half-spread). None on a failed read, a
+one-sided book, or a negative pct. Limit: HL returns at most 20 levels a
+side, so a wide band on a deep book under-counts.
+
 ## Dex coverage (`account_state`)
 
 pathiel's old `LiveVenue.leader_state` only read the main dex plus a
@@ -349,9 +371,12 @@ Per-dex perp universes (`hl.meta.universe`) cache for 1h
 (`COPYCAT_HL_META_TTL_S`); the HIP-3 dex list (`hl.meta.perp_dexs`) caches
 for 24h (`COPYCAT_HL_DEX_LIST_TTL_S`); spot prices
 (`hl.meta.spot_prices`) cache for 30s (`COPYCAT_HL_SPOT_PRICE_TTL_S`). Every
-cache serves its last-known-good value on a fetch failure rather than an
-empty result -- a transient API blip must never blank coin resolution or
-leader pricing mid-cycle.
+universe/dex-list cache serves its last-known-good value on a fetch
+failure rather than an empty result -- a transient API blip must never
+blank coin resolution mid-cycle. Market stats (`hl.meta.asset_stats`, 30s,
+`COPYCAT_HL_ASSET_CTX_TTL_S`) and books (`hl.meta.l2_book`, 2s,
+`COPYCAT_HL_L2_BOOK_TTL_S`) return None on failure instead: stale prices
+are worse than no price.
 
 ## Testing
 
@@ -360,7 +385,7 @@ leader pricing mid-cycle.
 .venv/bin/python -m pytest services/hl/tests -m live   # live eval: hits the real API
 ```
 
-Gate tests (212, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
+Gate tests (250, ~0.4s) fake `http_post` and the SDK `Exchange` -- no
 network (conftest replaces the HTTP session with one that refuses every
 POST, so an unfaked read cannot leak to mainnet), deterministic (one test spawns a real child Python process to
 prove the rate-limit file is shared across processes). They cover:
@@ -383,9 +408,14 @@ main-wallet-key guard, and the no-key write refusal. Contract v3
 (`tests/test_venue_scout.py`): `portfolio` raw passthrough + bad-shape and
 failure paths, `open_orders` multi-dex aggregation, HIP-3 namespacing,
 active-dex cache reuse, any-dex-fails -> None, and `parse_rows` typing and
-malformed-row dropping.
+malformed-row dropping. Contract v5 (`tests/test_venue_market.py`):
+`market_stats` field mapping, HIP-3 dex routing, one call per dex across
+coins, TTL expiry, mid->mark fallback, unknown coin / malformed read ->
+None, failures not cached; `depth_usd` band math both sides (inclusive
+bound, band inside spread = 0, one-sided book = None), per-coin 2s book
+cache, failure paths.
 
-`test_live.py` (9 tests, `@pytest.mark.live`, excluded from the default
+`test_live.py` (13 tests, `@pytest.mark.live`, excluded from the default
 gate by `pyproject.toml`'s `addopts = "-m 'not live'"`) hits the real
 Hyperliquid mainnet API against `0xe2823659be02e0f48a4660e4da008b5e1abfdf29`
 and asserts shape/sanity, not exact numbers (real balances move). Last run
@@ -395,3 +425,7 @@ spot_other_usd=$13.49, staked_hype_usd=$90,471.03; 128 fills in the last
 24h; leaderboard 46,953 rows; `mid(BTC)`=$84,862.50; `max_leverage(BTC)`=40.
 Run 2026-10-04 (all 9 green): `portfolio` 8 windows, allTime 89 points;
 `open_orders` 3 resting orders (BTC, ETH, GMX); `parse_rows` 47,185/47,185.
+Run 2026-10-04 (v5, 4 new green): `market_stats(BTC)` mark $85,030, vol
+$501.7M, OI $3.20B, 40x; `market_stats(xyz:TSLA)` mark $371.41, vol $879k,
+OI $50.1M, 20x; `depth_usd` at 1%: BTC buy $3.64M / sell $7.17M, xyz:TSLA
+buy $120k / sell $138k.
