@@ -936,6 +936,17 @@
             ],
             "title": "Max Worse Entry Pct"
           },
+          "only_new_positions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Only New Positions"
+          },
           "size_multiplier": {
             "anyOf": [
               {
@@ -1506,7 +1517,7 @@
             "type": "number"
           },
           "contract_version": {
-            "default": 6,
+            "default": 7,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -3164,13 +3175,43 @@
         "description": "POST /api/wallets/{address}/copy: add the wallet to the book (if new)\nand set its allocation in one atomic settings write.",
         "properties": {
           "allocation_usd": {
-            "exclusiveMinimum": 0.0,
-            "title": "Allocation Usd",
-            "type": "number"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Usd"
           },
           "exposure_mode": {
             "$ref": "#/components/schemas/ExposureMode",
             "default": "match"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "leverage_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeverageMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "margin_mode": {
             "anyOf": [
@@ -3194,6 +3235,26 @@
               }
             ],
             "title": "Max Worse Entry Pct"
+          },
+          "only_new_positions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Only New Positions"
+          },
+          "settings_source": {
+            "default": "custom",
+            "enum": [
+              "global",
+              "custom"
+            ],
+            "title": "Settings Source",
+            "type": "string"
           },
           "small_account_mode": {
             "anyOf": [
@@ -3219,9 +3280,6 @@
             "title": "Target Leverage"
           }
         },
-        "required": [
-          "allocation_usd"
-        ],
         "title": "WalletCopyRequest",
         "type": "object"
       },

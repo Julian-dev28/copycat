@@ -10,9 +10,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 6   # v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
+CONTRACT_VERSION = 7   # v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
+# v6: v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
 # v5: v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
 # v4: v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
 # v3: Scout models (docs/research/copytrading_page_spec.md section 6)
@@ -84,6 +85,7 @@ class LeaderOverride(BaseModel):
     target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
     invested_ms: Optional[int] = None          # when this wallet was first invested in (set by the api)
     small_account_mode: Optional[SmallAccountMode] = None
+    only_new_positions: Optional[bool] = None
 
 
 class Settings(BaseModel):
@@ -567,12 +569,30 @@ class WalletCopyRequest(BaseModel):
     """POST /api/wallets/{address}/copy: add the wallet to the book (if new)
     and set its allocation in one atomic settings write."""
     model_config = ConfigDict(extra="forbid")
-    allocation_usd: float = Field(gt=0)
+    # global: copy this wallet with the Settings tab as-is (no per-wallet override; any
+    #         existing override is cleared). The other fields are ignored.
+    # custom: this wallet gets its own terms below (stored as its LeaderOverride);
+    #         anything left unset still inherits from Settings.
+    settings_source: Literal["global", "custom"] = "custom"
+    allocation_usd: Optional[float] = Field(None, gt=0)   # required for custom
     exposure_mode: ExposureMode = ExposureMode.match
     target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)   # required for target
     margin_mode: Optional[MarginMode] = None
     max_worse_entry_pct: Optional[float] = Field(None, ge=0, le=100)
     small_account_mode: Optional[SmallAccountMode] = None
+    # custom only: per-wallet overrides of the Settings tab beyond the allocation terms
+    leverage_mode: Optional[LeverageMode] = None
+    leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
+    only_new_positions: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _custom_needs_allocation(self) -> "WalletCopyRequest":
+        if self.settings_source == "custom" and self.allocation_usd is None:
+            raise ValueError("allocation_usd is required when settings_source is custom")
+        if (self.settings_source == "custom" and self.exposure_mode == ExposureMode.target
+                and self.target_leverage is None):
+            raise ValueError("target_leverage is required for exposure_mode target")
+        return self
 
 
 class WalletStopRequest(BaseModel):
