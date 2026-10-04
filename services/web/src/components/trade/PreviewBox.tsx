@@ -23,18 +23,19 @@ export function PreviewBox({
   onUseFullBook,
 }: {
   preview: TicketPreview;
-  amount: number;
+  /** Null for "Use global": the sizing comes from the Settings tab. */
+  amount: number | null;
   mode: ExposureMode;
   leverage: number;
   marginMode: MarginMode;
   pending: boolean;
   sourceNote: string | null;
   onlyNew: boolean;
-  onUseFullBook: (usd: number) => void;
+  onUseFullBook: ((usd: number) => void) | null;
 }) {
   const p = preview;
   const skipped = p.copies.filter((c) => c.status === "skipped");
-  const showFull = skipped.length > 0 && p.fullBookUsd !== null && p.fullBookUsd > amount;
+  const showFull = onUseFullBook !== null && amount !== null && skipped.length > 0 && p.fullBookUsd !== null && p.fullBookUsd > amount;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2/50 p-3 text-xs" aria-live="polite">
       <div className="flex items-center justify-between">
@@ -45,7 +46,9 @@ export function PreviewBox({
         </span>
       </div>
       <Row label="Target exposure">
-        {mode === "target" ? (
+        {amount === null ? (
+          <>{p.targetExposureUsd ? `≈ ${money(p.targetExposureUsd)}` : "per your Settings"} <span className="text-muted">(global sizing)</span></>
+        ) : mode === "target" ? (
           <>{money(p.targetExposureUsd)} <span className="text-muted">({money(amount)} x {leverage}x)</span></>
         ) : (
           <>≈ {money(p.targetExposureUsd)} <span className="text-muted">({money(amount)} x their {p.hisLeverage !== null ? `${p.hisLeverage.toFixed(1)}x` : "leverage"} now)</span></>
@@ -81,7 +84,7 @@ export function PreviewBox({
         </>
       )}
       {showFull ? (
-        <button type="button" onClick={() => onUseFullBook(Math.ceil(p.fullBookUsd!))} className="text-left text-accent hover:underline">
+        <button type="button" onClick={() => onUseFullBook?.(Math.ceil(p.fullBookUsd!))} className="text-left text-accent hover:underline">
           Invest {money(Math.ceil(p.fullBookUsd!))} to copy their full book
         </button>
       ) : null}

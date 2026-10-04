@@ -4,7 +4,7 @@ import { fixtureRows } from "@/lib/scout/fixtures";
 import { apiProblem, legacyRedirect, problemText } from "./apiState";
 import { normalizeApiPreview, mergePreview } from "./apiPreview";
 import { demoSettings, demoStatus } from "./fixtures";
-import { buildMarkets, roePct, TOP_N, walletsFromStatus, walletState } from "./markets";
+import { buildMarkets, roePct, sourceBadge, TOP_N, walletsFromStatus, walletState } from "./markets";
 import { localPreview } from "./preview";
 
 const NOW = 1_760_000_000_000;
@@ -54,8 +54,10 @@ describe("your wallets", () => {
     s.leader_overrides[a] = { allocation_usd: 50, exposure_mode: "target", target_leverage: 10 };
     const { status } = demoStatus(s, "default", NOW, new Set());
     const w = walletsFromStatus(status, s);
-    expect(w).toHaveLength(1); // the second leader has no allocation: not "invested"
-    expect(w[0]).toMatchObject({ address: a, allocation_usd: 50, exposure_mode: "target" });
+    expect(w).toHaveLength(2); // the second leader has no override: it copies with the Settings tab
+    expect(w[0]).toMatchObject({ address: a, allocation_usd: 50, exposure_mode: "target", settings_source: "custom" });
+    expect(w[1]).toMatchObject({ address: rows[1].address, settings_source: "global" });
+    expect(w.map(sourceBadge)).toEqual(["Custom", "Global"]);
     expect(w[0].exposure_usd).toBeGreaterThan(0);
   });
 });

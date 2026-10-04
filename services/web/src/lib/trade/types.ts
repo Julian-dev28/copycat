@@ -12,6 +12,9 @@ import type { EngineStatus, LeaderOverride, LeaderStatus, Settings } from "@/lib
 export type ExposureMode = "match" | "target";
 export type SmallAccountMode = "concentrate" | "bump" | "skip";
 export type MarginMode = "isolated" | "cross";
+export type LeverageMode = "max" | "match" | "fixed";
+/** v7: copy a wallet with the Settings tab as-is, or with its own terms. */
+export type SettingsSource = "global" | "custom";
 
 export const SMALL_ACCOUNT_MODES: SmallAccountMode[] = ["concentrate", "bump", "skip"];
 
@@ -22,6 +25,7 @@ export interface AllocationFields {
   target_leverage?: number | null;
   invested_ms?: number | null;
   small_account_mode?: SmallAccountMode | null;
+  only_new_positions?: boolean | null;
 }
 
 export type TradeOverride = Omit<LeaderOverride, "sizing_mode"> & AllocationFields & {
@@ -53,14 +57,23 @@ export type TradeLeaderStatus = LeaderStatus & {
 
 export type TradeStatus = Omit<EngineStatus, "leaders"> & { leaders: TradeLeaderStatus[] };
 
-/** POST /api/wallets/{address}/copy (and /preview). extra="forbid" server side: never send unknown keys. */
+/**
+ * POST /api/wallets/{address}/copy (and /preview), contract v7. extra="forbid"
+ * server side: never send unknown keys (a pre-v7 api rejects settings_source).
+ * global: the Settings tab as-is, other fields ignored. custom: allocation_usd
+ * required; anything unset still inherits from Settings.
+ */
 export interface WalletCopyRequest {
-  allocation_usd: number;
-  exposure_mode: ExposureMode;
+  settings_source?: SettingsSource;
+  allocation_usd?: number;
+  exposure_mode?: ExposureMode;
   target_leverage?: number;
   margin_mode?: MarginMode;
   max_worse_entry_pct?: number;
   small_account_mode?: SmallAccountMode;
+  leverage_mode?: LeverageMode;
+  leverage?: number;
+  only_new_positions?: boolean;
 }
 
 /** POST /api/wallets/{address}/stop. */
@@ -92,4 +105,6 @@ export interface WalletPosition {
   target_leverage?: number | null;
   small_account_mode?: SmallAccountMode | null;
   invested_ms?: number | null;
+  /** v7: which terms this wallet copies with. Older apis omit it. */
+  settings_source?: SettingsSource | null;
 }

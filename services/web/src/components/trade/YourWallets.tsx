@@ -5,7 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
 import { formatSignedPct, formatSignedUsd, formatUsd, shortenAddress } from "@/lib/format";
-import { roePct, walletState, WALLET_STATE_LABEL, type WalletState } from "@/lib/trade/markets";
+import { roePct, sourceBadge, walletState, WALLET_STATE_LABEL, type WalletState } from "@/lib/trade/markets";
 import type { TradeSettings, WalletPosition } from "@/lib/trade/types";
 import { CatAvatar } from "./CatAvatar";
 import { PnlText } from "./bits";
@@ -73,17 +73,24 @@ export function YourWallets({
               {wallets.map((w) => {
                 const st = walletState(w, settings);
                 const roe = roePct(w);
+                const badge = sourceBadge(w);
                 return (
                   <tr key={w.address} className={clsx("border-t border-border/60", w.address === selected && "bg-accent-soft/40")}>
                     <td className="px-3 py-2">
                       <button type="button" onClick={() => onAdjust(w.address)} className="flex items-center gap-2 text-left hover:text-accent">
                         <CatAvatar address={w.address} size={22} />
                         <span className="max-w-[9rem] truncate font-medium">{names[w.address] ?? <span className="font-num">{shortenAddress(w.address)}</span>}</span>
+                        <span
+                          title={badge === "Global" ? "Copies with your Settings tab" : "Copies with its own terms"}
+                          className={clsx("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", badge === "Global" ? "bg-surface-2 text-muted" : "bg-accent-soft text-accent")}
+                        >
+                          {badge}
+                        </span>
                         {!w.read_ok ? <AlertTriangle size={12} className="text-danger" aria-label="Last read of his account failed" /> : null}
                       </button>
                     </td>
                     <td className={TD}>{w.allocation_usd ? formatUsd(w.allocation_usd, w.allocation_usd >= 100_000) : "—"}</td>
-                    <td className={TD}>{w.exposure_mode === "target" ? `${w.target_leverage}x` : <span className="text-muted">his</span>}</td>
+                    <td className={TD}>{badge === "Global" ? <span className="text-muted">settings</span> : w.exposure_mode === "target" ? `${w.target_leverage}x` : <span className="text-muted">his</span>}</td>
                     <td className={TD}>{formatUsd(w.exposure_usd, w.exposure_usd >= 100_000)}</td>
                     <td className={TD}><PnlText usd={w.unrealized_pnl_usd}>{formatSignedUsd(w.unrealized_pnl_usd)}</PnlText></td>
                     <td className={TD}><PnlText usd={w.realized_pnl_usd}>{formatSignedUsd(w.realized_pnl_usd)}</PnlText></td>

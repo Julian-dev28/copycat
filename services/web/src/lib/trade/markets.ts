@@ -77,21 +77,22 @@ export function roePct(w: Pick<WalletPosition, "roe_pct" | "allocation_usd" | "u
 /**
  * Fallback for an api without GET /api/wallets: the same rows from
  * /api/status leaders (v4 LeaderStatus fields) and the settings overrides.
- * Only wallets with an allocation count as "invested".
+ * Every book wallet counts: one with an allocation copies with custom terms,
+ * one without follows the Settings tab (global).
  */
 export function walletsFromStatus(status: TradeStatus | undefined, settings: TradeSettings | undefined): WalletPosition[] {
   if (!settings) return [];
   const byAddr = new Map((status?.leaders ?? []).map((l) => [normAddr(l.address), l]));
   return settings.leaders.flatMap((a) => {
     const o = settings.leader_overrides[a];
-    if (!o?.allocation_usd) return [];
     const l = byAddr.get(a);
     return [{
       address: a,
-      allocation_usd: o.allocation_usd,
-      exposure_mode: o.exposure_mode ?? "match",
-      target_leverage: o.target_leverage ?? null,
-      invested_ms: o.invested_ms ?? null,
+      settings_source: o?.allocation_usd ? "custom" : "global",
+      allocation_usd: o?.allocation_usd ?? settings.allocation_usd ?? null,
+      exposure_mode: o?.exposure_mode ?? settings.exposure_mode ?? "match",
+      target_leverage: o?.target_leverage ?? null,
+      invested_ms: o?.invested_ms ?? null,
       open_copies: l?.open_copies ?? 0,
       margin_used_usd: l?.margin_used_usd ?? 0,
       exposure_usd: l?.exposure_usd ?? 0,
@@ -102,7 +103,13 @@ export function walletsFromStatus(status: TradeStatus | undefined, settings: Tra
       stopping: l?.stopping ?? false,
       read_ok: l?.read_ok ?? true,
       equity_usd: l?.equity_usd ?? null,
-      small_account_mode: o.small_account_mode ?? null,
-    }];
+      small_account_mode: o?.small_account_mode ?? null,
+    } satisfies WalletPosition];
   });
+}
+
+/** "Global" / "Custom" badge for a Your wallets row. */
+export function sourceBadge(w: Pick<WalletPosition, "settings_source" | "allocation_usd">): "Global" | "Custom" {
+  const src = w.settings_source ?? (w.allocation_usd ? "custom" : "global");
+  return src === "global" ? "Global" : "Custom";
 }

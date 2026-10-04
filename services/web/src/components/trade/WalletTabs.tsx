@@ -78,7 +78,7 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
                 </span>
               </td>
               <td className={TD}>
-                {!c ? <span className="text-muted">enter an amount</span> : c.status === "skipped" ? (
+                {!c ? <span className="text-muted">{preview ? "not copied" : "enter an amount"}</span> : c.status === "skipped" ? (
                   <span className="text-warning" title={c.reason ?? undefined}>skipped</span>
                 ) : (
                   <span>{formatUsd(c.notionalUsd, c.notionalUsd >= 100_000)} <span className="text-[11px] text-muted">{c.leverage}x</span></span>

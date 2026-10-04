@@ -5,6 +5,7 @@ import { Slider } from "@/components/ui/Slider";
 import { leverageVibe } from "@/lib/copyRecipe";
 import { MAX_LEVERAGE_CAP } from "@/lib/api/types";
 import type { ExposureMode, MarginMode } from "@/lib/trade/types";
+import { Inherit } from "./Inherit";
 
 const MODE_OPTIONS = [
   { value: "match" as const, label: "Follow their leverage" },
@@ -20,17 +21,22 @@ export function LeverageField({
   leverage,
   marginMode,
   hisLeverage,
+  marginSet,
   onMode,
   onLeverage,
   onMarginMode,
+  onMarginReset,
 }: {
   mode: ExposureMode;
   leverage: number;
   marginMode: MarginMode;
   hisLeverage: number | null;
+  /** True when this wallet overrides the Settings tab's margin mode. */
+  marginSet: boolean;
   onMode: (m: ExposureMode) => void;
   onLeverage: (l: number) => void;
   onMarginMode: (m: MarginMode) => void;
+  onMarginReset: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -65,7 +71,10 @@ export function LeverageField({
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Margin</span>
+        <span className="flex items-center justify-between text-sm font-medium">
+          Margin
+          <Inherit set={marginSet} onReset={onMarginReset} label="margin mode" />
+        </span>
         <SegmentedControl aria-label="Margin mode" options={MARGIN_OPTIONS} value={marginMode} onChange={onMarginMode} />
       </div>
     </div>

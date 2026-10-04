@@ -8,11 +8,11 @@ import { normAddr } from "@/lib/address";
 import { demoNowMs } from "@/lib/scout/api";
 import { apiProblem } from "./apiState";
 import { normalizeApiPreview } from "./apiPreview";
-import { demoSettings, demoStatus, leaderPositions, VOLUME_24H, DEMO_EQUITY, type DemoAccount } from "./fixtures";
+import { demoSettings, demoStatus, leaderPositions, VOLUME_24H, DEMO_EQUITY, walletTerms, type DemoAccount } from "./fixtures";
 import { walletsFromStatus } from "./markets";
 import { localPreview } from "./preview";
 import type { TicketPreview } from "./ticket";
-import type { TradeSettings, TradeStatus, WalletCopyRequest, WalletPosition, WalletStopRequest } from "./types";
+import type { TradeOverride, TradeSettings, TradeStatus, WalletCopyRequest, WalletPosition, WalletStopRequest } from "./types";
 
 export interface TradeSource {
   settings(): Promise<TradeSettings>;
@@ -59,7 +59,7 @@ const books = new Map<DemoAccount, DemoBook>();
 function book(acct: DemoAccount): DemoBook {
   let b = books.get(acct);
   if (!b) {
-    b = { settings: demoSettings(), stopping: new Set() };
+    b = { settings: demoSettings(acct), stopping: new Set() };
     books.set(acct, b);
   }
   return b;
@@ -85,20 +85,23 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       const prev = s.leader_overrides[a];
       if (!s.leaders.includes(a) && s.leaders.length >= 25) return Promise.reject(new Error("the book is full (25 wallets)"));
       s.leaders = s.leaders.includes(a) ? s.leaders : [...s.leaders, a];
-      s.leader_overrides = {
-        ...s.leader_overrides,
-        [a]: {
-          ...prev,
-          sizing_mode: "allocation",
-          allocation_usd: body.allocation_usd,
-          exposure_mode: body.exposure_mode,
-          target_leverage: body.exposure_mode === "target" ? body.target_leverage ?? 5 : prev?.target_leverage ?? null,
-          margin_mode: body.margin_mode ?? prev?.margin_mode ?? null,
-          max_worse_entry_pct: body.max_worse_entry_pct ?? prev?.max_worse_entry_pct ?? null,
-          small_account_mode: body.small_account_mode ?? prev?.small_account_mode ?? null,
-          invested_ms: prev?.invested_ms ?? demoNowMs(),
-        },
-      };
+      // global: the Settings tab as-is, any override cleared (we keep only when it was first invested).
+      const terms: TradeOverride = body.settings_source === "global"
+        ? { invested_ms: prev?.invested_ms ?? demoNowMs() }
+        : {
+            ...prev,
+            sizing_mode: "allocation",
+            allocation_usd: body.allocation_usd,
+            exposure_mode: body.exposure_mode,
+            target_leverage: body.exposure_mode === "target" ? body.target_leverage ?? 5 : null,
+            leverage_mode: body.leverage_mode ?? null,
+            margin_mode: body.margin_mode ?? null,
+            max_worse_entry_pct: body.max_worse_entry_pct ?? null,
+            small_account_mode: body.small_account_mode ?? null,
+            only_new_positions: body.only_new_positions ?? null,
+            invested_ms: prev?.invested_ms ?? demoNowMs(),
+          };
+      s.leader_overrides = { ...s.leader_overrides, [a]: terms };
       b.stopping.delete(a);
       return later(structuredClone(s), 350);
     },
@@ -126,9 +129,9 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       const s = book(acct).settings;
       const { equity, positions } = leaderPositions(normAddr(address), demoNowMs());
       const st = snap().status;
+      const t = walletTerms(s, address, body);
       const p = localPreview({
-        allocationUsd: body.allocation_usd, mode: body.exposure_mode, targetLeverage: body.target_leverage ?? 5,
-        marginMode: body.margin_mode ?? s.margin_mode, smallMode: body.small_account_mode ?? s.small_account_mode ?? "concentrate",
+        allocationUsd: t.allocationUsd, mode: t.mode, targetLeverage: t.targetLeverage, marginMode: t.marginMode, smallMode: t.smallMode,
         leaderEquityUsd: equity, positions, volume24hUsd: VOLUME_24H, maxOrderVolumePct: s.max_order_volume_pct,
         ourEquityUsd: st.equity_usd ?? DEMO_EQUITY[acct],
         otherExposureUsd: st.positions.filter((c) => c.leader !== normAddr(address)).reduce((x, c) => x + c.notional_usd, 0),

@@ -52,7 +52,7 @@ export function Workspace({
         {profile ? (
           <>
             <IndexChart profile={profile} />
-            <WalletTabs profile={profile} preview={t.amount ? t.preview : null} fileHref={fileHref} nowMs={nowMs} />
+            <WalletTabs profile={profile} preview={t.draft.source === "global" || t.amount ? t.preview : null} fileHref={fileHref} nowMs={nowMs} />
           </>
         ) : prof.data?.kind === "building" ? (
           <p className="flex items-center gap-2 py-16 text-sm text-muted">
