@@ -26,12 +26,15 @@ class _NoNetwork:
 
 
 @pytest.fixture(autouse=True)
-def _clean_state(monkeypatch, request):
+def _clean_state(monkeypatch, request, tmp_path):
     """Runs around every test: clear copycat's HL env vars, reset the meta
     caches and the Exchange singleton, and give every test an unlimited,
     instant token bucket unless it explicitly wants to test rate limiting."""
     for k in _ENV_KEYS:
         monkeypatch.delenv(k, raising=False)
+    # Credentials resolve through $COPYCAT_DATA_DIR/vault when one exists: never
+    # let a test see the repo's real ./data vault.
+    monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path / "data"))
     meta.reset_caches()
     sdk.reset()
     reset_session()

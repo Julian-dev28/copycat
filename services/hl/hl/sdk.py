@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from eth_account import Account
 from hyperliquid.exchange import Exchange
@@ -22,15 +22,19 @@ from .http import set_session_timeout
 logger = logging.getLogger(__name__)
 
 _exchange: Optional[Exchange] = None
+# (agent address, main account, base url) the cached Exchange was built for.
+# get_exchange rebuilds when the active credentials change (vault account switch).
+_exchange_key: Optional[Tuple[str, str, str]] = None
 _lock = threading.Lock()
 
 
 def reset() -> None:
     """Test hook: drop the cached Exchange so a changed env/key takes
     effect on the next get_exchange() call."""
-    global _exchange
+    global _exchange, _exchange_key
     with _lock:
         _exchange = None
+        _exchange_key = None
 
 
 def _perp_dexs_arg() -> Optional[List[str]]:
@@ -98,32 +102,41 @@ def _build_exchange(key: str, account: str) -> Exchange:
 
 
 def get_exchange() -> Exchange:
-    """The shared Exchange singleton for the active network.
+    """The shared Exchange for the active credentials and network.
 
-    Raises RuntimeError if COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS are
-    unset, and MainWalletKeyError if the key is the main wallet's own key.
-    Callers in venue.py check `env.has_write_creds()` first and turn any
-    raise here into `{ok: False, error}` before anything is sent.
+    Credentials come from `env.credentials()` (vault active account, else
+    COPYCAT_ACCOUNT_ADDRESS/COPYCAT_AGENT_KEY), re-resolved on every call. The
+    cached Exchange is keyed on (agent address, main account, base url): when
+    the user activates another account the next write builds a new one, so an
+    order can never be signed for account A while B is active.
+
+    Raises RuntimeError if credentials are missing, and MainWalletKeyError if
+    the key is the main wallet's own key. Callers in venue.py check
+    `env.has_write_creds()` first and turn any raise here into
+    `{ok: False, error}` before anything is sent.
 
     The lock only guards the singleton slot, never the construction: the
     Exchange constructor does ~13 network reads, and holding a lock across
     them would stall every other writer thread behind a slow HL. Two
-    threads racing a cold start may both build one; the first stored wins
-    and the other is dropped, which is harmless (no state, no orders).
+    threads racing a cold start may both build one; the first stored for
+    the same key wins and the other is dropped, which is harmless.
     """
-    global _exchange
-    ex = _exchange
-    if ex is not None:
-        return ex
-    key = env.agent_key()
-    account = env.account_address()
+    global _exchange, _exchange_key
+    account, key = env.credentials()
     if not (key and account):
         raise RuntimeError("COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set")
     err = check_agent_key(key, account)
     if err:
         raise MainWalletKeyError(err) if err == MAIN_WALLET_KEY_ERROR else RuntimeError(err)
+    cache_key = (Account.from_key(key.removeprefix("0x")).address.lower(), account.lower(), env.base_url())
+    ex, ex_key = _exchange, _exchange_key
+    if ex is not None and ex_key == cache_key:
+        return ex
+    if ex is not None:
+        logger.info("[hl.sdk] trading credentials changed (account %s, agent %s): rebuilding Exchange",
+                    cache_key[1], cache_key[0])
     built = _build_exchange(key, account)
     with _lock:
-        if _exchange is None:
-            _exchange = built
+        if _exchange is None or _exchange_key != cache_key:
+            _exchange, _exchange_key = built, cache_key
         return _exchange

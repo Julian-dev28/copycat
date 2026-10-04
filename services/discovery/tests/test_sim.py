@@ -259,3 +259,64 @@ def test_allocation_mode_sizes_off_his_book_and_caps_at_the_allocation():
             {"BTC": series(flat_candles(0, 120_000, 100.0))}, s, equity=1000.0, end_ms=120_000, his_equity=100_000.0)
     assert r.sim_copies == 1
     assert r.sim_fees_usd == pytest.approx(50.0 * TAKER_FEE_RATE, rel=1e-3)
+
+
+def _alloc(**kw):
+    from contracts.models import ExposureMode, SmallAccountMode
+    base = dict(sizing_mode=SizingMode.allocation, allocation_usd=100.0, exposure_mode=ExposureMode.target,
+                target_leverage=5, small_account_mode=SmallAccountMode.bump, max_worse_entry_pct=50.0)
+    base.update(kw)
+    return Settings(**base)
+
+
+def _plan(s, book, his_equity, max_lev=50):
+    return {r["coin"]: r for r in real_sizing.plan_allocation(
+        book, his_equity, s.allocation_usd, s.exposure_mode, s.target_leverage, s.small_account_mode,
+        {c: max_lev for c in book}, max_position_leverage=s.max_position_leverage)["slices"]}
+
+
+def test_allocation_target_mode_matches_the_trade_ticket_plan():
+    """Regression (coordinator): the sim passed no gross notional, so a
+    target-mode what-if sized every open at $0. A single-coin book must size
+    exactly as engine.sizing.plan_allocation (the Trade ticket preview)."""
+    s = _alloc()
+    rows = {"BTC": series(flat_candles(0, 120_000, 100.0))}
+    r = run([evt("BTC", 0, "open", "long", 600.0, 0.0, 600.0, 100.0)], rows, s, equity=1000.0,
+            end_ms=120_000, his_equity=200_000.0)
+    plan = _plan(s, {"BTC": {"szi": 600.0, "entry_px": 100.0}}, 200_000.0)
+    assert plan["BTC"]["notional_usd"] == pytest.approx(500.0)            # 60k/60k x $100 x 5
+    assert r.sim_copies == 1
+    assert r.sim_fees_usd == pytest.approx(plan["BTC"]["notional_usd"] * TAKER_FEE_RATE, rel=1e-9)
+
+
+def test_allocation_match_mode_matches_the_plan():
+    from contracts.models import ExposureMode
+    s = _alloc(exposure_mode=ExposureMode.match)
+    r = run([evt("ETH", 0, "open", "short", 50.0, 0.0, -50.0, 1000.0)], {"ETH": series(flat_candles(0, 120_000, 1000.0))},
+            s, equity=1000.0, end_ms=120_000, his_equity=100_000.0)
+    plan = _plan(s, {"ETH": {"szi": -50.0, "entry_px": 1000.0}}, 100_000.0)
+    assert r.sim_fees_usd == pytest.approx(plan["ETH"]["notional_usd"] * TAKER_FEE_RATE, rel=1e-9)   # $50
+
+
+def test_allocation_concentrate_skips_slices_the_plan_skips():
+    from contracts.models import ExposureMode, SmallAccountMode
+    s = _alloc(exposure_mode=ExposureMode.match, allocation_usd=20.0, small_account_mode=SmallAccountMode.concentrate)
+    # his $100k equity, $50k BTC: slice $10 < $10.50 and nothing bigger to concentrate into
+    r = run([evt("BTC", 0, "open", "long", 500.0, 0.0, 500.0, 100.0)], {"BTC": series(flat_candles(0, 120_000, 100.0))},
+            s, equity=1000.0, end_ms=120_000, his_equity=100_000.0)
+    plan = _plan(s, {"BTC": {"szi": 500.0, "entry_px": 100.0}}, 100_000.0)
+    assert plan["BTC"]["status"] == "skip"
+    assert r.sim_copies == 0 and any(f.startswith("concentrate_skip:BTC") for f in r.flags)
+
+
+def test_allocation_cap_holds_total_margin_across_coins():
+    s = _alloc()
+    ev = [evt("BTC", 0, "open", "long", 600.0, 0.0, 600.0, 100.0),       # $500 at 5x = $100 margin: full
+          evt("ETH", 60_000, "open", "long", 40.0, 0.0, 40.0, 1000.0)]  # no room left
+    ser = {"BTC": series(flat_candles(0, 180_000, 100.0)), "ETH": series(flat_candles(0, 180_000, 1000.0))}
+    r = run(ev, ser, s, equity=1000.0, end_ms=180_000, his_equity=200_000.0)
+    # engine.core order: ETH's $200 slice is trimmed to the $10 of room left under $102 (x 5),
+    # then bumped to $10.50. (plan_allocation would skip it instead: it only bumps if the bump
+    # fits the cap. The sim follows core, which is what trades.)
+    assert r.sim_copies == 2
+    assert r.sim_fees_usd == pytest.approx((500.0 + HL_MIN_ORDER_USD) * TAKER_FEE_RATE, rel=1e-9)

@@ -44,7 +44,7 @@ from bisect import bisect_left
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.models import HL_MIN_ORDER_USD, MarginMode, Settings, SizingMode
+from contracts.models import HL_MIN_ORDER_USD, MarginMode, Settings, SizingMode, SmallAccountMode
 
 from .candles_cache import Series
 from .positions import PositionEvent
@@ -201,8 +201,22 @@ def _exec_price(s: Optional[Series], e: PositionEvent, is_buy: bool) -> float:
     return px * (1 + FALLBACK_SLIPPAGE_BPS / 1e4) if is_buy else px * (1 - FALLBACK_SLIPPAGE_BPS / 1e4)
 
 
-def _his_gross(book: Dict[str, tuple]) -> float:
-    return sum(abs(sz) * px for sz, px in book.values())
+def _update_his_book(book: Dict[str, Dict[str, float]], e: PositionEvent) -> None:
+    """His live book as the engine would read it after this event: signed
+    size and his AVERAGE entry (engine.sizing.his_notional sizes off entry,
+    not mark). A position from before the window enters at this event's px."""
+    if e.end_position == 0:
+        book.pop(e.coin, None)
+        return
+    cur = book.get(e.coin)
+    if e.kind == "open" or cur is None:
+        book[e.coin] = {"szi": e.end_position, "entry_px": e.px}
+    elif e.kind == "add":
+        prev = abs(cur["szi"])
+        cur["entry_px"] = (prev * cur["entry_px"] + e.delta_sz * e.px) / abs(e.end_position)
+        cur["szi"] = e.end_position
+    else:
+        cur["szi"] = e.end_position
 
 
 def simulate_wallet(
@@ -240,7 +254,8 @@ def simulate_wallet(
     is_cross = settings.margin_mode == MarginMode.cross
     fixed_mode = settings.sizing_mode in FIXED_MODES
     allocation = settings.sizing_mode == SizingMode.allocation
-    his_book: Dict[str, tuple] = {}     # coin -> (his signed size, his last px), in-window events only
+    his_book: Dict[str, Dict[str, float]] = {}   # his positions as the engine reads them (in-window events)
+    concentrate = allocation and settings.small_account_mode == SmallAccountMode.concentrate
     if curve_step_ms and curve_step_ms > 0:
         start = window_start_ms if window_start_ms is not None else (events[0].time_ms if events else window_end_ms)
         st.curve_step = int(curve_step_ms)
@@ -260,8 +275,22 @@ def simulate_wallet(
         s = series.get(e.coin)
         is_buy = _is_buy_action(e.kind, e.side)
         px = _exec_price(s, e, is_buy)
-        his_book[e.coin] = (e.end_position, e.px)
-        his_gross = _his_gross(his_book)
+        _update_his_book(his_book, e)
+        his_gross = sizing.gross_notional(his_book)
+        his_entry = his_book.get(e.coin, {}).get("entry_px", e.px)
+        his_added = e.delta_sz * his_entry          # engine: (|cur| - |prev|) x his entry_px
+        scale = 1.0
+        if concentrate and e.kind in ("open", "add"):
+            levs = {c: max(1, sizing.exchange_leverage(settings, leader_leverage_by_coin.get(c, 1.0),
+                                                       int(coin_max_lev.get(c) or 1)))
+                    for c in his_book}
+            ntl_book = {c: sizing.his_notional(p) for c, p in his_book.items()}
+            base = sizing.base_slices(ntl_book, leader_equity_usd, settings.allocation_usd,
+                                      settings.exposure_mode, levs)
+            eligible, scale = sizing.concentrate(base, ntl_book, held=set(st.open))
+            if e.coin not in eligible:
+                st.flags.append(f"concentrate_skip:{e.coin}")
+                continue
 
         if e.kind == "open":
             if e.coin in st.open:
@@ -277,8 +306,8 @@ def simulate_wallet(
                 st.flags.append(f"worse_entry:{e.coin}")
                 continue
             lev = sizing.exchange_leverage(settings, leader_leverage_by_coin.get(e.coin, float(coin_max)), coin_max)
-            raw = sizing.open_notional(settings, e.delta_sz * e.px, leader_equity_usd, st.equity(), N_LEADERS,
-                                       lev, his_gross)
+            raw = sizing.open_notional(settings, his_added, leader_equity_usd, st.equity(), N_LEADERS,
+                                       lev, his_gross) * scale
             ntl = min(raw, room_ntl(lev))
             if allocation:
                 ntl = min(ntl, alloc_room(lev))
@@ -319,8 +348,8 @@ def simulate_wallet(
             if fixed_mode and frac <= 0:
                 continue    # engine: nothing to scale by
             our_ntl_now = cp.notional_usd * px / cp.entry_px if cp.entry_px > 0 else cp.notional_usd
-            raw = sizing.add_notional(settings, e.delta_sz * e.px, leader_equity_usd, st.equity(), N_LEADERS,
-                                      our_ntl_now, frac, his_gross, cp.leverage)
+            raw = sizing.add_notional(settings, his_added, leader_equity_usd, st.equity(), N_LEADERS,
+                                      our_ntl_now, frac, his_gross, cp.leverage) * scale
             add = min(raw, room_ntl(cp.leverage))
             if allocation:
                 add = min(add, alloc_room(cp.leverage))

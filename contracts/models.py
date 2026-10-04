@@ -8,7 +8,7 @@ percentages as percent (10.0 = 10%), timestamps as epoch milliseconds.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
