@@ -1,7 +1,10 @@
 # services/api
 
 FastAPI over HTTP/JSON for the web UI. Owns `data/settings.json` (the only
-writer) and the bearer token. Never signs orders, never holds the agent key.
+writer) and the bearer token. Never signs orders. Account administration
+(`/api/accounts`) goes through `services/vault`, which signs agent approvals and
+transfers with a created wallet's main key; secrets pass through a request and
+are dropped.
 
     COPYCAT_SKIP_DOTENV=1 .venv/bin/python -m api      # binds COPYCAT_BIND:COPYCAT_API_PORT
     .venv/bin/python -m pytest services/api            # gate, <1s
@@ -38,6 +41,12 @@ writer) and the bearer token. Never signs orders, never holds the agent key.
 | GET | /scout/traders/{address}/trades?limit= | `TradeExample[]` (fingerprint examples, limit 1..8); 202 while computing |
 | GET | /scout/traders/{address}/thesis | `Thesis[]`, latest per source (ta, claude_code) |
 | PUT | /scout/traders/{address}/thesis | `{title, markdown<=20k, author?}` -> `Thesis` (source claude_code, server time) |
+| GET | /accounts | `TradingAccount[]` |
+| POST | /accounts/create, /accounts/import-key, /accounts/approve/prepare, /accounts/approve/submit | add an account (see docs/ARCHITECTURE.md) |
+| GET / POST | /accounts/import-env | `.env` migration status / import |
+| POST | /accounts/{id}/activate?force=, /accounts/{id}/refresh-agent, /accounts/transfer | |
+| PATCH / DELETE | /accounts/{id} | rename / remove |
+| GET | /accounts/{id}/summary, /accounts/{id}/history?kind= | `AccountSummary`, `{kind, rows}` |
 | GET | /market/candles?coin=&interval=&start_ms=&end_ms= | candle bars, <= 5000, 422 on bad interval/range |
 
 ## Auth
@@ -190,3 +199,29 @@ Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
 `PATCH /settings` also accepts the v5 book-wide fields (`allocation_usd`,
 `exposure_mode`, `target_leverage`, `invested_ms`, `small_account_mode`,
 `max_order_volume_pct`, `max_slippage_pct`).
+
+## Trading accounts (`/api/accounts`)
+
+Routes in `api/routes/accounts_onboard.py` (adding) and `api/routes/accounts.py`
+(managing, summary, history), both behind `require_auth`. Vault errors map to
+their `http_status` (400 invalid, 401 wrong passphrase with the single detail
+"invalid passphrase", 404 unknown id, 409 fund first / re-run sign-in / open
+copies, 502 HL). Secret-bearing routes (create, import-key, import-env, submit,
+refresh-agent, transfer) are rate-limited in process: 5/min and 30/hour per
+route (`api/attempt_limit.py`), 429 beyond. A 422 on `/api/accounts/*` never
+echoes the request input (FastAPI's default would echo a pasted key). No route
+logs a body.
+
+`import-env` reads the key from `COPYCAT_ENV_FILE` (compose mounts the host
+`.env` there read-only), else `./.env` unless `COPYCAT_SKIP_DOTENV=1`.
+
+Summary metrics: balances, exposure, leverage, margin usage and the pnl/value
+curves come from hl reads here (`api/account_summary.py`). Risk, trades, style,
+tiers, win streak and daily pnl need `discovery.scout.public.account_metrics(address)
+-> dict` (keys = those `AccountSummary` field names), which discovery does not
+expose yet; until it does they are null. `copytrade_usd` = sum of
+`LeaderStatus.margin_used_usd` in that account's own engine snapshot.
+
+Tests: `tests/test_accounts_onboard.py`, `tests/test_accounts_manage.py` run the
+real vault in a temp dir with a fake HL (`tests/accounts_fakes.py`) and assert
+no key or passphrase appears in any response or captured log.

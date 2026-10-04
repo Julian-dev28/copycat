@@ -1,6 +1,81 @@
 {
   "components": {
     "schemas": {
+      "AccountBalances": {
+        "properties": {
+          "copytrade_usd": {
+            "title": "Copytrade Usd",
+            "type": "number"
+          },
+          "perps_usd": {
+            "title": "Perps Usd",
+            "type": "number"
+          },
+          "spot_usd": {
+            "title": "Spot Usd",
+            "type": "number"
+          },
+          "staked_usd": {
+            "title": "Staked Usd",
+            "type": "number"
+          },
+          "total_usd": {
+            "title": "Total Usd",
+            "type": "number"
+          },
+          "withdrawable_usd": {
+            "title": "Withdrawable Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "perps_usd",
+          "spot_usd",
+          "staked_usd",
+          "copytrade_usd",
+          "total_usd",
+          "withdrawable_usd"
+        ],
+        "title": "AccountBalances",
+        "type": "object"
+      },
+      "AccountHistory": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "fills",
+              "orders",
+              "transfers",
+              "balances"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "rows"
+        ],
+        "title": "AccountHistory",
+        "type": "object"
+      },
+      "AccountKind": {
+        "enum": [
+          "created",
+          "connected_signed",
+          "connected_key"
+        ],
+        "title": "AccountKind",
+        "type": "string"
+      },
       "AccountRisk": {
         "properties": {
           "account_leverage": {
@@ -71,6 +146,191 @@
         "title": "AccountRisk",
         "type": "object"
       },
+      "AccountSummary": {
+        "description": "The Account page header + overview. Metrics reuse the Scout computations.",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/TradingAccount"
+          },
+          "account_leverage": {
+            "title": "Account Leverage",
+            "type": "number"
+          },
+          "all_time_pnl_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Time Pnl Usd"
+          },
+          "as_of_ms": {
+            "title": "As Of Ms",
+            "type": "integer"
+          },
+          "avg_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Hold H"
+          },
+          "balances": {
+            "$ref": "#/components/schemas/AccountBalances"
+          },
+          "daily_pnl": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Daily Pnl",
+            "type": "array"
+          },
+          "long_notional_usd": {
+            "default": 0.0,
+            "title": "Long Notional Usd",
+            "type": "number"
+          },
+          "longest_win_streak_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longest Win Streak Days"
+          },
+          "margin_usage_pct": {
+            "title": "Margin Usage Pct",
+            "type": "number"
+          },
+          "median_hold_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hold H"
+          },
+          "pnl_curve": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CurvePoint"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/PnlWindow"
+            },
+            "title": "Pnl Curve",
+            "type": "object"
+          },
+          "pnl_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PnlTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "risk_30d": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "short_notional_usd": {
+            "default": 0.0,
+            "title": "Short Notional Usd",
+            "type": "number"
+          },
+          "size_tier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SizeTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trades_30d": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradeStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unrealized_pnl_usd": {
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
+          },
+          "value_curve": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CurvePoint"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/PnlWindow"
+            },
+            "title": "Value Curve",
+            "type": "object"
+          },
+          "volume_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Usd"
+          }
+        },
+        "required": [
+          "account",
+          "balances",
+          "unrealized_pnl_usd",
+          "account_leverage",
+          "margin_usage_pct",
+          "as_of_ms"
+        ],
+        "title": "AccountSummary",
+        "type": "object"
+      },
       "AddLeaderRequest": {
         "additionalProperties": false,
         "properties": {
@@ -84,6 +344,111 @@
         ],
         "title": "AddLeaderRequest",
         "type": "object"
+      },
+      "AgentApprovalPrepareRequest": {
+        "additionalProperties": false,
+        "description": "Step 1 of sign-with-wallet. The browser generated the agent keypair; it sends only\nthe agent ADDRESS here and gets back the exact EIP-712 typed data to sign.",
+        "properties": {
+          "agent_address": {
+            "title": "Agent Address",
+            "type": "string"
+          },
+          "agent_name": {
+            "default": "copycat",
+            "maxLength": 16,
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "main_address": {
+            "title": "Main Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "main_address",
+          "agent_address"
+        ],
+        "title": "AgentApprovalPrepareRequest",
+        "type": "object"
+      },
+      "AgentApprovalPrepareResponse": {
+        "properties": {
+          "action": {
+            "additionalProperties": true,
+            "title": "Action",
+            "type": "object"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "integer"
+          },
+          "typed_data": {
+            "additionalProperties": true,
+            "title": "Typed Data",
+            "type": "object"
+          }
+        },
+        "required": [
+          "typed_data",
+          "action",
+          "nonce"
+        ],
+        "title": "AgentApprovalPrepareResponse",
+        "type": "object"
+      },
+      "AgentApprovalSubmitRequest": {
+        "additionalProperties": false,
+        "description": "Step 2: the signed approval plus the agent private key (generated in the browser).",
+        "properties": {
+          "action": {
+            "additionalProperties": true,
+            "title": "Action",
+            "type": "object"
+          },
+          "agent_private_key": {
+            "title": "Agent Private Key",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "main_address": {
+            "title": "Main Address",
+            "type": "string"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "integer"
+          },
+          "signature": {
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "main_address",
+          "agent_private_key",
+          "action",
+          "nonce",
+          "signature"
+        ],
+        "title": "AgentApprovalSubmitRequest",
+        "type": "object"
+      },
+      "AgentStatus": {
+        "enum": [
+          "active",
+          "expiring",
+          "expired",
+          "missing",
+          "unknown"
+        ],
+        "title": "AgentStatus",
+        "type": "string"
       },
       "CandleView": {
         "properties": {
@@ -295,6 +660,51 @@
           "sizing_mode"
         ],
         "title": "CopyPosition",
+        "type": "object"
+      },
+      "CreateAccountRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "passphrase": {
+            "maxLength": 256,
+            "minLength": 12,
+            "title": "Passphrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "passphrase"
+        ],
+        "title": "CreateAccountRequest",
+        "type": "object"
+      },
+      "CreateAccountResponse": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/TradingAccount"
+          },
+          "backup_warning": {
+            "title": "Backup Warning",
+            "type": "string"
+          },
+          "private_key": {
+            "title": "Private Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "private_key",
+          "backup_warning"
+        ],
+        "title": "CreateAccountResponse",
         "type": "object"
       },
       "CurvePoint": {
@@ -773,6 +1183,84 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "ImportApiKeyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_private_key": {
+            "title": "Agent Private Key",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "main_address": {
+            "title": "Main Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "main_address",
+          "agent_private_key"
+        ],
+        "title": "ImportApiKeyRequest",
+        "type": "object"
+      },
+      "ImportEnvStatus": {
+        "description": "GET /api/accounts/import-env: whether the one-click migration applies.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "ImportEnvStatus",
+        "type": "object"
+      },
+      "LabelPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "LabelPatch",
+        "type": "object"
+      },
       "LeaderFillView": {
         "properties": {
           "closed_pnl_usd": {
@@ -1224,6 +1712,25 @@
         ],
         "title": "PnlWindow",
         "type": "string"
+      },
+      "RefreshAgentRequest": {
+        "additionalProperties": false,
+        "description": "For `created` accounts: passphrase unlocks the main key to sign a new approveAgent.\nFor connected accounts the web runs prepare/submit again instead.",
+        "properties": {
+          "passphrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passphrase"
+          }
+        },
+        "title": "RefreshAgentRequest",
+        "type": "object"
       },
       "RiskStats": {
         "properties": {
@@ -3119,6 +3626,88 @@
         "title": "TraderScore",
         "type": "object"
       },
+      "TradingAccount": {
+        "description": "One trading account. Never carries a secret.",
+        "properties": {
+          "active": {
+            "default": false,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "agent_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Address"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "agent_status": {
+            "$ref": "#/components/schemas/AgentStatus",
+            "default": "unknown"
+          },
+          "agent_valid_until_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Valid Until Ms"
+          },
+          "created_ms": {
+            "title": "Created Ms",
+            "type": "integer"
+          },
+          "has_main_key": {
+            "default": false,
+            "title": "Has Main Key",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AccountKind"
+          },
+          "label": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "address",
+          "created_ms"
+        ],
+        "title": "TradingAccount",
+        "type": "object"
+      },
       "TradingStyle": {
         "enum": [
           "algo",
@@ -3129,6 +3718,65 @@
         ],
         "title": "TradingStyle",
         "type": "string"
+      },
+      "TransferRequest": {
+        "additionalProperties": false,
+        "description": "usdSend between copycat-created accounts (the source's main key signs).",
+        "properties": {
+          "amount_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "from_account_id": {
+            "title": "From Account Id",
+            "type": "string"
+          },
+          "passphrase": {
+            "title": "Passphrase",
+            "type": "string"
+          },
+          "to_address": {
+            "title": "To Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_account_id",
+          "to_address",
+          "amount_usd",
+          "passphrase"
+        ],
+        "title": "TransferRequest",
+        "type": "object"
+      },
+      "TransferResult": {
+        "properties": {
+          "amount_usd": {
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "from_address": {
+            "title": "From Address",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "to_address": {
+            "title": "To Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "from_address",
+          "to_address",
+          "amount_usd"
+        ],
+        "title": "TransferResult",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -3400,6 +4048,15 @@
               }
             ],
             "title": "Roe Pct"
+          },
+          "settings_source": {
+            "default": "custom",
+            "enum": [
+              "global",
+              "custom"
+            ],
+            "title": "Settings Source",
+            "type": "string"
           },
           "sizing_mode": {
             "anyOf": [
@@ -3748,6 +4405,579 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/accounts": {
+      "get": {
+        "operationId": "list_accounts_api_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TradingAccount"
+                  },
+                  "title": "Response List Accounts Api Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Accounts",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/approve/prepare": {
+      "post": {
+        "operationId": "approve_prepare_api_accounts_approve_prepare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentApprovalPrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentApprovalPrepareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Prepare",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/approve/submit": {
+      "post": {
+        "operationId": "approve_submit_api_accounts_approve_submit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentApprovalSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Submit",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/create": {
+      "post": {
+        "operationId": "create_api_accounts_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/import-env": {
+      "get": {
+        "operationId": "import_env_status_api_accounts_import_env_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportEnvStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Import Env Status",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "post": {
+        "operationId": "import_env_api_accounts_import_env_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TradingAccount"
+                  },
+                  "title": "Response Import Env Api Accounts Import Env Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Import Env",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/import-key": {
+      "post": {
+        "operationId": "import_key_api_accounts_import_key_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Key",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/transfer": {
+      "post": {
+        "operationId": "transfer_api_accounts_transfer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}": {
+      "delete": {
+        "operationId": "remove_api_accounts__account_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Remove Api Accounts  Account Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "patch": {
+        "operationId": "rename_api_accounts__account_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/activate": {
+      "post": {
+        "operationId": "activate_api_accounts__account_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/history": {
+      "get": {
+        "operationId": "history_api_accounts__account_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "fills",
+                "orders",
+                "transfers",
+                "balances"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "History",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/refresh-agent": {
+      "post": {
+        "operationId": "refresh_agent_api_accounts__account_id__refresh_agent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Agent",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/summary": {
+      "get": {
+        "operationId": "summary_api_accounts__account_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/discovery/runs": {
       "post": {
         "operationId": "start_run_api_discovery_runs_post",
@@ -5234,7 +6464,7 @@
     },
     "/api/wallets/{address}/copy": {
       "post": {
-        "description": "Invest `allocation_usd` in this wallet, or adjust an existing\ninvestment (keeps `invested_ms`, so its PnL ledger carries on). 409 at\nMAX_LEADERS, 400 for a bad address or our own account, 422 for target\nexposure without `target_leverage`. A pending stop for the wallet is\ncancelled: the newer command wins.",
+        "description": "Copy this wallet. `settings_source` global: it runs on the Settings\ntab (its override is cleared to bookkeeping only). custom: invest\n`allocation_usd` with its own terms, or adjust them. `invested_ms` is set\nwhen the wallet is added and kept on a re-post, so its PnL ledger carries\non. 409 at MAX_LEADERS, 400 for a bad address or our own account, 422\nfor custom without `allocation_usd` or target exposure without\n`target_leverage`. A pending stop for the wallet is cancelled: the newer\ncommand wins.",
         "operationId": "copy_wallet_api_wallets__address__copy_post",
         "parameters": [
           {

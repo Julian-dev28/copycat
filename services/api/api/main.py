@@ -25,7 +25,19 @@ from .engine_client import RealEngineClient
 from .errors import register_exception_handlers
 from .fingerprint_jobs import FingerprintJobs
 from .market_client import RealMarketClient
-from .routes import discovery, engine, events_stream, health, market, scout, thesis, wallets
+from .routes import accounts as accounts_routes
+from .routes import (
+    accounts_common,
+    accounts_onboard,
+    discovery,
+    engine,
+    events_stream,
+    health,
+    market,
+    scout,
+    thesis,
+    wallets,
+)
 from .routes import leaders as leaders_routes
 from .routes import settings as settings_routes
 from .scout_client import RealScoutClient
@@ -72,6 +84,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(config.allowed_hosts))
 
     register_exception_handlers(app)
+    # /api/accounts: vault-backed trading accounts (and a 422 handler that never echoes secrets)
+    accounts_common.register(app)
 
     app.include_router(health.router)
     app.include_router(settings_routes.router)
@@ -83,6 +97,8 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(thesis.router)
     app.include_router(market.router)
     app.include_router(wallets.router)
+    app.include_router(accounts_onboard.router)   # before accounts: fixed paths win over /{id}
+    app.include_router(accounts_routes.router)
 
     return app
 

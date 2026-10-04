@@ -277,3 +277,19 @@ def test_preview_global_needs_no_allocation(client, auth_headers, fake_engine):
                     json={"settings_source": "global"})
     assert r.status_code == 200, r.text
     assert fake_engine.preview_calls[0][1].settings_source == "global"
+
+
+def test_a_vault_account_cannot_be_copied_as_a_leader(client, auth_headers, monkeypatch):
+    """Not just COPYCAT_ACCOUNT_ADDRESS: every account in the vault is ours.
+    Copying one would mirror our own copies back onto another of our books."""
+    from types import SimpleNamespace
+
+    from vault import public as vault_public
+    mine = "0x" + "ab" * 20
+    monkeypatch.setattr(vault_public, "exists", lambda: True)
+    monkeypatch.setattr(vault_public, "list_accounts",
+                        lambda refresh_status=True: [SimpleNamespace(address=mine)])
+    r = copy(client, auth_headers, addr=mine)
+    assert r.status_code == 400 and "own accounts" in r.text
+    r = client.post("/api/leaders", headers=auth_headers, json={"address": mine})
+    assert r.status_code == 400

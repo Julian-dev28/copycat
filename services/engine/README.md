@@ -213,7 +213,18 @@ remains (logs `halt` "close-all complete"). A failed close keeps the flag.
 ## State
 
 `$COPYCAT_DATA_DIR` (resolved to an absolute path at startup):
-- `engine.db` (SQLite, WAL): `leaders` (last positions + ignored coins per
+- Which account: re-resolved every cycle (`engine/account.py`): the vault's active
+  account once the vault is authoritative, else `COPYCAT_ACCOUNT_ADDRESS`. No account:
+  the cycle idles (no reads, no orders, status `our_address` null). A change is logged
+  (`intent`, or `error` when the old account still has copies, which are then no longer
+  managed until it is active again).
+- `engine-<address>.db`: state is per account, so copies opened under account A are never
+  managed while B is active. A pre-v6 `engine.db` is renamed to its owner's file (the
+  address in its last status snapshot, or `COPYCAT_ACCOUNT_ADDRESS` if it has none).
+- `engine_status.json`: the last cycle's `EngineStatus` (what `status()` returns);
+  `status(address)` reads that account's own db. `engine_account.json`: the account
+  the last cycle ran for.
+- `engine-<address>.db` (SQLite, WAL): `leaders` (last positions + ignored coins per
   leader), `copies` (real copies, `pending_cloid`), `dry_copies` (dry-run
   shadow with simulated size; cleared when `dry_run` flips), `kv`
   (`last_good_settings`, `last_status`, `day_anchor`, `halted`, `last_skips`,

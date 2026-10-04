@@ -48,7 +48,8 @@ from contracts.models import (
 )
 from contracts.venue import Venue
 
-from . import core, settings_io, sizing
+from . import account as account_mod
+from . import core, settings_io, sizing, switch
 from . import events as events_mod
 from .state import EngineState
 
@@ -62,8 +63,10 @@ def _data_dir() -> Path:
     return Path(os.environ.get("COPYCAT_DATA_DIR", "./data"))
 
 
-def _db_path() -> Path:
-    return _data_dir() / "engine.db"
+def _db_path(address: Optional[str] = None) -> Path:
+    """Per-account state: engine-<address>.db (engine.account). Default: the
+    account the engine trades right now."""
+    return account_mod.db_path(address if address is not None else account_mod.resolve_our_address())
 
 
 def _events_path() -> Path:
@@ -138,15 +141,22 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
     data_dir = _data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    with EngineState(_db_path()) as state:
-        our_address = os.environ.get("COPYCAT_ACCOUNT_ADDRESS", "")
-        settings, settings_error = settings_io.load_settings(_settings_path(), state)
+    # Written as they happen, not batched at the end: if the cycle raises
+    # after an order went through, the open/close event must still be in
+    # the log, or the feed would disagree with the exchange.
+    def log_event(e: EngineEvent) -> None:
+        events_mod.append_event(_events_path(), e)
 
-        # Written as they happen, not batched at the end: if the cycle raises
-        # after an order went through, the open/close event must still be in
-        # the log, or the feed would disagree with the exchange.
-        def log_event(e: EngineEvent) -> None:
-            events_mod.append_event(_events_path(), e)
+    # Re-resolved every cycle: activating another account in the vault switches
+    # the engine at the next cycle, onto that account's own state db.
+    our_address = account_mod.resolve_our_address()
+    switch.note_account(data_dir, our_address, now_ms, log_event)
+    if not our_address:
+        return _idle_cycle(now_ms, t0)
+    account_mod.adopt_legacy_db(our_address)
+
+    with EngineState(account_mod.db_path(our_address)) as state:
+        settings, settings_error = settings_io.load_settings(_settings_path(), state)
 
         if settings_error:
             log_event(EngineEvent(ts_ms=now_ms, action="error", reason=settings_error))
@@ -199,6 +209,7 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             "status": status.model_dump(mode="json"),
             "poll_interval_s": summary["poll_interval_s"],
         })
+        switch.write_status(data_dir, status.model_dump(mode="json"), summary["poll_interval_s"])
 
         logger.info(
             "cycle ts=%d duration_ms=%d leaders=%d/%d opened=%d added=%d reduced=%d closed=%d "
@@ -209,6 +220,31 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             bool(summary["halted_reason"]), summary["poll_interval_s"], summary.get("read_weight"),
         )
         return summary
+
+
+def _read_settings_lenient() -> Settings:
+    try:
+        return Settings.model_validate_json(_settings_path().read_text(encoding="utf-8"))
+    except Exception:
+        return Settings()
+
+
+def _idle_cycle(now_ms: int, t0: float) -> dict:
+    """No active trading account: no reads, no orders. Still writes a status
+    snapshot so the UI shows the engine alive with `our_address` null."""
+    settings = _read_settings_lenient()
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    status = EngineStatus(running=True, enabled=settings.enabled, dry_run=settings.dry_run,
+                          last_cycle_ms=now_ms, cycle_ms=duration_ms, our_address=None,
+                          halted_reason="no active trading account")
+    switch.write_status(_data_dir(), status.model_dump(mode="json"), settings.poll_interval_s)
+    logger.info("cycle ts=%d idle: no active trading account", now_ms)
+    return {"opened": [], "added": [], "reduced": [], "closed": [], "skipped": {"all": "no active trading account"},
+            "vanished": [], "split": [], "leaders_ok": 0, "leaders_total": 0, "equity_usd": None,
+            "available_margin_usd": None, "day_pnl_usd": None, "halted_reason": "no active trading account",
+            "enabled": settings.enabled, "dry_run": settings.dry_run, "positions": [], "leaders": [],
+            "stops_done": [], "effective_poll_s": None, "close_all": None, "ts_ms": now_ms,
+            "duration_ms": duration_ms, "poll_interval_s": settings.poll_interval_s}
 
 
 def run_forever(venue: Venue, max_cycles: Optional[int] = None) -> None:
@@ -309,24 +345,34 @@ def _sleep_interruptibly(seconds: float, stop: dict) -> None:
         time.sleep(min(0.5, max(0.0, end - time.monotonic())))
 
 
-def status() -> EngineStatus:
-    """Read the last cycle's snapshot from SQLite. No venue call, no
-    network -- safe to call from the api process, which never has a venue
-    of its own. `running` is a staleness heuristic (last cycle within
-    max(30s, 3x its own poll_interval_s)), not a real process check: this
-    function has no way to know if the engine worker process is alive
-    beyond "did it write a snapshot recently."
+def status(address: Optional[str] = None) -> EngineStatus:
+    """The last cycle's snapshot. No venue call, no network -- safe to call from
+    the api process. Default: `engine_status.json`, the cycle the engine last ran
+    (whatever account was active then; `our_address` names it, null = none).
+    `address`: that account's own last snapshot from its engine-<address>.db
+    (e.g. copies still held by an account that is no longer active).
+    `running` is a staleness heuristic (last cycle within max(30s, 3x its own
+    poll_interval_s)), not a real process check.
     """
     data_dir = _data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
-    with EngineState(_db_path()) as state:
-        raw = state.get_kv(_STATUS_KV_KEY)
-        if raw is None:
-            return EngineStatus(running=False, enabled=False, dry_run=True)
-        st = EngineStatus.model_validate(raw["status"])
-        poll_interval_s = float(raw.get("poll_interval_s", 5.0))
-        st.running = _is_running(st.last_cycle_ms, poll_interval_s)
-        return st
+    raw: Optional[Dict[str, Any]] = None
+    if address is None:
+        raw = switch.read_status(data_dir)
+        legacy = data_dir / account_mod.LEGACY_DB
+        if raw is None and legacy.exists():
+            with EngineState(legacy) as state:
+                raw = state.get_kv(_STATUS_KV_KEY)
+    else:
+        path = account_mod.db_path(norm_addr(address))
+        if path.exists():
+            with EngineState(path) as state:
+                raw = state.get_kv(_STATUS_KV_KEY)
+    if raw is None:
+        return EngineStatus(running=False, enabled=False, dry_run=True)
+    st = EngineStatus.model_validate(raw["status"])
+    st.running = address is None and _is_running(st.last_cycle_ms, float(raw.get("poll_interval_s", 5.0)))
+    return st
 
 
 def _is_running(last_cycle_ms: Optional[int], poll_interval_s: float) -> bool:

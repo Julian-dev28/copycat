@@ -112,6 +112,7 @@ def test_events_logged_before_a_mid_cycle_crash_are_kept(data_dir, monkeypatch):
         log_event(EngineEvent(ts_ms=now_ms, action="open", coin="BTC"))
         raise RuntimeError("boom after the order went through")
 
+    monkeypatch.setenv("COPYCAT_ACCOUNT_ADDRESS", OUR)     # no account = idle cycle, core never runs
     monkeypatch.setattr(core, "run_cycle", crashing)
     with pytest.raises(RuntimeError):
         public.run_cycle(FakeVenue(), now_ms=7)
@@ -339,5 +340,5 @@ def test_close_all_closes_real_copies_even_in_dry_run_and_clears_the_shadow(live
     public.run_cycle(venue, now_ms=3)
     assert venue.closes == ["BTC"]
     from engine.state import EngineState
-    with EngineState(live_dir / "engine.db") as st:
+    with EngineState(public._db_path(OUR)) as st:   # per-account state db
         assert st.all_copies() == [] and st.all_dry_copies() == []

@@ -1,4 +1,4 @@
-"""The copy engine: owns copy logic, engine state (`data/engine.db`), the
+"""The copy engine: owns copy logic, engine state (`data/engine-<address>.db`, per trading account), the
 event log (`data/events.jsonl`) and the worker loop.
 
 Public contract (what every other service may import): `engine.public` and

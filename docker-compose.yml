@@ -19,9 +19,15 @@ services:
   api:
     <<: *python
     command: ["python", "-m", "api"]
-    # No env_file: the api must never receive COPYCAT_AGENT_KEY.
+    # No env_file: COPYCAT_AGENT_KEY never sits in the api's environment. The api does own
+    # services/vault (secrets at rest in /data/vault), and reads the host .env read-only ONLY when
+    # you press "Import from .env" (POST /api/accounts/import-env), to move that key into the vault.
+    volumes:
+      - ./data:/data
+      - ./.env:/run/copycat.env:ro
     environment:
       COPYCAT_DATA_DIR: /data
+      COPYCAT_ENV_FILE: /run/copycat.env
       COPYCAT_BIND: 0.0.0.0
       COPYCAT_API_PORT: "8787"
       # Empty = the api generates a token into ./data/api_token (it always requires one).

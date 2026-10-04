@@ -22,7 +22,9 @@ state = venue.account_state("0x...")   # None on failure, never raises
 | `hl/rate_limit.py` | cross-process file-backed token bucket with engine priority, in-process fallback, the documented per-endpoint weight table |
 | `hl/meta.py` | per-dex perp-universe cache, HIP-3 dex-list cache, spot-price cache, per-dex asset-ctx cache (`asset_stats`), 2s `l2_book` cache, `max_leverage`, `is_isolated_only` |
 | `hl/sizing.py` | pure price/size rounding math (no network) |
-| `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` singleton (writes only), timeout-guarded, refuses the main wallet's key |
+| `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` (writes only), timeout-guarded, refuses the main wallet's key, rebuilt when the active credentials change (cache key: agent address, account, base url) |
+| `hl/accounts.py` | account admin for services/vault: approveAgent typed data / signing (SDK `sign_agent`), usdSend signing, `post_signed_action` (POST /exchange, never raises, never logs the body), `extra_agents` |
+| `hl/history.py` | Account page reads: `historical_orders`, `ledger_updates`, `spot_balances` (None on failure) |
 
 Ported from `pathiel` at commit `ab2e800` (`client/exchange.py`,
 `client/http_session.py`, `client/hl_client.py`,
@@ -135,6 +137,10 @@ COPYCAT_ACCOUNT_ADDRESS=0x...   # your main wallet -- holds the funds
 COPYCAT_AGENT_KEY=0x...         # the agent ("API") wallet's private key -- signs, cannot withdraw
 COPYCAT_NETWORK=mainnet         # mainnet | testnet
 ```
+
+Credentials resolve through `hl.env.credentials()`: the vault's active account
+(services/vault) once the vault is authoritative (an account was activated),
+else these env vars. An unreadable vault means no credentials (fail closed).
 
 Approve the agent wallet at `app.hyperliquid.xyz/API`. `COPYCAT_NETWORK`
 picks the base URL for every `/info` and `/exchange` call this service

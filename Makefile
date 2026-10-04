@@ -11,7 +11,7 @@ WEB_PORT  ?= 3000
 API_PORT  ?= 8787
 NEXT_PUBLIC_COPYCAT_API ?= http://localhost:$(API_PORT)
 
-export PYTHONPATH := .:services/hl:services/engine:services/discovery:services/api
+export PYTHONPATH := .:services/hl:services/vault:services/engine:services/discovery:services/api
 
 .PHONY: help install dev test eval openapi up down mcp-install
 
@@ -25,7 +25,7 @@ install: ## python venv (uv) + web deps (npm ci)
 	cd $(WEB_DIR) && npm ci
 
 dev: ## api + engine + scout + web together; Ctrl-C stops all four
-	@test -f .env || echo "warning: no .env (copy .env.example). The engine exits without COPYCAT_ACCOUNT_ADDRESS."
+	@test -f .env || echo "warning: no .env (copy .env.example). The engine exits without COPYCAT_ACCOUNT_ADDRESS unless you add an account in the web UI."
 	@trap 'kill $$(jobs -p) 2>/dev/null; wait' INT TERM EXIT; \
 	$(PY) -m api & \
 	$(PY) -m engine & \

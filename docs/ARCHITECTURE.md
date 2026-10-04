@@ -18,7 +18,8 @@ leverage and sizing. No AI anywhere.
 |---|---|---|
 | `contracts/` | pydantic models, `Venue` Protocol | `models.py`, `venue.py` |
 | `services/hl` | every Hyperliquid call, timeouts, meta cache, signing with the agent key | `hl.HlVenue` implements `contracts.venue.Venue` |
-| `services/engine` | copy logic, engine state (`data/engine.db`), event log (`data/events.jsonl`), worker loop | `engine.public`: `run_forever()`, `run_cycle()`, `status() -> EngineStatus`, `events(limit, since_ms) -> list[EngineEvent]`; `engine.sizing`: pure sizing/leverage functions |
+| `services/vault` | every secret: trading accounts, agent keys (machine-key AES-GCM), created wallets' main keys (passphrase scrypt + AES-GCM), the active account | `vault.public`: `create_account`, `import_api_key`, `import_env`, `prepare_agent_approval`, `submit_agent_approval`, `list_accounts`, `set_active`, `rename`, `remove`, `refresh_agent`, `transfer`, `active_address`, `active_credentials`. See `services/vault/README.md` (threat model) |
+| `services/engine` | copy logic, engine state (`data/engine-<address>.db`, one per trading account), event log (`data/events.jsonl`), worker loop | `engine.public`: `run_forever()`, `run_cycle()`, `status() -> EngineStatus`, `events(limit, since_ms) -> list[EngineEvent]`; `engine.sizing`: pure sizing/leverage functions |
 | `services/discovery` | leaderboard pull, fills cache (`data/discovery.db`), copy-sim, scoring | `discovery.public`: `start_run(settings, sim_equity_usd, top_n) -> run_id`, `get_run(run_id) -> DiscoveryRun`, `latest() -> DiscoveryRun or None` |
 | `services/api` | HTTP API, settings file (only writer), auth | routes below |
 | `services/web` | Next.js UI | talks only to the api |
@@ -46,10 +47,10 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | POST | /api/leaders | `{address}` -> `Settings` (409 at 25, 400 bad address or our own `COPYCAT_ACCOUNT_ADDRESS`) |
 | DELETE | /api/leaders/{address} | -> `Settings` (also drops its override) |
 | GET | /api/status | `EngineStatus` (`effective_poll_s`: the poll interval stretched to the HL read budget) |
-| POST | /api/wallets/{address}/copy | `WalletCopyRequest` -> `Settings`. Trade page "invest $X": one locked write adds the wallet (409 at 25, 400 bad/own address) and sets its override to `sizing_mode` allocation with the ticket's terms; `invested_ms` = now when new or not on allocation before, kept on a re-post (adjust). 422: target exposure without `target_leverage`. Cancels a pending stop flag |
-| POST | /api/wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`: what would be copied of his book now, from `engine.sizing.plan_allocation` (the engine's own sizing) on live reads (his account, max leverage, 24h volume, book depth). 400 bad address, 422 target without leverage, 502 his read failed, 503 engine missing |
+| POST | /api/wallets/{address}/copy | `WalletCopyRequest` -> `Settings`. One locked write adds the wallet (409 at 25, 400 bad/own address). `settings_source` global: its override is cleared to `{invested_ms}` only, so it runs on the Settings tab. custom: override = `sizing_mode` allocation + the ticket's terms (+ `leverage_mode`, `leverage`, `only_new_positions` when given). `invested_ms` = now when new, kept on a re-post or a global/custom switch. 422: custom without `allocation_usd`, or target exposure without `target_leverage`. Cancels a pending stop flag |
+| POST | /api/wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`: what would be copied of his book now, from `engine.sizing.plan_allocation` (the engine's own sizing) on live reads (his account, max leverage, 24h volume, book depth); a global request uses `engine.sizing.plan_copy` on the book-wide settings (fixed_margin / fixed_notional / proportional sizes per position). 400 bad address, 422 target without leverage, 502 his read failed, 503 engine missing |
 | POST | /api/wallets/{address}/stop | `WalletStopRequest` -> `{settings, stopping}`. Removes the wallet + override, writes `data/stop/<address>.flag` `{close_positions, requested_ms}`. close_positions: the engine closes its copies reduce-only (even in dry_run), retrying until flat (`close` "stop wallet", then `skip` "wallet stopped"); else they follow his exits. 404 if neither in the book nor an orphan with copies |
-| GET | /api/wallets | `WalletPosition[]`: book wallets, then wallets winding down (orphans with copies or a pending stop). Position fields from the engine's last cycle; `roe_pct` = (realized + unrealized) / allocation x 100 (None when not on allocation sizing) |
+| GET | /api/wallets | `WalletPosition[]`: book wallets, then wallets winding down (orphans with copies or a pending stop). Position fields from the engine's last cycle; `roe_pct` = (realized + unrealized) / allocation x 100 (None when not on allocation sizing); `settings_source` global (no per-wallet terms) or custom |
 | GET | /api/events?limit=&since_ms= | `EngineEvent[]` newest first |
 | GET | /api/events/stream | SSE of `EngineEvent` |
 | POST | /api/engine/halt | flips `enabled` false (exits keep mirroring) |
@@ -69,12 +70,27 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | GET | /api/scout/traders/{address}/trades?limit= | `TradeExample[]` (round trips with entry context) = the 30d fingerprint's examples, `limit` 1..8; 202 while the fingerprint builds |
 | GET | /api/scout/traders/{address}/thesis | `Thesis[]`, latest per source, `ta` first then `claude_code`; `[]` if none |
 | PUT | /api/scout/traders/{address}/thesis | `{title, markdown, author?}` -> `Thesis` saved with source `claude_code`, server-set `created_ms`. markdown 1..20000 chars; any other field (e.g. `source`) is 422 |
+| GET | /api/accounts | `TradingAccount[]` (agent status from extraAgents, cached 10 min) |
+| POST | /api/accounts/create | `CreateAccountRequest` -> `CreateAccountResponse` (main key returned ONCE). Agent approval fails on an unfunded wallet: account kept, status `missing`, `backup_warning` says fund it then Refresh agent |
+| POST | /api/accounts/import-key | `ImportApiKeyRequest` -> `TradingAccount`. 400: the key is the main key, or not an approved agent of that address (extraAgents) |
+| GET / POST | /api/accounts/import-env | `{available, address, reason}` / -> `TradingAccount[]`: imports `.env` as "Main (from .env)" and activates it if nothing is active (404 when `.env` has no pair) |
+| POST | /api/accounts/approve/prepare | `AgentApprovalPrepareRequest` -> `{typed_data, action, nonce}` for eth_signTypedData_v4 (chainId 0xa4b1 mainnet / 0x66eee testnet) |
+| POST | /api/accounts/approve/submit | `AgentApprovalSubmitRequest` -> `TradingAccount`. 400 wrong signer / tampered action / stale nonce, 409 unfunded wallet, 502 HL rejected |
+| POST | /api/accounts/{id}/activate?force= | -> `TradingAccount`. 409 while the current active account still has engine copies (they would stop being managed) unless `force=true` |
+| PATCH / DELETE | /api/accounts/{id} | `{label}` -> `TradingAccount` / `{ok}`. Deleting the active account stops trading |
+| POST | /api/accounts/{id}/refresh-agent | `{passphrase?}` -> `TradingAccount`; 401 wrong passphrase, 409 connected accounts ("re-run sign-in") |
+| POST | /api/accounts/transfer | `TransferRequest` -> `{ok, from_address, to_address, amount_usd}`: usdSend from a created account to another vault account; 401 wrong passphrase |
+| GET | /api/accounts/{id}/summary | `AccountSummary` (balances, exposure, curves from hl; metrics from `discovery.scout.public.account_metrics` when it exists, else null) |
+| GET | /api/accounts/{id}/history?kind= | `{kind, rows}`, kind fills / orders / transfers / balances (row shapes in `services/api/api/account_history.py`) |
 | GET | /api/market/candles?coin=&interval=&start_ms=&end_ms= | bars `{t_ms,o,h,l,c,v}[]` via `discovery.public.candles`; interval in 1m..1d (HL set), end > start, at most 5000 bars, else 422 |
 
 ## Processes, data files, HL rate budget
 - `data/` must be the same absolute path for every process (`python -m api` / `python -m engine`
   resolve `COPYCAT_DATA_DIR` to an absolute path at startup).
-- Files: `settings.json` (api writes), `engine.db` + `events.jsonl` (engine writes), `discovery.db`,
+- Files: `settings.json` (api writes), `engine-<address>.db` (one per trading account; a pre-v6
+  `engine.db` is renamed by its owner) + `engine_status.json` (last cycle, any account) +
+  `engine_account.json` (account the last cycle ran for) + `events.jsonl` (engine writes),
+  `vault/` (services/vault, written by the api, read by the engine and `hl`), `discovery.db`,
   `close_all.flag` (api writes, engine deletes), `stop/<address>.flag` (api writes, engine deletes once
   that wallet is stopped), `api_token` (api), `engine.lock` (flock held by the one
   engine worker; a second worker on the same dir exits 1), `hl_rate.bucket` (shared HL token bucket).
@@ -90,9 +106,19 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
   `COPYCAT_HL_PRIORITY=background` so the few live reads it makes (open orders) never touch the engine's reserve.
 
 ## Keys
-Hyperliquid API ("agent") wallet: approve it at app.hyperliquid.xyz/API. It can
-trade but cannot withdraw. `.env`: `COPYCAT_ACCOUNT_ADDRESS` (your main wallet),
-`COPYCAT_AGENT_KEY` (the agent wallet's private key). Never the main wallet's key.
+Trading accounts live in `services/vault` (`data/vault/`). Each has a main
+address (holds the money) and an agent ("API") key that signs orders: it can
+trade, it cannot withdraw. Add one from the web: create a wallet (copycat
+keeps its main key, sealed with your passphrase), sign in with a browser wallet
+(approveAgent), or paste an API wallet key approved at app.hyperliquid.xyz/API.
+The engine trades the ACTIVE account; `hl.env` and the engine re-resolve it
+every write / cycle. Before any account has been activated, `.env`
+(`COPYCAT_ACCOUNT_ADDRESS` + `COPYCAT_AGENT_KEY`) still trades; the web's
+"Import from .env" moves that pair into the vault. After the first activation
+the vault decides and never falls back to `.env`. A main wallet's key is never
+accepted as an agent key. Switching accounts gives the new one a clean engine
+book; the old account's copies are no longer managed (activate refuses while
+they exist unless forced).
 
 ## Running
 `docker compose up` runs api, engine worker, scout scheduler, web. `make dev` runs them locally.

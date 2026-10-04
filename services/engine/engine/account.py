@@ -84,10 +84,10 @@ def adopt_legacy_db(address: str) -> bool:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     finally:
         conn.close()
-    legacy.rename(target)
-    for suffix in ("-wal", "-shm"):
+    for suffix in ("-wal", "-shm"):       # move, never delete: a WAL may still hold pages
         side = legacy.with_name(LEGACY_DB + suffix)
         if side.exists():
-            side.unlink()
+            side.rename(target.with_name(target.name + suffix))
+    legacy.rename(target)
     logger.info("adopted legacy %s as %s", legacy, target.name)
     return True

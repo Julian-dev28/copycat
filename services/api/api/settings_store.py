@@ -42,7 +42,7 @@ class LeaderLimitError(Exception):
 
 
 class OwnAddressError(ValueError):
-    """Our own account (COPYCAT_ACCOUNT_ADDRESS) was given as a leader.
+    """One of our own accounts (COPYCAT_ACCOUNT_ADDRESS, or any vault account) was given as a leader.
     Copying ourselves would mirror every copy back onto itself. HTTP 400."""
 
 
@@ -71,11 +71,24 @@ class SettingsStore:
             data = json.load(f)
         return Settings(**data)
 
+    def own_addresses(self) -> set:
+        """Every account this copycat trades or could trade: the env account plus
+        every vault account (created or connected). Copying any of them would
+        mirror copies back onto ourselves, or move money between our own books."""
+        own = {self.our_address} if self.our_address else set()
+        try:
+            from vault import public as vault_public
+            if vault_public.exists():
+                own |= {norm_addr(a.address) for a in vault_public.list_accounts(refresh_status=False)}
+        except Exception:   # no vault service installed or unreadable: env account only
+            pass
+        return own
+
     def _check_not_us(self, settings: Settings) -> None:
-        if self.our_address and self.our_address in settings.leaders:
-            raise OwnAddressError(
-                f"{self.our_address} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); "
-                f"it cannot be a leader")
+        own = self.own_addresses()
+        for addr in settings.leaders:
+            if addr in own:
+                raise OwnAddressError(f"{addr} is one of this copycat's own accounts; it cannot be a leader")
 
     def _write_atomic(self, settings: Settings) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -154,9 +167,8 @@ class SettingsStore:
         addr = norm_addr(address)
         if not _ADDR_RE.match(addr):
             raise ValueError(f"not a 0x address: {address!r}")
-        if self.our_address and addr == self.our_address:
-            raise OwnAddressError(
-                f"{addr} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); it cannot be a leader")
+        if addr in self.own_addresses():
+            raise OwnAddressError(f"{addr} is one of this copycat's own accounts; it cannot be a leader")
         with self._locked():
             current = self.load()
             if addr in current.leaders:
@@ -197,9 +209,8 @@ class SettingsStore:
         addr = norm_addr(address)
         if not _ADDR_RE.match(addr):
             raise ValueError(f"not a 0x address: {address!r}")
-        if self.our_address and addr == self.our_address:
-            raise OwnAddressError(
-                f"{addr} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); it cannot be a leader")
+        if addr in self.own_addresses():
+            raise OwnAddressError(f"{addr} is one of this copycat's own accounts; it cannot be a leader")
         return addr
 
     def copy_wallet(self, address: str, req: WalletCopyRequest, now_ms: int) -> Settings:

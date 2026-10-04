@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from api.config import Config
 from api.deps import (
     get_discovery_client,
@@ -15,7 +13,6 @@ from api.deps import (
 )
 from api.fingerprint_jobs import FingerprintJobs
 from api.main import create_app
-
 from api_fakes import (
     OUR_ADDRESS,
     FakeDiscoveryClient,
@@ -24,6 +21,7 @@ from api_fakes import (
     FakeScoutClient,
     FakeThesisClient,
 )
+from fastapi.testclient import TestClient
 
 TOKEN = "test-token-0123456789abcdef0123456789"   # >= 32 chars, like a real one
 
@@ -124,3 +122,39 @@ def client(app) -> TestClient:
 @pytest.fixture
 def auth_headers() -> dict:
     return {"Authorization": f"Bearer {TOKEN}"}
+
+
+# ── /api/accounts (vault-backed): real vault in data_dir, fake HL, fake reads ──
+
+@pytest.fixture
+def hlfake(monkeypatch, data_dir):
+    from accounts_fakes import FakeHL
+    from vault import agents, approval, hlops
+    monkeypatch.setenv("COPYCAT_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("COPYCAT_NETWORK", "mainnet")
+    monkeypatch.setenv("COPYCAT_SKIP_DOTENV", "1")
+    monkeypatch.delenv("COPYCAT_ENV_FILE", raising=False)
+    monkeypatch.delenv("COPYCAT_AGENT_KEY", raising=False)
+    fake = FakeHL()
+    monkeypatch.setattr(hlops, "extra_agents", fake.extra_agents)
+    monkeypatch.setattr(hlops, "post_signed_action", fake.post_signed_action)
+    monkeypatch.setattr(approval, "_sleep", lambda s: None)
+    agents.invalidate()
+    yield fake
+    agents.invalidate()
+
+
+@pytest.fixture
+def backend(app):
+    from accounts_fakes import FakeBackend
+    from api.routes.accounts_common import get_accounts_backend
+    b = FakeBackend()
+    app.dependency_overrides[get_accounts_backend] = lambda: b
+    return b
+
+
+@pytest.fixture
+def logs(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    return caplog

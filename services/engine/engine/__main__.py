@@ -29,22 +29,28 @@ def main() -> None:
     )
     logger = logging.getLogger("engine")
 
-    our_address = os.environ.get("COPYCAT_ACCOUNT_ADDRESS")
-    if not our_address:
-        logger.error("COPYCAT_ACCOUNT_ADDRESS is not set, refusing to start")
-        sys.exit(1)
-
     # Every process must agree on one absolute data dir: hl's shared rate
     # bucket file lives there, and "./data" means different things from
     # different working directories. Resolve it before `hl` is imported.
     data_dir = Path(os.environ.get("COPYCAT_DATA_DIR", "./data")).resolve()
     os.environ["COPYCAT_DATA_DIR"] = str(data_dir)
 
+    # The account is re-resolved every cycle (vault active account, else
+    # COPYCAT_ACCOUNT_ADDRESS). With neither a vault nor the env var there is
+    # nothing to ever trade: refuse to start. With a vault, start even when no
+    # account is active yet; cycles idle until one is activated.
+    from .account import resolve_our_address
+    has_vault = (data_dir / "vault" / "accounts.json").exists()
+    our_address = resolve_our_address()
+    if not our_address and not has_vault:
+        logger.error("no trading account: set COPYCAT_ACCOUNT_ADDRESS or add one in the web UI, refusing to start")
+        sys.exit(1)
+
     from hl import HlVenue  # services/hl, built in parallel -- see module docstring
 
     from .public import EngineAlreadyRunning, run_forever
 
-    logger.info("engine starting, account=%s", our_address)
+    logger.info("engine starting, account=%s", our_address or "none active (idle until one is activated)")
     try:
         run_forever(HlVenue())
     except EngineAlreadyRunning as exc:
