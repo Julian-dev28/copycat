@@ -16,22 +16,39 @@ Paths all come from `$COPYCAT_DATA_DIR` (default `./data`):
   close_all.flag  written by the api (POST /api/engine/close-all), deleted here
                   once every copy is closed
   engine.lock     flock held by the one running worker (run_forever)
+  stop/<address>.flag  written by the api (POST /api/wallets/{address}/stop),
+                  JSON {close_positions}; deleted here once that wallet is stopped
+
+Also `preview_wallet(address, request, settings, venue=None) -> WalletPreview`
+for the Trade ticket (POST /api/wallets/{address}/preview): read-only HL
+reads, sized by the same `engine.sizing.plan_allocation` the engine uses.
 """
 from __future__ import annotations
 
 import errno
 import fcntl
+import json
 import logging
 import os
+import re
 import signal
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from contracts.models import EngineEvent, EngineStatus
+from contracts.models import (
+    EngineEvent,
+    EngineStatus,
+    SizingMode,
+    WalletCopyRequest,
+    WalletPreview,
+    WalletPreviewSlice,
+    Settings,
+    norm_addr,
+)
 from contracts.venue import Venue
 
-from . import core, events as events_mod, settings_io
+from . import core, events as events_mod, settings_io, sizing
 from .state import EngineState
 
 logger = logging.getLogger(__name__)
@@ -62,6 +79,42 @@ LOCK_FILE = "engine.lock"
 
 def _close_all_path() -> Path:
     return _data_dir() / CLOSE_ALL_FLAG
+
+
+STOP_DIR = "stop"
+_ADDR_RE = re.compile(r"^0x[0-9a-f]{40}$")
+
+
+def _stop_dir() -> Path:
+    return _data_dir() / STOP_DIR
+
+
+def read_stops() -> Dict[str, bool]:
+    """`data/stop/<address>.flag` -> {address: close_positions}. A flag whose
+    JSON does not parse is read as close_positions true (the contract
+    default; the api writes atomically, so this is a hand-edited file).
+    Names that are not a 0x address are ignored."""
+    out: Dict[str, bool] = {}
+    d = _stop_dir()
+    if not d.is_dir():
+        return out
+    for f in sorted(d.glob("*.flag")):
+        addr = norm_addr(f.stem)
+        if not _ADDR_RE.match(addr):
+            continue
+        try:
+            raw = json.loads(f.read_text() or "{}")
+            out[addr] = bool(raw.get("close_positions", True)) if isinstance(raw, dict) else True
+        except (OSError, ValueError):
+            out[addr] = True
+    return out
+
+
+def _clear_stop(addr: str) -> None:
+    try:
+        (_stop_dir() / f"{addr}.flag").unlink()
+    except FileNotFoundError:
+        pass
 
 
 class EngineAlreadyRunning(RuntimeError):
@@ -115,12 +168,16 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
                     reason=f"close-all complete: closed {len(close_all_summary['closed'])} "
                            f"copies, entries disabled"))
 
-        summary = core.run_cycle(settings, venue, state, our_address, now_ms, log_event)
+        summary = core.run_cycle(settings, venue, state, our_address, now_ms, log_event,
+                                 stops=read_stops())
+        for addr in summary.get("stops_done") or []:
+            _clear_stop(addr)
         summary["close_all"] = close_all_summary
         duration_ms = int((time.monotonic() - t0) * 1000)
         summary["ts_ms"] = now_ms
         summary["duration_ms"] = duration_ms
-        summary["poll_interval_s"] = settings.poll_interval_s
+        # The loop sleeps the read-budget-stretched interval (engine.pacing).
+        summary["poll_interval_s"] = summary.get("effective_poll_s") or settings.poll_interval_s
 
         status = EngineStatus(
             running=True,
@@ -135,19 +192,20 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             halted_reason=summary["halted_reason"],
             positions=summary["positions"],
             leaders=summary["leaders"],
+            effective_poll_s=summary.get("effective_poll_s"),
         )
         state.set_kv(_STATUS_KV_KEY, {
             "status": status.model_dump(mode="json"),
-            "poll_interval_s": settings.poll_interval_s,
+            "poll_interval_s": summary["poll_interval_s"],
         })
 
         logger.info(
             "cycle ts=%d duration_ms=%d leaders=%d/%d opened=%d added=%d reduced=%d closed=%d "
-            "skipped=%d enabled=%s dry_run=%s halted=%s",
+            "skipped=%d enabled=%s dry_run=%s halted=%s poll_s=%s read_weight=%s",
             now_ms, duration_ms, summary["leaders_ok"], summary["leaders_total"],
             len(summary["opened"]), len(summary["added"]), len(summary["reduced"]),
             len(summary["closed"]), len(summary["skipped"]), settings.enabled, settings.dry_run,
-            bool(summary["halted_reason"]),
+            bool(summary["halted_reason"]), summary["poll_interval_s"], summary.get("read_weight"),
         )
         return summary
 

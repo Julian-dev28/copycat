@@ -56,13 +56,15 @@ def test_scout_live_small_refresh(tmp_path, monkeypatch):
         assert r.last_fill_ms is not None or "inactive" in flags
         assert r.trades_30d.trips > 0 or flags & {"inactive", "too_few_trades", "hft"}
         assert r.top_coins or "inactive" in flags
-        if "not_simulated" not in flags and "hft_not_simulated" not in flags and "too_few_trades" not in flags:
-            simulated += 1
+        if "not_simulated" not in flags:
+            simulated += 1                       # C ran: real sim numbers, or a flag saying why not
+            assert s.sim_copies > 0 or flags & {"too_few_trades", "hft_not_simulated"}
+        if s.sim_copies > 0:
             assert r.sim_spark_30d and s.sim_copy_capacity_pct is not None
         print(f"  {r.address} fit={s.copy_fit.value:5.1f} sim={s.sim_return_pct:7.2f}% "
               f"dd30={r.risk_30d.max_drawdown_pct} sharpe={r.risk_30d.sharpe} win={r.trades_30d.win_rate_pct} "
               f"trips={r.trades_30d.trips} style={r.style.value if r.style else '-'} flags={','.join(r.flags) or '-'}")
-    assert simulated >= 3
+    assert simulated == rep.sims_done
 
     conn = store.connect(db)
     ok = n = 0

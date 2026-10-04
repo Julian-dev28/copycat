@@ -31,6 +31,12 @@ Tables:
               emits. Never read by the real (non-dry) decision path and
               never surfaced in `EngineStatus.positions` -- a dry position
               is not a real one and must never be mistaken for one.
+  ledger      per-leader realized PnL of OUR copies (the Trade page's "position"
+              PnL for a wallet): realized PnL net of fees and the fees, from our
+              own reduces/closes on that leader's copies, counted from
+              `invested_ms` on. A new `invested_ms` (a fresh investment) resets
+              the row. Also remembers the wallet's last allocation terms so a
+              stopped wallet's winding-down row can still show them.
   kv          small singleton values as JSON text: `last_good_settings` (the
               last `Settings` that parsed, for `settings_io.py`'s fallback),
               `last_status` (the most recent `EngineStatus` snapshot, so
@@ -76,6 +82,14 @@ CREATE TABLE IF NOT EXISTS dry_copies (
     is_cross INTEGER NOT NULL,
     sizing_mode TEXT NOT NULL,
     size REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger (
+    leader TEXT PRIMARY KEY,
+    invested_ms INTEGER,
+    realized_pnl_usd REAL NOT NULL DEFAULT 0,
+    fees_usd REAL NOT NULL DEFAULT 0,
+    terms TEXT NOT NULL DEFAULT '{}',
+    updated_ms INTEGER
 );
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
@@ -253,6 +267,59 @@ class EngineState:
     @staticmethod
     def _row_to_dry_copy(row: Any) -> DryCopy:
         return DryCopy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6])
+
+    # ── ledger (per-leader realized PnL) ────────────────────────────────
+
+    def get_ledger(self, leader: str) -> Optional[Dict[str, Any]]:
+        row = self._conn.execute(
+            "SELECT leader, invested_ms, realized_pnl_usd, fees_usd, terms, updated_ms "
+            "FROM ledger WHERE leader = ?", (leader,)).fetchone()
+        if row is None:
+            return None
+        return {"leader": row[0], "invested_ms": row[1], "realized_pnl_usd": float(row[2]),
+                "fees_usd": float(row[3]), "terms": json.loads(row[4] or "{}"),
+                "updated_ms": row[5]}
+
+    def sync_ledger(self, leader: str, invested_ms: Optional[int],
+                    terms: Optional[Dict[str, Any]] = None, now_ms: Optional[int] = None) -> None:
+        """Called every cycle for a leader the settings give an `invested_ms`.
+        A different `invested_ms` than the row's is a fresh investment: the
+        row resets to zero. The same one only refreshes the remembered terms.
+        `invested_ms` None never resets (an orphan or a non-allocation
+        wallet keeps whatever it has)."""
+        if invested_ms is None:
+            return
+        cur = self.get_ledger(leader)
+        with self._lock:
+            if cur is None or cur["invested_ms"] != invested_ms:
+                self._conn.execute(
+                    "INSERT INTO ledger (leader, invested_ms, realized_pnl_usd, fees_usd, terms, "
+                    "updated_ms) VALUES (?, ?, 0, 0, ?, ?) ON CONFLICT(leader) DO UPDATE SET "
+                    "invested_ms = excluded.invested_ms, realized_pnl_usd = 0, fees_usd = 0, "
+                    "terms = excluded.terms, updated_ms = excluded.updated_ms",
+                    (leader, invested_ms, json.dumps(terms or {}), now_ms))
+            elif terms is not None and terms != cur["terms"]:
+                self._conn.execute("UPDATE ledger SET terms = ? WHERE leader = ?",
+                                   (json.dumps(terms), leader))
+            self._conn.commit()
+
+    def book_pnl(self, leader: str, pnl_usd: float, fee_usd: float, now_ms: int) -> bool:
+        """Add one fill's realized PnL (already net of `fee_usd`) and fee.
+        Not counted (returns False) when `now_ms` is before the row's
+        `invested_ms`. A leader with no row gets one (invested_ms NULL:
+        counts everything)."""
+        cur = self.get_ledger(leader)
+        if cur is not None and cur["invested_ms"] is not None and now_ms < cur["invested_ms"]:
+            return False
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO ledger (leader, invested_ms, realized_pnl_usd, fees_usd, terms, "
+                "updated_ms) VALUES (?, NULL, ?, ?, '{}', ?) ON CONFLICT(leader) DO UPDATE SET "
+                "realized_pnl_usd = realized_pnl_usd + excluded.realized_pnl_usd, "
+                "fees_usd = fees_usd + excluded.fees_usd, updated_ms = excluded.updated_ms",
+                (leader, float(pnl_usd), float(fee_usd), now_ms))
+            self._conn.commit()
+        return True
 
     # ── kv ───────────────────────────────────────────────────────────────
 

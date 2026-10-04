@@ -211,6 +211,9 @@ class EngineStatus(BaseModel):
     halted_reason: Optional[str] = None     # daily loss limit etc.
     positions: List[CopyPosition] = Field(default_factory=list)
     leaders: List[LeaderStatus] = Field(default_factory=list)
+    # v5: the poll interval the engine actually runs at: poll_interval_s stretched so its
+    # estimated HL read weight stays <= 60% of the 1200/min budget (engine.pacing)
+    effective_poll_s: Optional[float] = None
 
 
 # ── discovery → api ──────────────────────────────────────────────────────────
@@ -577,3 +580,68 @@ class WalletStopRequest(BaseModel):
     opening new copies and let the open ones follow him out."""
     model_config = ConfigDict(extra="forbid")
     close_positions: bool = True
+
+
+class WalletPosition(BaseModel):
+    """GET /api/wallets: one row per wallet the user is invested in (in the
+    book) or still winding down (an orphan with open copies, or stopping).
+    The LeaderStatus "position" fields plus the allocation terms."""
+    address: str
+    in_book: bool                              # false: stopped, copies winding down
+    read_ok: bool = False
+    equity_usd: Optional[float] = None         # his equity at the last read
+    open_copies: int = 0
+    margin_used_usd: float = 0.0
+    exposure_usd: float = 0.0
+    unrealized_pnl_usd: float = 0.0
+    realized_pnl_usd: float = 0.0
+    fees_usd: float = 0.0
+    pnl_usd: float = 0.0                       # realized + unrealized
+    roe_pct: Optional[float] = None            # pnl_usd / allocation_usd x 100; None without an allocation
+    stopping: bool = False
+    owned_coins: List[str] = Field(default_factory=list)
+    last_read_ms: Optional[int] = None
+    sizing_mode: Optional[SizingMode] = None
+    allocation_usd: Optional[float] = None
+    exposure_mode: Optional[ExposureMode] = None
+    target_leverage: Optional[int] = None
+    small_account_mode: Optional[SmallAccountMode] = None
+    invested_ms: Optional[int] = None
+
+
+class WalletPreviewSlice(BaseModel):
+    """One of his positions in a WalletPreview."""
+    coin: str
+    side: Literal["long", "short"]
+    his_notional_usd: float                    # |size| x his entry
+    weight_pct: float                          # share of his gross notional
+    leverage: int                              # the exchange leverage our copy would use
+    notional_usd: float                        # what we would open now (0 when skipped)
+    margin_usd: float
+    status: Literal["copy", "trimmed", "bump", "skip"]
+    reason: Optional[str] = None               # why skipped
+    liquidity_cap_usd: Optional[float] = None  # largest single order now; None = unknown
+    fill_cycles: int = 1                       # > 1: the order is split and fills over N cycles
+
+
+class WalletPreview(BaseModel):
+    """POST /api/wallets/{address}/preview: what investing would copy of his
+    book right now. Computed by engine.sizing.plan_allocation, the same
+    function the engine sizes with."""
+    address: str
+    as_of_ms: int
+    allocation_usd: float
+    exposure_mode: ExposureMode
+    target_leverage: Optional[int] = None
+    small_account_mode: SmallAccountMode
+    his_equity_usd: float
+    his_gross_notional_usd: float
+    slices: List[WalletPreviewSlice] = Field(default_factory=list)
+    planned_notional_usd: float = 0.0
+    planned_margin_usd: float = 0.0
+    copied: int = 0
+    skipped: int = 0
+    min_allocation_for_full_book: Optional[float] = None   # copies every position without concentrating
+    multi_cycle: bool = False                  # some slice fills over more than one cycle
+    margin_already_used_usd: float = 0.0       # our existing copies of him (re-invest / adjust)
+    notes: List[str] = Field(default_factory=list)

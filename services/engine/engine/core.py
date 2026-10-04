@@ -35,6 +35,14 @@ Added for the standalone product:
   - per-leader and per-coin exception isolation: one bad leader or coin
     never stops the exits of every leader after it
   - emergency `close_all`
+  - Trade page wallets (`sizing_mode` allocation): allocation sizing with
+    small-account concentrate/bump/skip and a per-wallet margin cap, a
+    per-leader realized-PnL ledger, and stop-one-wallet (`stops`)
+  - liquidity caps: an open/add is capped at a share of the coin's 24h
+    volume and the book depth within the slippage cap; the rest is carried
+    as a catch-up and sent over the next cycles
+  - read-budget pacing (`engine.pacing`): the effective poll interval
+    stretches with the number of accounts read
 """
 from __future__ import annotations
 
@@ -52,10 +60,11 @@ from contracts.models import (
     MarginMode,
     Settings,
     SizingMode,
+    SmallAccountMode,
 )
 from contracts.venue import Venue
 
-from . import sizing
+from . import pacing, sizing
 from .state import Copy, DryCopy, EngineState, LeaderState
 
 logger = logging.getLogger(__name__)
@@ -70,6 +79,8 @@ _MARKS_KEY = "last_marks"                 # coin -> last seen liq/mark px of OUR
 _VANISH_PENDING_KEY = "vanish_pending"    # coin -> ts_ms of the first read it was missing
 _PENDING_REDUCES_KEY = "pending_reduces"  # coin -> ambiguous reduce awaiting resolution
 _LAST_DRY_RUN_KEY = "last_dry_run"
+_CATCH_UP_KEY = "catch_up"                # coin -> unfilled remainder of a liquidity-split entry
+STOP_REASON = "stop wallet"
 VANISHED_REASON = "our copy vanished (liquidated or closed outside copycat)"
 # order_status values that mean "not settled yet, ask again next cycle"
 _UNSETTLED = (None, "open")
@@ -135,6 +146,14 @@ class _Cycle:
         self.equity_usd = 0.0
         self.n_leaders = 1
         self.entries_ok = False
+        # the leader being diffed right now: his whole book, for allocation sizing
+        self.lead_pos: Dict[str, Any] = {}
+        self.lead_gross = 0.0
+        # margin sent this cycle per leader (the account read predates it)
+        self.alloc_spent: Dict[str, float] = {}
+        self.leader_coins: Dict[str, List[str]] = {}   # for read-budget pacing
+        self.raw_positions: Dict[str, Any] = {}
+        self.entry_coins: Set[str] = set()     # coins with an entry this cycle (no catch-up on top)
 
     def event(self, action: str, **kw: Any) -> None:
         self.log_event(EngineEvent(ts_ms=self.now_ms, action=action, **kw))
@@ -144,24 +163,32 @@ class _Cycle:
 
 
 def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address: str,
-              now_ms: int, log_event: LogEvent) -> Dict[str, Any]:
+              now_ms: int, log_event: LogEvent,
+              stops: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
     """One full cycle. Everything it does goes through `venue` and `state`.
     Returns a plain summary dict; `engine.public.run_cycle` wraps this with
     settings reload, the SQLite `EngineStatus` snapshot and the one-line log.
+
+    `stops`: address -> close_positions, from `data/stop/<address>.flag`
+    (POST /api/wallets/{address}/stop). A stopped wallet is an orphan this
+    cycle even if settings still list it. `out["stops_done"]` lists the
+    addresses whose flag may be deleted now.
     """
     out: Dict[str, Any] = {
         "opened": [], "added": [], "reduced": [], "closed": [], "skipped": {}, "vanished": [],
-        "leaders_ok": 0, "leaders_total": 0,
+        "split": [], "leaders_ok": 0, "leaders_total": 0,
         "equity_usd": None, "available_margin_usd": None, "day_pnl_usd": None,
         "halted_reason": None, "enabled": settings.enabled, "dry_run": settings.dry_run,
-        "positions": [], "leaders": [],
+        "positions": [], "leaders": [], "stops_done": [], "effective_poll_s": None,
     }
+    stops = {a.lower(): bool(c) for a, c in (stops or {}).items()}
     cy = _Cycle(settings, venue, state, now_ms, log_event, out)
 
     last_dry = state.get_kv(_LAST_DRY_RUN_KEY)
     if last_dry is not None and bool(last_dry) != settings.dry_run:
         # The shadow book only means something within one dry-run stretch.
         state.clear_dry_copies()
+        state.set_kv(_CATCH_UP_KEY, {})
     state.set_kv(_LAST_DRY_RUN_KEY, settings.dry_run)
 
     our_account = venue.account_state(our_address) if our_address else None
@@ -194,13 +221,31 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     cy.shared_margin = shared_margin
     # Local copy: a coin we close this cycle is flat for the rest of it.
     cy.our_positions = dict(our_account["positions"])
+    cy.raw_positions = dict(our_account.get("raw_positions") or {})
+
+    configured = [a for a in settings.leaders if a not in stops]
+    configured_set = set(configured)
+    for leader in configured:
+        es = settings.for_leader(leader)
+        if es.sizing_mode == SizingMode.allocation:
+            state.sync_ledger(leader, es.invested_ms, _terms(es), now_ms)
 
     if not cy.dry:
         _resolve_pending(cy)
         _reconcile_vanished(cy)
 
-    configured = list(settings.leaders)
-    configured_set = set(configured)
+    stopping: Set[str] = set()
+    for addr, close_positions in sorted(stops.items()):
+        try:
+            if _run_stop(cy, addr, close_positions):
+                out["stops_done"].append(addr)
+            else:
+                stopping.add(addr)
+        except Exception as exc:  # a stop must never block the rest of the cycle
+            logger.exception("stop for %s raised", addr)
+            cy.event("error", leader=addr, reason=f"stop wallet raised {type(exc).__name__}: {exc}")
+            stopping.add(addr)
+
     orphans = sorted(a for a in state.leader_addresses() if a not in configured_set)
     order = configured + orphans
     out["leaders_total"] = len(order)
@@ -219,9 +264,23 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
         leader_rows.append(row)
 
     out["positions"] = _build_positions(state, our_account, now_ms)
+    _fill_wallet_fields(state, leader_rows, out["positions"], cy.raw_positions, stopping,
+                        configured_set)
     out["leaders"] = [LeaderStatus(**r) for r in leader_rows]
+    weight = pacing.cycle_weight(list(our_account["positions"]), cy.leader_coins,
+                                 include_extras=settings.include_spot_staked)
+    out["read_weight"] = weight
+    out["effective_poll_s"] = round(pacing.effective_poll_s(settings.poll_interval_s, weight), 3)
     _log_skip_changes(state, out["skipped"], now_ms, log_event, settings.dry_run)
     return out
+
+
+def _terms(es: Settings) -> Dict[str, Any]:
+    """The allocation terms a wallet runs with, remembered in its ledger row
+    so a stopped (orphan) wallet's winding-down row can still show them."""
+    return {"sizing_mode": es.sizing_mode.value, "allocation_usd": es.allocation_usd,
+            "exposure_mode": es.exposure_mode.value, "target_leverage": es.target_leverage,
+            "small_account_mode": es.small_account_mode.value, "invested_ms": es.invested_ms}
 
 
 # ── one leader ──────────────────────────────────────────────────────────────
@@ -244,6 +303,9 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
         his_equity = sizing.account_equity(lead_account)
 
     now_pos = lead_account["positions"]
+    cy.leader_coins[leader] = list(now_pos)
+    cy.lead_pos = now_pos
+    cy.lead_gross = sizing.gross_notional(now_pos)
     lstate = state.get_leader(leader)
     if lstate is None:
         if cy.settings.only_new_positions:
@@ -293,6 +355,12 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
                 retry[coin] = prev          # exits keep retrying
             elif state.get_copy(coin) is None:
                 ignored.add(coin)           # never re-fire an entry that may have gone through
+
+    try:
+        _catch_up(cy, leader, es, is_orphan, now_pos, retry)
+    except Exception as exc:  # a catch-up must never cost the leader his state write
+        logger.exception("catch-up for leader %s raised", leader)
+        cy.event("error", leader=leader, reason=f"catch-up raised {type(exc).__name__}: {exc}")
 
     new_last = {c: p["szi"] for c, p in now_pos.items()}
     for coin, frozen_prev in retry.items():
@@ -395,7 +463,8 @@ def _diff_coin(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, coin: str
                       f"{es.max_worse_entry_pct:.1f}%")
         retry[coin] = prev
         return
-    _open_or_add(cy, es, coin, leader, cur, prev, lp, his_equity, mid, ignored, copy)
+    if _open_or_add(cy, es, coin, leader, cur, prev, lp, his_equity, mid, ignored, copy) == "retry":
+        retry[coin] = prev
 
 
 def _log_skip_changes(state: EngineState, skipped: Dict[str, str], now_ms: int,
@@ -445,13 +514,16 @@ def _do_close(cy: _Cycle, coin: str, leader: str) -> bool:
     state, out = cy.state, cy.out
     if cy.dry:
         state.delete_dry_copy(coin)
+        _set_catch_up(state, coin, None)
         cy.event("intent", leader=leader, coin=coin, reason="would close", dry_run=True)
         out["closed"].append(coin)
         return True
     want = abs(_szi(cy.our_positions, coin))
+    pos = dict(cy.our_positions.get(coin) or {})
     res = cy.venue.close(coin, cloid=new_cloid())
     if not _full(res, want):
         if _filled(res) > 0:
+            _book_fill(state, cy.venue, leader, coin, pos, res, _filled(res), cy.now_ms)
             reason = f"close partially filled ({_filled(res):.6g} of {want:.6g}), retrying next cycle"
             cy.event("error", leader=leader, coin=coin, reason=reason)
         elif res.get("ambiguous"):
@@ -460,7 +532,9 @@ def _do_close(cy: _Cycle, coin: str, leader: str) -> bool:
             reason = f"close failed, retrying next cycle: {res.get('error')}"
         cy.skip(coin, reason)
         return False
+    _book_fill(state, cy.venue, leader, coin, pos, res, _close_size(res, want), cy.now_ms)
     state.delete_copy(coin)
+    _set_catch_up(state, coin, None)
     cy.our_positions.pop(coin, None)
     out["closed"].append(coin)
     cy.event("close", leader=leader, coin=coin)
@@ -514,9 +588,14 @@ def _do_reduce(cy: _Cycle, coin: str, leader: str, prev: float, cur: float,
         return True, prev
 
     is_buy = _szi(cy.our_positions, coin) < 0
+    pos = dict(cy.our_positions.get(coin) or {})
     order_size = venue.size_for(coin, reduce_size * mid, mid)
     cloid = new_cloid()
-    res = venue.market(coin, is_buy, order_size, mid, reduce_only=True, cloid=cloid)
+    res = venue.market(coin, is_buy, order_size, mid, reduce_only=True, cloid=cloid,
+                       max_slippage_pct=cy.settings.for_leader(leader).max_slippage_pct)
+    if _filled(res) > 0 or (_full(res, order_size) and "filled_sz" not in res):
+        _book_fill(state, venue, leader, coin, pos, res,
+                   _filled(res) if "filled_sz" in res else order_size, cy.now_ms)
     if _full(res, order_size):
         out["reduced"].append(coin)
         cy.event("reduce", leader=leader, coin=coin, reason=f"frac={frac:.4f}")
@@ -534,7 +613,8 @@ def _do_reduce(cy: _Cycle, coin: str, leader: str, prev: float, cur: float,
         # next cycle from order_status + our real size (`_resolve_pending`).
         pending_reduces[coin] = {"cloid": cloid, "leader": leader, "prev": prev, "cur": cur,
                                  "size_before": size_now, "order_size": order_size,
-                                 "sent_ms": cy.now_ms}
+                                 "sent_ms": cy.now_ms, "szi": float(pos.get("szi") or 0.0),
+                                 "entry_px": float(pos.get("entry_px") or 0.0)}
         state.set_kv(_PENDING_REDUCES_KEY, pending_reduces)
         cy.skip(coin, "reduce outcome unknown, resolving next cycle")
         cy.event("error", leader=leader, coin=coin, reason="reduce outcome unknown, resolving next cycle")
@@ -562,20 +642,21 @@ def _retry_prev(prev: float, cur: float, size_before: float, order_size: float,
 
 def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, prev: float,
                  lp: Dict[str, Any], his_equity: float, mid: float, ignored: Set[str],
-                 copy: Optional[Copy]) -> None:
+                 copy: Optional[Copy]) -> str:
     """`copy` is this leader's existing copy/shadow-copy row for `coin`, or
-    None for a fresh open. `es` is this leader's EFFECTIVE settings."""
-    state, venue, out, dry = cy.state, cy.venue, cy.out, cy.dry
+    None for a fresh open. `es` is this leader's EFFECTIVE settings.
+    Returns "done", "skip" or "retry" (the caller freezes his size)."""
+    state, venue, dry = cy.state, cy.venue, cy.dry
     if copy is None:
         if _szi(cy.our_positions, coin) != 0.0 and state.get_copy(coin) is None:
             ignored.add(coin)
             cy.skip(coin, "not ours: a real position exists in this coin we did not open")
-            return
+            return "skip"
         current_open = len(state.all_dry_copies()) if dry else len(state.all_copies())
         if current_open >= es.max_open_copies:
             ignored.add(coin)
             cy.skip(coin, f"max_open_copies reached ({es.max_open_copies})")
-            return
+            return "skip"
 
     coin_max = venue.max_leverage(coin)
     if coin_max <= 0:
@@ -583,52 +664,171 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         if copy is None:
             ignored.discard(coin)
         cy.skip(coin, f"unknown max leverage for {coin}")
-        return
+        return "skip"
+    allocation = es.sizing_mode == SizingMode.allocation
     lev = sizing.exchange_leverage(es, float(lp.get("lev") or 1.0), coin_max)
+    if allocation and copy is not None:
+        lev = max(1, int(copy.leverage))     # an add runs at the copy's own leverage
     his_added_ntl = (abs(cur) - abs(prev)) * float(lp.get("entry_px") or 0.0)
 
+    scale = 1.0
+    if allocation and es.small_account_mode == SmallAccountMode.concentrate:
+        conc = _concentrate_scale(cy, es, leader, coin, his_equity)
+        if conc is None:
+            if copy is None:
+                ignored.add(coin)
+            cy.skip(coin, f"concentrate: his {coin} slice is under the ${HL_MIN_ORDER_USD} minimum, "
+                          f"the allocation goes to his bigger positions")
+            return "skip"
+        scale = conc
+
     if copy is None:
-        ntl = sizing.open_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders, lev)
+        ntl = sizing.open_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders, lev,
+                                   cy.lead_gross)
     elif prev == 0.0:
         # A copy exists but his last-seen size is flat: there is no fraction
         # to scale by (dividing by it crashed every cycle once). Proportional
-        # sizes off his added notional alone; the fixed modes have nothing
-        # sane to scale and skip the add.
-        if es.sizing_mode != SizingMode.proportional:
+        # and allocation size off his added notional alone; the fixed modes
+        # have nothing sane to scale and skip the add.
+        if es.sizing_mode not in (SizingMode.proportional, SizingMode.allocation):
             cy.skip(coin, "add skipped: copy exists but his previous size is flat (no fraction to scale)")
-            return
-        ntl = sizing.add_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders, 0.0, 0.0)
+            return "skip"
+        ntl = sizing.add_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders, 0.0, 0.0,
+                                  cy.lead_gross, lev)
     else:
         cur_size = abs(state.get_dry_copy(coin).size) if dry else abs(_szi(cy.our_positions, coin))
         his_frac_added = (abs(cur) - abs(prev)) / abs(prev)
         ntl = sizing.add_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders,
-                                  cur_size * mid, his_frac_added)
+                                  cur_size * mid, his_frac_added, cy.lead_gross, lev)
+    return _execute_entry(cy, es, coin, leader, cur > 0, ntl * scale, lev, mid, copy, ignored, cur)
 
+
+def _concentrate_scale(cy: _Cycle, es: Settings, leader: str, coin: str,
+                       his_equity: float) -> Optional[float]:
+    """small_account_mode concentrate, on his book as it is now: the
+    renormalization factor for `coin`, or None when `coin` is not in the
+    eligible set. Coins we already copy for him are always eligible (they
+    stay copied until he exits). Same `sizing.concentrate` the preview uses."""
+    pos = cy.lead_pos
+    levs = {c: max(1, sizing.exchange_leverage(es, float(p.get("lev") or 1.0),
+                                               cy.venue.max_leverage(c)))
+            for c, p in pos.items()}
+    ntl = {c: sizing.his_notional(p) for c, p in pos.items()}
+    base = sizing.base_slices(ntl, his_equity, es.allocation_usd, es.exposure_mode, levs)
+    rows = cy.state.all_dry_copies() if cy.dry else cy.state.all_copies()
+    held = {c.coin for c in rows if c.leader == leader}
+    eligible, scale = sizing.concentrate(base, ntl, held)
+    return scale if coin in eligible else None
+
+
+def _leader_margin(cy: _Cycle, leader: str) -> float:
+    """Margin this leader's copies hold now: |size| x mark / leverage per
+    copy, plus (live) the margin of orders sent earlier this cycle, which
+    the start-of-cycle account read cannot show. Dry run sizes its shadow
+    copies at mid; they are updated in place, so nothing is added."""
+    total = 0.0
+    if cy.dry:
+        for dc in cy.state.all_dry_copies():
+            if dc.leader == leader:
+                total += abs(dc.size) * cy.venue.mid(dc.coin) / max(1, dc.leverage)
+        return total
+    for c in cy.state.all_copies():
+        if c.leader != leader:
+            continue
+        szi = _szi(cy.our_positions, c.coin)
+        if not szi:
+            continue
+        total += abs(szi) * _mark_px(cy.our_positions, cy.raw_positions, c.coin) / max(1, c.leverage)
+    return total + cy.alloc_spent.get(leader, 0.0)
+
+
+def _mark_px(positions: Dict[str, Any], raw_positions: Dict[str, Any], coin: str) -> float:
+    szi = _szi(positions, coin)
+    raw = raw_positions.get(coin) or {}
+    pv = _float_or_none(raw.get("positionValue"))
+    if pv is not None and szi:
+        return abs(pv / szi)
+    return float((positions.get(coin) or {}).get("entry_px") or 0.0)
+
+
+def _liquidity_cap(cy: _Cycle, es: Settings, coin: str, is_buy: bool) -> Optional[float]:
+    """`sizing.liquidity_cap` from live reads; None when either read failed
+    (or the venue does not implement them yet)."""
+    try:
+        stats = cy.venue.market_stats(coin)
+        depth = cy.venue.depth_usd(coin, is_buy, es.max_slippage_pct)
+    except Exception:
+        logger.warning("liquidity reads failed for %s", coin, exc_info=True)
+        return None
+    vol = _float_or_none((stats or {}).get("day_volume_usd")) if stats else None
+    return sizing.liquidity_cap(vol, _float_or_none(depth), es.max_order_volume_pct)
+
+
+def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bool, ntl: float,
+                   lev: int, mid: float, copy: Optional[Copy], ignored: Set[str], his_szi: float,
+                   catch_up: bool = False) -> str:
+    """Caps, minimum, liquidity split, then the order. In this order:
+    margin room (available x lev x 0.95), the allocation cap (allocation
+    wallets: total wallet margin <= allocation_usd x 1.02), the bump (not for
+    a catch-up remainder), the $10.50 minimum, then the liquidity cap: what
+    does not fit is carried in kv `catch_up` and sent over the next cycles
+    (`_catch_up`) until filled or he changes the position."""
+    state, venue, out, dry = cy.state, cy.venue, cy.out, cy.dry
+    action = "add" if copy is not None else "open"
     dex = coin.split(":", 1)[0] if ":" in coin else ""
     room = max(0.0, float(cy.available.get(dex, 0.0))) * lev * 0.95
     ntl = min(ntl, room)
-    ntl = sizing.bump(ntl, es)
+    alloc_room: Optional[float] = None
+    if es.sizing_mode == SizingMode.allocation:
+        alloc_room = sizing.allocation_room_ntl(es, _leader_margin(cy, leader), lev)
+        ntl = min(ntl, alloc_room)
+    if not catch_up:
+        ntl = sizing.bump(ntl, es)
     if ntl < HL_MIN_ORDER_USD:
         if copy is None:
             ignored.add(coin)
-        cy.skip(coin, f"copy ${ntl:.2f} under the ${HL_MIN_ORDER_USD} minimum")
-        return
+        if alloc_room is not None and alloc_room < HL_MIN_ORDER_USD:
+            reason = (f"allocation full: ${es.allocation_usd:,.2f} wallet has no room for a "
+                      f"${HL_MIN_ORDER_USD} order")
+        else:
+            reason = f"copy ${ntl:.2f} under the ${HL_MIN_ORDER_USD} minimum"
+        if catch_up:
+            _set_catch_up(state, coin, None)
+        cy.skip(coin, reason)
+        return "skip"
     if ntl > room:
         # min_order_bump rounded it up past the margin we actually have.
         if copy is None:
             ignored.add(coin)
         cy.skip(coin, f"copy ${ntl:.2f} needs more margin than available (room ${room:.2f})")
-        return
+        return "skip"
+    if alloc_room is not None and ntl > alloc_room + 1e-9:
+        if copy is None:
+            ignored.add(coin)
+        cy.skip(coin, f"allocation full: bumping to ${ntl:.2f} would exceed the "
+                      f"${es.allocation_usd:,.2f} allocation")
+        return "skip"
+
+    cap = _liquidity_cap(cy, es, coin, is_long)
+    send, carry, why = sizing.split_order(ntl, cap)
+    if why:
+        cy.skip(coin, why)
+        return "retry" if not catch_up else "skip"
+    ntl = send
+    split_note = (f"split: ${send:,.2f} now, ${carry:,.2f} over the next cycles "
+                  f"(liquidity cap ${cap:,.2f})" if carry > 0 and cap is not None else None)
+    if catch_up:
+        split_note = f"catch-up: ${send:,.2f}" + (f", ${carry:,.2f} still to go" if carry > 0 else "")
 
     actual_cross = es.margin_mode == MarginMode.cross and not venue.is_isolated_only(coin)
-    side = "long" if cur > 0 else "short"
-    action = "add" if copy is not None else "open"
+    side = "long" if is_long else "short"
 
     if dry:
         cy.event("intent", leader=leader, coin=coin, side=side, notional_usd=round(ntl, 2),
-                 leverage=lev, reason=f"would {action}", dry_run=True)
+                 leverage=lev, reason=f"would {action}" + (f" ({split_note})" if split_note else ""),
+                 dry_run=True)
         size_delta = venue.size_for(coin, ntl, mid)
-        signed_delta = size_delta if cur > 0 else -size_delta
+        signed_delta = size_delta if is_long else -size_delta
         if copy is None:
             state.put_dry_copy(DryCopy(coin, leader, cy.now_ms, lev, actual_cross,
                                        es.sizing_mode.value, signed_delta))
@@ -639,14 +839,15 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
             state.put_dry_copy(dc)
             out["added"].append(coin)
         _spend_margin(cy, dex, ntl / lev)
-        return
+        _after_entry(cy, coin, leader, is_long, his_szi, carry)
+        return "done"
 
     if copy is None:
         lev_res = venue.set_leverage(coin, lev, actual_cross)
         if not lev_res.get("ok"):
             ignored.add(coin)
             cy.skip(coin, "set_leverage failed")
-            return
+            return "skip"
 
     size = venue.size_for(coin, ntl, mid)
     cloid = new_cloid()
@@ -656,30 +857,37 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         # ours" forever and copycat would never close it.
         state.put_copy(Copy(coin, leader, cy.now_ms, lev, actual_cross, es.sizing_mode.value,
                             pending_cloid=cloid))
-    res = venue.market(coin, cur > 0, size, mid, cloid=cloid)
+    res = venue.market(coin, is_long, size, mid, cloid=cloid, max_slippage_pct=es.max_slippage_pct)
     filled = _filled(res)
     if not res.get("ok") and filled <= 0:
         if res.get("ambiguous"):
             reason = f"{action} outcome unknown (request may not have reached HL), resolving next cycle"
             cy.skip(coin, reason)
             cy.event("error", leader=leader, coin=coin, reason=reason)
-            return                      # an open keeps its pending row; an add is not re-sent
+            if catch_up:
+                _set_catch_up(state, coin, None)   # never re-send blind
+            return "skip"                # an open keeps its pending row; an add is not re-sent
         if copy is None:
             state.delete_copy(coin)
             ignored.add(coin)
         cy.skip(coin, f"order rejected: {res.get('error')}")
-        return
+        return "skip"
 
     # Filled, fully or partly. Nothing stores an assumed size: every later
     # add/reduce reads OUR real szi from the next account read, so a partial
     # fill only means this copy is smaller than intended. The event records
-    # what actually filled so the feed never overstates exposure.
-    fill_note: Optional[str] = None
+    # what actually filled so the feed never overstates exposure. The unfilled
+    # part joins the catch-up.
+    notes = [n for n in (split_note,) if n]
     if _partial(res, size):
         px = float(res.get("avg_px") or mid)
-        fill_note = f"partial fill {filled:.6g} of {size:.6g}"
+        notes.append(f"partial fill {filled:.6g} of {size:.6g}")
+        short = ntl - filled * px
         ntl = filled * px
+        if short >= HL_MIN_ORDER_USD:
+            carry += short
     _spend_margin(cy, dex, ntl / lev)
+    cy.alloc_spent[leader] = cy.alloc_spent.get(leader, 0.0) + ntl / lev
     if copy is None:
         state.promote_copy(coin)
         out["opened"].append(coin)
@@ -687,7 +895,74 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         # An add never re-leverages or re-records the copy row.
         out["added"].append(coin)
     cy.event(action, leader=leader, coin=coin, side=side, notional_usd=round(ntl, 2),
-             leverage=lev, reason=fill_note)
+             leverage=lev, reason="; ".join(notes) or None)
+    _after_entry(cy, coin, leader, is_long, his_szi, carry)
+    return "done"
+
+
+def _after_entry(cy: _Cycle, coin: str, leader: str, is_long: bool, his_szi: float,
+                 carry: float) -> None:
+    cy.entry_coins.add(coin)
+    if carry >= HL_MIN_ORDER_USD:
+        if coin not in cy.out["split"]:
+            cy.out["split"].append(coin)
+        _set_catch_up(cy.state, coin, {"leader": leader, "remaining_usd": round(carry, 6),
+                                       "his_szi": his_szi, "is_long": is_long,
+                                       "since_ms": cy.now_ms})
+    else:
+        _set_catch_up(cy.state, coin, None)
+
+
+def _set_catch_up(state: EngineState, coin: str, entry: Optional[Dict[str, Any]]) -> None:
+    cu = state.get_kv(_CATCH_UP_KEY)
+    cu = cu if isinstance(cu, dict) else {}
+    if entry is None:
+        if coin not in cu:
+            return
+        cu.pop(coin, None)
+    else:
+        cu[coin] = entry
+    state.set_kv(_CATCH_UP_KEY, cu)
+
+
+def _catch_up(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, now_pos: Dict[str, Any],
+              retry: Dict[str, float]) -> None:
+    """Send the next slice of every liquidity-split entry of this leader.
+    Dropped once he changes that position (the diff already mirrored the
+    change), our copy is gone, or the leader is an orphan. Paused (kept)
+    while entries are blocked, the mid is missing or worse than his entry
+    by more than max_worse_entry_pct. Never in the same cycle as an entry
+    on that coin."""
+    cu = cy.state.get_kv(_CATCH_UP_KEY)
+    if not isinstance(cu, dict) or not cu:
+        return
+    for coin, e in sorted(cu.items()):
+        if e.get("leader") != leader or coin in cy.entry_coins or coin in retry:
+            continue
+        his = _szi(now_pos, coin)
+        copy = cy.state.get_dry_copy(coin) if cy.dry else cy.state.get_copy(coin)
+        if (is_orphan or his != float(e.get("his_szi") or 0.0) or copy is None
+                or copy.leader != leader):
+            _set_catch_up(cy.state, coin, None)
+            continue
+        if not cy.dry and (copy.pending_cloid or not _szi(cy.our_positions, coin)):
+            continue
+        if not cy.entries_ok:
+            cy.skip(coin, "catch-up paused: entries blocked" if cy.settings.enabled
+                    else "catch-up paused: disabled")
+            continue
+        mid = cy.venue.mid(coin)
+        if mid <= 0:
+            cy.skip(coin, "no mid")
+            continue
+        entry_px = float((now_pos.get(coin) or {}).get("entry_px") or 0.0)
+        side = "long" if his > 0 else "short"
+        if not sizing.worse_entry_ok(side, mid, entry_px, es.max_worse_entry_pct):
+            cy.skip(coin, f"catch-up paused: mid {mid:.6g} worse than entry {entry_px:.6g} by more "
+                          f"than {es.max_worse_entry_pct:.1f}%")
+            continue
+        _execute_entry(cy, es, coin, leader, his > 0, float(e.get("remaining_usd") or 0.0),
+                       max(1, int(copy.leverage)), mid, copy, set(), his, catch_up=True)
 
 
 # ── cycle-start reconciles ──────────────────────────────────────────────────
@@ -741,6 +1016,10 @@ def _resolve_pending(cy: _Cycle) -> None:
                                                   p["order_size"], size_after)
             state.put_leader(ls)
         filled = max(0.0, p["size_before"] - size_after)
+        if filled > 0:
+            booked = ({"szi": p["szi"], "entry_px": p["entry_px"]} if p.get("entry_px")
+                      else cy.our_positions.get(coin) or {})
+            _book_fill(state, venue, p["leader"], coin, booked, {}, filled, cy.now_ms)
         cy.event("reduce" if filled > 0 else "skip", leader=p["leader"], coin=coin,
                  reason=f"ambiguous reduce settled ({st}): filled {filled:.6g} of {p['order_size']:.6g}")
         del pending[coin]
@@ -818,7 +1097,13 @@ def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
     for c in state.all_copies():
         want = abs(_szi(positions, c.coin))
         res = venue.close(c.coin, cloid=new_cloid())
+        if _filled(res) > 0 and not _full(res, want):
+            _book_fill(state, venue, c.leader, c.coin, positions.get(c.coin) or {}, res,
+                       _filled(res), now_ms)
         if _full(res, want):
+            _book_fill(state, venue, c.leader, c.coin, positions.get(c.coin) or {}, res,
+                       _close_size(res, want), now_ms)
+            _set_catch_up(state, c.coin, None)
             state.delete_copy(c.coin)
             pending_reduces.pop(c.coin, None)
             _ignore_while_leader_holds(state, c.leader, c.coin)
@@ -839,6 +1124,134 @@ def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
     state.clear_dry_copies()
     out["remaining"] = len(state.all_copies())
     return out
+
+
+# ── per-wallet ledger, stop-one-wallet, wallet status fields ────────────────
+
+def _close_size(res: Dict[str, Any], want: float) -> float:
+    """Size a successful close took off: the venue's filled_sz when it
+    reports one (0.0 = we were already flat), else what we held."""
+    return _filled(res) if "filled_sz" in res else want
+
+
+def _book_fill(state: EngineState, venue: Venue, leader: str, coin: str, pos: Dict[str, Any],
+               res: Dict[str, Any], size: float, now_ms: int) -> None:
+    """Realized PnL of one reduce/close fill of OUR copy into the leader's
+    ledger: `(fill px - our entry px) x size x side - fee`. Fill px is the
+    order's avg_px, else the mid. Fee only when the result reports one
+    (`fee` / `fee_usd`; HL order responses do not, so it is usually 0). Our
+    entry is the average entry from the account read before the order, so
+    a partial reduce does not move it. Nothing is booked without a size,
+    an entry or a price."""
+    try:
+        szi = float(pos.get("szi") or 0.0)
+        entry = float(pos.get("entry_px") or 0.0)
+    except (TypeError, ValueError):
+        return
+    if size <= 0 or not szi or entry <= 0:
+        return
+    px = _float_or_none(res.get("avg_px")) or 0.0
+    if px <= 0:
+        try:
+            px = float(venue.mid(coin))
+        except Exception:
+            px = 0.0
+    if px <= 0:
+        logger.warning("no fill px or mid for %s, realized PnL not booked", coin)
+        return
+    fee = abs(_float_or_none(res.get("fee")) or _float_or_none(res.get("fee_usd")) or 0.0)
+    sign = 1.0 if szi > 0 else -1.0
+    state.book_pnl(leader, (px - entry) * size * sign - fee, fee, now_ms)
+
+
+def _run_stop(cy: _Cycle, addr: str, close_positions: bool) -> bool:
+    """Stop one wallet (`data/stop/<address>.flag`). True when done (the
+    caller deletes the flag).
+
+    close_positions false: nothing to do here; the wallet is an orphan now,
+    its open copies keep following his exits.
+    close_positions true: close every copy of this leader reduce-only, like
+    close-all for one wallet and, like close-all, even in dry_run (an
+    explicit user command to flatten real positions). A failed, partial or
+    ambiguous close keeps the flag, so the next cycle retries until flat."""
+    state, venue = cy.state, cy.venue
+    if not close_positions:
+        cy.event("skip", leader=addr, reason="wallet stopped: open copies follow his exits")
+        return True
+    pending_reduces = state.get_kv(_PENDING_REDUCES_KEY) or {}
+    remaining = 0
+    for c in state.all_copies():
+        if c.leader != addr:
+            continue
+        want = abs(_szi(cy.our_positions, c.coin))
+        pos = dict(cy.our_positions.get(c.coin) or {})
+        res = venue.close(c.coin, cloid=new_cloid())
+        if _full(res, want):
+            _book_fill(state, venue, addr, c.coin, pos, res, _close_size(res, want), cy.now_ms)
+            state.delete_copy(c.coin)
+            pending_reduces.pop(c.coin, None)
+            _set_catch_up(state, c.coin, None)
+            _ignore_while_leader_holds(state, addr, c.coin)
+            cy.our_positions.pop(c.coin, None)
+            cy.out["closed"].append(c.coin)
+            cy.event("close", leader=addr, coin=c.coin, reason=STOP_REASON)
+            continue
+        remaining += 1
+        if _filled(res) > 0:
+            _book_fill(state, venue, addr, c.coin, pos, res, _filled(res), cy.now_ms)
+            reason = (f"{STOP_REASON}: close partially filled ({_filled(res):.6g} of {want:.6g}), "
+                      f"retrying next cycle")
+        elif res.get("ambiguous"):
+            reason = f"{STOP_REASON}: close outcome unknown, retrying next cycle"
+        else:
+            reason = f"{STOP_REASON}: close failed, retrying next cycle: {res.get('error')}"
+        cy.skip(c.coin, reason)
+        cy.event("error", leader=addr, coin=c.coin, reason=reason)
+    state.set_kv(_PENDING_REDUCES_KEY, pending_reduces)
+    for dc in state.all_dry_copies():
+        if dc.leader == addr:
+            state.delete_dry_copy(dc.coin)
+            _set_catch_up(state, dc.coin, None)
+    if remaining:
+        return False
+    cy.event("skip", leader=addr, reason="wallet stopped")
+    return True
+
+
+def _fill_wallet_fields(state: EngineState, rows: List[Dict[str, Any]],
+                        positions: List[CopyPosition], raw_positions: Dict[str, Any],
+                        stopping: Set[str], configured: Set[str]) -> None:
+    """The Trade page's per-wallet "position" on every LeaderStatus row:
+    our copies of that leader only, from this cycle's real positions (the
+    same rows as EngineStatus.positions, so they always agree), plus the
+    ledger. Margin is HL's `marginUsed` when the read has it, else
+    notional / leverage. An orphan's `effective` shows the allocation terms
+    it last ran with (from the ledger), so a winding-down wallet still has
+    its terms on screen."""
+    agg: Dict[str, Dict[str, float]] = {}
+    for p in positions:
+        a = agg.setdefault(p.leader, {"n": 0, "margin": 0.0, "exposure": 0.0, "upnl": 0.0})
+        a["n"] += 1
+        a["exposure"] += abs(p.notional_usd)
+        a["upnl"] += p.unrealized_pnl_usd
+        mu = _float_or_none((raw_positions.get(p.coin) or {}).get("marginUsed"))
+        a["margin"] += mu if mu is not None else abs(p.notional_usd) / max(1, p.leverage)
+    for row in rows:
+        addr = row["address"]
+        a = agg.get(addr) or {"n": 0, "margin": 0.0, "exposure": 0.0, "upnl": 0.0}
+        led = state.get_ledger(addr) or {}
+        row.update({
+            "open_copies": int(a["n"]), "margin_used_usd": round(a["margin"], 6),
+            "exposure_usd": round(a["exposure"], 6), "unrealized_pnl_usd": round(a["upnl"], 6),
+            "realized_pnl_usd": round(float(led.get("realized_pnl_usd") or 0.0), 6),
+            "fees_usd": round(float(led.get("fees_usd") or 0.0), 6),
+            "stopping": addr in stopping,
+        })
+        terms = led.get("terms") or {}
+        if addr not in configured and terms.get("sizing_mode") == SizingMode.allocation.value:
+            eff = row["effective"].model_dump(mode="json")
+            eff.update({k: v for k, v in terms.items() if v is not None})
+            row["effective"] = Settings.model_validate(eff)
 
 
 # ── risk gates ──────────────────────────────────────────────────────────────

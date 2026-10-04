@@ -120,14 +120,16 @@ def estimate_weight(has_stats: bool) -> float:
 
 def order_wallets(addresses: Sequence[str], index: Dict[str, Dict[str, Any]], book: Sequence[str],
                   requested: Sequence[str], now_ms: int) -> List[str]:
-    """Book first, then on-demand requests, then stalest first. Wallets
+    """Book first, then on-demand requests, then stalest first (ties, e.g.
+    every never-built wallet, keep the caller's order: best 30d PnL first). Wallets
     sitting out a failure cycle (skip_until_ms in the future) are left out."""
     book_set, req_set = set(book), set(requested)
+    rank = {a: i for i, a in reversed(list(enumerate(addresses)))}   # caller's order (universe: 30d PnL desc)
 
     def key(a: str):
         i = index.get(a) or {}
         tier = 0 if a in book_set else (1 if a in req_set else 2)
-        return (tier, int(i.get("updated_ms") or 0), a)
+        return (tier, int(i.get("updated_ms") or 0), rank[a])
 
     out = []
     for a in sorted(set(addresses), key=key):

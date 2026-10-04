@@ -39,6 +39,12 @@ class FakeVenue:
         self.statuses: Dict[str, Optional[str]] = {}   # cloid -> order_status answer
         self.cloids: List[Optional[str]] = []
         self.raise_on_mid: Set[str] = set()
+        # contract v5 liquidity: coin -> 24h volume / book depth (USD); None = read fails.
+        # Unset coins are deep (1e12), so pre-v5 tests never split.
+        self.day_volume: Dict[str, Optional[float]] = {}
+        self.depth: Dict[str, Optional[float]] = {}
+        self.slippages: List[float] = []
+        self.close_fill_px: Dict[str, float] = {}   # close(): coin -> avg_px reported
 
     # ── setup helpers (not part of the Venue protocol) ──────────────────
 
@@ -121,6 +127,16 @@ class FakeVenue:
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int):
         return None
 
+    def market_stats(self, coin: str) -> Optional[Dict[str, Any]]:
+        vol = self.day_volume.get(coin, 1e12)
+        if vol is None:
+            return None
+        return {"mark_px": self.mid(coin), "mid_px": self.mid(coin), "day_volume_usd": vol,
+                "open_interest_usd": 0.0, "max_leverage": self.max_leverage(coin)}
+
+    def depth_usd(self, coin: str, is_buy: bool, max_slippage_pct: float) -> Optional[float]:
+        return self.depth.get(coin, 1e12)
+
     def set_leverage(self, coin: str, leverage: int, is_cross: bool) -> Dict[str, Any]:
         self.levs[coin] = {"leverage": leverage, "is_cross": is_cross}
         return {"ok": True}
@@ -129,6 +145,7 @@ class FakeVenue:
                reduce_only: bool = False, cloid: Optional[str] = None,
                max_slippage_pct: float = 1.0) -> Dict[str, Any]:
         self.cloids.append(cloid)
+        self.slippages.append(max_slippage_pct)
         if coin in self.fail_market:
             return {"ok": False, "error": "rejected"}
         self.orders.append((coin, is_buy, round(size, 6), reduce_only))
@@ -149,7 +166,12 @@ class FakeVenue:
         if coin in self.close_ambiguous:
             return {"ok": False, "ambiguous": True, "error": "timeout"}
         if coin in self.close_filled:
-            return {"ok": False, "filled_sz": self.close_filled[coin], "error": "not flat"}
+            out = {"ok": False, "filled_sz": self.close_filled[coin], "error": "not flat"}
+            if coin in self.close_fill_px:
+                out["avg_px"] = self.close_fill_px[coin]
+            return out
+        if coin in self.close_fill_px:
+            return {"ok": True, "avg_px": self.close_fill_px[coin]}
         return {"ok": True}
 
 
