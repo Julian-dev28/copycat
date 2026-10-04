@@ -29,6 +29,12 @@ export function useAccounts() {
   return useQuery({ queryKey: accountKeys.list(demo), queryFn: () => source.list(), enabled, retry, refetchInterval: 60_000 });
 }
 
+/** GET /api/accounts/import-env: is the one-click .env migration available? Only asked when `ask`. */
+export function useImportEnvStatus(ask: boolean) {
+  const { demo, enabled, source } = useAccountMode();
+  return useQuery({ queryKey: [...accountKeys.all(demo), "import-env"], queryFn: () => source.importEnvStatus(), enabled: enabled && ask, retry: false });
+}
+
 export function useActiveAccount() {
   const q = useAccounts();
   return { ...q, active: pickActive(q.data) };

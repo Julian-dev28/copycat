@@ -46,6 +46,16 @@ describe("stat rows", () => {
     expect(o["All-time PnL"].value).toBe("—");
   });
 
+  it("says n/a, not 0 or a dash, while discovery has no metrics yet", async () => {
+    const { metricsPending } = await import("./summary");
+    const s = base();
+    expect(metricsPending(s)).toBe(true);
+    const all = [...analysisStats(s), ...performanceStats(s)];
+    expect(all.every((x) => x.value === "n/a")).toBe(true);
+    expect(performanceStats(s)[0].hint).toMatch(/discovery/);
+    expect(metricsPending(fixtureSummary(fixtureAccounts(NOW)[0], NOW))).toBe(false);
+  });
+
   it("analysis and performance read the scout labels", () => {
     const s: AccountSummary = {
       ...base(), style: "swing", pnl_tier: "strong", size_tier: "M", longest_win_streak_days: 9, avg_hold_h: 30, median_hold_h: 0.5,
@@ -58,7 +68,7 @@ describe("stat rows", () => {
     expect(p["Max drawdown"]).toMatchObject({ value: "31.2%", tone: "warn" });
     expect(p["Win rate"]).toMatchObject({ value: "65%", hint: "13 of 20 round trips" });
     expect(p.Sharpe.value).toBe("1.23");
-    expect(p.Sortino.value).toBe("—");
+    expect(p.Sortino.value).toBe("n/a");
   });
 });
 

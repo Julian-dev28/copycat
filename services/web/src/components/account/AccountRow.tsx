@@ -1,16 +1,15 @@
 "use client";
 
 import { clsx } from "clsx";
-import { Pencil, RefreshCw, Trash2, Zap } from "lucide-react";
+import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Button } from "@/components/ui/Button";
 import { agentView, canRefresh } from "@/lib/account/agent";
-import { accountErrorText } from "@/lib/account/errors";
 import { openWalletManager } from "@/lib/account/managerStore";
 import type { TradingAccount } from "@/lib/account/types";
-import { AgentBadge, ErrorLine, KindBadge } from "./bits";
-import { useAccountMode, useAction } from "./hooks";
+import { ActivateButton } from "./ActivateButton";
+import { AgentBadge, KindBadge } from "./bits";
 import { RemoveConfirm, RenameForm } from "./RowEditors";
 
 /** Created wallets renew with the passphrase; connected ones by signing or pasting again. */
@@ -20,8 +19,6 @@ export function startRefresh(a: TradingAccount): void {
 }
 
 export function AccountRow({ account, nowMs }: { account: TradingAccount; nowMs: number }) {
-  const { source } = useAccountMode();
-  const act = useAction();
   const [mode, setMode] = useState<"view" | "rename" | "remove">("view");
   const v = agentView(account, nowMs);
 
@@ -44,11 +41,7 @@ export function AccountRow({ account, nowMs }: { account: TradingAccount; nowMs:
       {mode === "remove" ? <RemoveConfirm account={account} onDone={() => setMode("view")} /> : null}
       {mode === "view" ? (
         <div className="flex flex-wrap gap-1.5">
-          {account.active ? null : (
-            <Button size="sm" variant="primary" disabled={act.pending} onClick={() => act.run(() => source.activate(account.id))}>
-              <Zap size={12} aria-hidden="true" /> {act.pending ? "Switching…" : "Activate"}
-            </Button>
-          )}
+          {account.active ? null : <ActivateButton account={account} />}
           {canRefresh(v) ? (
             <Button size="sm" onClick={() => startRefresh(account)}>
               <RefreshCw size={12} aria-hidden="true" /> Refresh agent
@@ -62,7 +55,6 @@ export function AccountRow({ account, nowMs }: { account: TradingAccount; nowMs:
           </Button>
         </div>
       ) : null}
-      <ErrorLine>{accountErrorText(act.error, "activate")}</ErrorLine>
     </li>
   );
 }

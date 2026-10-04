@@ -18,7 +18,7 @@ type View = AccountMetric | "calendar";
 
 function useWidth(): [React.RefObject<HTMLDivElement | null>, number] {
   const ref = useRef<HTMLDivElement>(null);
-  const [w, setW] = useState(640);
+  const [w, setW] = useState(0); // 0 until measured: a guessed width would overflow phones for a frame
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -84,7 +84,7 @@ export function AccountChart({ summary }: { summary: AccountSummary }) {
             </span>
           </p>
           <div ref={ref} className="w-full">
-            {points.length < 2 ? (
+            {width === 0 ? <div className="h-[240px]" /> : points.length < 2 ? (
               <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted">No history for this window yet.</div>
             ) : (
               <svg width={width} height={H} role="img" aria-label={`${metric === "pnl" ? "PnL" : "Account value"} over ${WINDOW_LABEL[win]}`} className="block select-none">

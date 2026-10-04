@@ -7,7 +7,7 @@ import { CoinBadge } from "@/components/scout/bits";
 import { TD, TH } from "@/components/scout/file/PositionsTable";
 import { when } from "@/components/scout/file/TripsTable";
 import { accountErrorText } from "@/lib/account/errors";
-import { normalizeBalances, normalizeFills, normalizeOrderRows, normalizeTransfers, transferLabel } from "@/lib/account/history";
+import { normalizeBalances, normalizeFills, normalizeOrderRows, normalizeTransfers, orderStatusLabel, transferLabel } from "@/lib/account/history";
 import type { HistoryKind, TradingAccount } from "@/lib/account/types";
 import { formatNumber, formatPrice, formatSignedUsd, formatSize, formatUsd, shortenAddress } from "@/lib/format";
 import { useAccountHistory } from "./hooks";
@@ -67,9 +67,9 @@ export function OrdersHistory({ account }: { account: TradingAccount }) {
   return (
     <History account={account} kind="orders" render={(raw) => {
       const orders = normalizeOrderRows(raw);
-      if (!orders.length) return <Empty>No open orders.</Empty>;
+      if (!orders.length) return <Empty>No orders in the last 30 days.</Empty>;
       return (
-        <Table cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Flags"]}>
+        <Table cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Status", "Flags"]}>
           {orders.map((o) => (
             <tr key={o.oid} className={ROW}>
               <td className={TD}>{when(o.time_ms)}</td>
@@ -77,8 +77,9 @@ export function OrdersHistory({ account }: { account: TradingAccount }) {
               <td className={clsx(TD, "font-sans text-xs uppercase", o.side === "buy" ? "text-success" : "text-danger")}>{o.side}</td>
               <td className={clsx(TD, "font-sans text-xs")}>{o.type}</td>
               <td className={TD}>{formatPrice(o.px)}</td>
-              <td className={TD}>{formatSize(o.size)}</td>
+              <td className={TD}>{formatSize(o.origSize || o.size)}</td>
               <td className={TD}>{formatUsd(o.notional, true)}</td>
+              <td className={clsx(TD, "font-sans text-xs", o.status === "filled" ? "text-success" : o.status === "open" ? "text-foreground" : "text-muted")}>{orderStatusLabel(o.status)}</td>
               <td className={clsx(TD, "font-sans text-xs text-muted")}>{[o.reduceOnly ? "reduce only" : null, o.trigger].filter(Boolean).join(" · ") || "—"}</td>
             </tr>
           ))}

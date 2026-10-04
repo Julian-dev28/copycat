@@ -185,3 +185,47 @@ describe("signSteps", () => {
     expect(st({ step: "done", address: MAIN })).toEqual(["done", "done"]);
   });
 });
+
+describe("chain from the backend's hex domain.chainId", () => {
+  const withChain = (chainId: string) => async () => ({ ...structuredClone(PREPARED), typed_data: { ...TYPED, domain: { ...TYPED.domain, chainId } } });
+
+  it("mainnet 0xa4b1: switches to Arbitrum One, then signs", async () => {
+    const { p, calls, chain } = provider({}, { id: 1 });
+    const { state } = await run({ provider: p, prepare: withChain("0xa4b1") });
+    expect(state.step).toBe("done");
+    expect(chain.id).toBe(42161);
+    const sw = calls.find((c) => c.method === "wallet_switchEthereumChain");
+    expect(sw?.params).toEqual([{ chainId: "0xa4b1" }]);
+  });
+
+  it("testnet 0x66eee: switches to Arbitrum Sepolia, adding it when unknown", async () => {
+    const chain = { id: 42161 };
+    const { p, calls } = provider({
+      wallet_switchEthereumChain: () => { throw rpcError(4902); },
+      wallet_addEthereumChain: (params) => {
+        chain.id = Number.parseInt((params as [{ chainId: string }])[0].chainId, 16);
+        return null;
+      },
+    }, chain);
+    const { state, steps } = await run({ provider: p, prepare: withChain("0x66eee") });
+    expect(state.step).toBe("done");
+    expect(steps).toContain("switching");
+    const add = calls.find((c) => c.method === "wallet_addEthereumChain")?.params as [{ chainId: string; chainName: string }];
+    expect(add[0]).toMatchObject({ chainId: "0x66eee", chainName: "Arbitrum Sepolia" });
+    expect(chain.id).toBe(421614);
+  });
+
+  it("already on the domain's chain: no switch prompt", async () => {
+    const { p, calls } = provider({}, { id: 42161 });
+    await run({ provider: p, prepare: withChain("0xa4b1") });
+    expect(calls.map((c) => c.method)).not.toContain("wallet_switchEthereumChain");
+  });
+
+  it("a wallet that ignores the switch fails clearly before signing", async () => {
+    const { p, calls } = provider({ wallet_switchEthereumChain: () => null }, { id: 1 });
+    const { state } = await run({ provider: p, prepare: withChain("0xa4b1") });
+    expect(state.error).toMatchObject({ kind: "chain", phase: "approve" });
+    expect(state.error?.message).toMatch(/Arbitrum One/);
+    expect(calls.map((c) => c.method)).not.toContain("eth_signTypedData_v4");
+  });
+});

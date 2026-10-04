@@ -40,8 +40,26 @@ export function normalizeFills(raw: unknown): LeaderFillView[] {
   return out.sort((a, b) => b.time_ms - a.time_ms);
 }
 
-export function normalizeOrderRows(raw: unknown): OpenOrderView[] {
-  return normalizeOrders(rows(raw));
+export type OrderRow = OpenOrderView & { status: string | null; status_ms: number | null };
+
+/**
+ * The api sends HL historicalOrders flattened: the order's own fields plus
+ * `status` (open, filled, canceled, ...) and `status_ms`. Newest status first.
+ */
+export function normalizeOrderRows(raw: unknown): OrderRow[] {
+  const out: OrderRow[] = [];
+  for (const r of rows(raw)) {
+    const [o] = normalizeOrders([r]);
+    if (o) out.push({ ...o, status: str(r.status), status_ms: num(r.status_ms) });
+  }
+  return out.sort((a, b) => (b.status_ms ?? b.time_ms) - (a.status_ms ?? a.time_ms));
+}
+
+/** "marginCanceled" -> "Margin canceled". */
+export function orderStatusLabel(status: string | null): string {
+  if (!status) return "—";
+  const words = status.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 const TRANSFER_LABEL: Record<string, string> = {

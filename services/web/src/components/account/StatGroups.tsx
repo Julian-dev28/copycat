@@ -1,7 +1,7 @@
 import { clsx } from "clsx";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { formatPct, formatUsd } from "@/lib/format";
-import { analysisStats, directionBias, overviewStats, performanceStats, type Stat } from "@/lib/account/summary";
+import { analysisStats, directionBias, metricsPending, overviewStats, performanceStats, type Stat } from "@/lib/account/summary";
 import type { AccountSummary } from "@/lib/account/types";
 
 const TONE: Record<NonNullable<Stat["tone"]>, string> = { up: "text-success", down: "text-danger", flat: "text-foreground", warn: "text-warning" };
@@ -57,12 +57,17 @@ export function DirectionBias({ summary }: { summary: AccountSummary }) {
 
 export function StatGroups({ summary }: { summary: AccountSummary }) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <StatList title="Overview" stats={overviewStats(summary)} />
-      <StatList title="Analysis" description="From your closed round trips" stats={analysisStats(summary)} />
-      <div className="flex flex-col gap-4">
-        <StatList title="Performance" description="Last 30 days" stats={performanceStats(summary)} />
-        <DirectionBias summary={summary} />
+    <div className="flex flex-col gap-2">
+      {metricsPending(summary) ? (
+        <p className="text-xs text-muted">Style, streaks, win rate and risk ratios are computed by discovery. They show as n/a until its next pass covers this account.</p>
+      ) : null}
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatList title="Overview" stats={overviewStats(summary)} />
+        <StatList title="Analysis" description="From your closed round trips" stats={analysisStats(summary)} />
+        <div className="flex flex-col gap-4">
+          <StatList title="Performance" description="Last 30 days" stats={performanceStats(summary)} />
+          <DirectionBias summary={summary} />
+        </div>
       </div>
     </div>
   );

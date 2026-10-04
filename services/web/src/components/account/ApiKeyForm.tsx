@@ -5,11 +5,12 @@ import { useId, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { isValidAddress } from "@/lib/address";
+import { shortenAddress } from "@/lib/format";
 import { accountErrorText } from "@/lib/account/errors";
 import { checkLabel, LABEL_MAX } from "@/lib/account/passphrase";
 import type { TradingAccount } from "@/lib/account/types";
 import { ErrorLine, Field, SecretInput } from "./bits";
-import { useAccountMode, useAccounts, useAction } from "./hooks";
+import { useAccountMode, useAccounts, useAction, useImportEnvStatus } from "./hooks";
 
 const KEY_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
@@ -45,7 +46,9 @@ export function ApiKeyForm({ refresh, onDone }: { refresh?: { label: string; add
     if (list?.[0]) onDone(list[0]);
   }
 
-  const showEnv = !refresh && accounts.isSuccess && accounts.data.length === 0;
+  const envStatus = useImportEnvStatus(!refresh);
+  // The api decides (key present, not imported yet); an older api without the GET falls back to "list is empty".
+  const showEnv = !refresh && (envStatus.data ? envStatus.data.available : envStatus.isError && accounts.isSuccess && accounts.data.length === 0);
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" autoComplete="off" noValidate>
@@ -59,7 +62,8 @@ export function ApiKeyForm({ refresh, onDone }: { refresh?: { label: string; add
       {showEnv ? (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
           <span className="text-muted">
-            Your <span className="font-num text-foreground">.env</span> already has COPYCAT_ACCOUNT_ADDRESS and COPYCAT_AGENT_KEY? Use them in one click.
+            Your <span className="font-num text-foreground">.env</span> already has COPYCAT_ACCOUNT_ADDRESS and COPYCAT_AGENT_KEY
+            {envStatus.data?.address ? <> for <span className="font-num text-foreground">{shortenAddress(envStatus.data.address)}</span></> : null}. Import them in one click.
           </span>
           <Button size="sm" onClick={importEnv} disabled={env.pending}>
             <FileKey size={13} aria-hidden="true" /> {env.pending ? "Importing…" : "Import from .env"}

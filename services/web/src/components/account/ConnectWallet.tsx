@@ -5,19 +5,16 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { AddressChip } from "@/components/ui/AddressChip";
-import { accountErrorText } from "@/lib/account/errors";
 import type { TradingAccount } from "@/lib/account/types";
 import { ApiKeyForm } from "./ApiKeyForm";
-import { AgentBanner, ErrorLine } from "./bits";
-import { useAccountMode, useAction } from "./hooks";
+import { ActivateButton } from "./ActivateButton";
+import { AgentBanner } from "./bits";
 import { SignWithWallet } from "./SignWithWallet";
 
 type Tab = "sign" | "key";
 
 /** After any successful add: what was added, and one click to make it the account copycat trades. */
 export function AddedPanel({ account, onClose }: { account: TradingAccount; onClose: () => void }) {
-  const { source } = useAccountMode();
-  const act = useAction();
   const [activated, setActivated] = useState(account.active);
   return (
     <div className="flex flex-col items-center gap-3 py-2 text-center">
@@ -29,23 +26,8 @@ export function AddedPanel({ account, onClose }: { account: TradingAccount; onCl
       <p className="max-w-sm text-sm text-muted">
         {activated ? "copycat now trades this account." : "copycat keeps trading your current active account until you switch."}
       </p>
-      <ErrorLine>{accountErrorText(act.error, "activate")}</ErrorLine>
-      <div className="flex gap-2">
-        {activated ? null : (
-          <Button
-            variant="primary"
-            disabled={act.pending}
-            onClick={async () => {
-              const ok = await act.run(async () => {
-                await source.activate(account.id);
-                return true;
-              });
-              if (ok) setActivated(true);
-            }}
-          >
-            {act.pending ? "Switching…" : "Make active"}
-          </Button>
-        )}
+      <div className="flex flex-wrap justify-center gap-2">
+        {activated ? null : <ActivateButton account={account} label="Make active" size="md" onActivated={() => setActivated(true)} />}
         <Button onClick={onClose}>Done</Button>
       </div>
     </div>

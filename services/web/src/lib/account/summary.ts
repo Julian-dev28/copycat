@@ -68,24 +68,33 @@ export function overviewStats(s: AccountSummary): Stat[] {
   ];
 }
 
+export const NA = "n/a";
+const PENDING = "Computed by discovery; shows after its next pass";
+const orNa = <T,>(v: T | null | undefined, f: (x: T) => string) => (v === null || v === undefined ? NA : f(v));
+
+/** True while discovery has not produced this account's metrics yet (every derived stat is null). */
+export function metricsPending(s: AccountSummary): boolean {
+  return !s.risk_30d && !s.trades_30d && !s.style && s.longest_win_streak_days == null && !s.daily_pnl.length;
+}
+
 export function analysisStats(s: AccountSummary): Stat[] {
   return [
-    { label: "Longest win streak", value: s.longest_win_streak_days == null ? "—" : `${s.longest_win_streak_days}d`, hint: "Consecutive green days" },
-    { label: "Style", value: s.style ? STYLE_META[s.style].label : "—", hint: s.style ? STYLE_META[s.style].hint : "Not enough round trips yet" },
-    { label: "Avg / median hold", value: `${formatHold(s.avg_hold_h)} / ${formatHold(s.median_hold_h)}` },
-    { label: "PnL cohort", value: s.pnl_tier ? PNL_TIER_META[s.pnl_tier].label : "—", hint: s.pnl_tier ? PNL_TIER_META[s.pnl_tier].hint : undefined },
-    { label: "Size cohort", value: s.size_tier ?? "—", hint: s.size_tier ? SIZE_TIER_HINT[s.size_tier] : undefined },
+    { label: "Longest win streak", value: orNa(s.longest_win_streak_days, (d) => `${d}d`), hint: s.longest_win_streak_days == null ? PENDING : "Consecutive green days" },
+    { label: "Style", value: s.style ? STYLE_META[s.style].label : NA, hint: s.style ? STYLE_META[s.style].hint : PENDING },
+    { label: "Avg / median hold", value: s.avg_hold_h == null && s.median_hold_h == null ? NA : `${formatHold(s.avg_hold_h)} / ${formatHold(s.median_hold_h)}` },
+    { label: "PnL cohort", value: s.pnl_tier ? PNL_TIER_META[s.pnl_tier].label : NA, hint: s.pnl_tier ? PNL_TIER_META[s.pnl_tier].hint : undefined },
+    { label: "Size cohort", value: s.size_tier ?? NA, hint: s.size_tier ? SIZE_TIER_HINT[s.size_tier] : undefined },
   ];
 }
 
-const n2 = (v: number | null | undefined) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toFixed(2));
+const n2 = (v: number | null | undefined) => orNa(v, (x) => (Number.isFinite(x) ? x.toFixed(2) : NA));
 
 export function performanceStats(s: AccountSummary): Stat[] {
   const r = s.risk_30d;
   const t = s.trades_30d;
   return [
-    { label: "Max drawdown", value: formatPct(r?.max_drawdown_pct), tone: (r?.max_drawdown_pct ?? 0) >= 25 ? "warn" : undefined },
-    { label: "Win rate", value: formatPct(t?.win_rate_pct, 0), hint: t ? `${t.wins} of ${t.trips} round trips` : undefined },
+    { label: "Max drawdown", value: orNa(r?.max_drawdown_pct, (v) => formatPct(v)), tone: (r?.max_drawdown_pct ?? 0) >= 25 ? "warn" : undefined, hint: r ? undefined : PENDING },
+    { label: "Win rate", value: orNa(t?.win_rate_pct, (v) => formatPct(v, 0)), hint: t ? `${t.wins} of ${t.trips} round trips` : PENDING },
     { label: "Sharpe", value: n2(r?.sharpe) },
     { label: "Sortino", value: n2(r?.sortino) },
   ];

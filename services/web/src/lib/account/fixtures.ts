@@ -90,7 +90,9 @@ export function fixtureHistory(account: TradingAccount, kind: HistoryKind, nowMs
     case "fills":
       return p.recent_fills;
     case "orders":
-      return fixtureOrders(demoFileRow(account.address, nowMs), nowMs);
+      return fixtureOrders(demoFileRow(account.address, nowMs), nowMs).map((o, i) => ({
+        ...o, status: i % 3 === 1 ? "filled" : i % 3 === 2 ? "canceled" : "open", status_ms: o.time_ms + i * 60_000,
+      }));
     case "transfers":
       return transfers(account, nowMs);
     case "balances":

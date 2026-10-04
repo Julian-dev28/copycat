@@ -86,6 +86,8 @@ export const demoAccounts: AccountSource = {
     const agent = privateKeyToAccount(agent_private_key as `0x${string}`).address;
     return later(upsert({ id: `acc_demo_${++seq}`, label: label.trim(), kind: "connected_key", address: normAddr(main_address), ...agentFields(agent, null), active: false, created_ms: demoNowMs(), has_main_key: false }), 500);
   },
+  importEnvStatus: async () =>
+    later(db().length ? { available: false, reason: "accounts already exist" } : { available: true, address: fixtureAccounts(demoNowMs())[0].address }),
   importEnv: async () => {
     if (db().length) throw new ApiError(409, "accounts already exist; import from .env only works on an empty list");
     const a: TradingAccount = { ...fixtureAccounts(demoNowMs())[0], id: "acc_env", label: "From .env", kind: "connected_key", has_main_key: false, active: true };
@@ -107,8 +109,13 @@ export const demoAccounts: AccountSource = {
     }
     return later(upsert({ id: `acc_demo_${++seq}`, label: label.trim(), kind: "connected_signed", address: normAddr(main_address), ...agentFields(agentAddress, "copycat"), active: false, created_ms: demoNowMs(), has_main_key: false }), 500);
   },
-  activate: async (id) => {
+  activate: async (id, force = false) => {
     find(id);
+    const current = db().find((a) => a.active);
+    // demo: the fixture "Main" account has copies open, like a live engine would
+    if (!force && current && current.id !== id && current.id === "acc_main") {
+      throw new ApiError(409, `${current.address} still has 3 copies open. Close them first (Close all), or activate with force=true to leave them unmanaged.`);
+    }
     for (const a of db()) a.active = a.id === id;
     await later(null);
   },
@@ -125,7 +132,7 @@ export const demoAccounts: AccountSource = {
   refreshAgent: async (id, passphrase) => {
     const a = find(id);
     if (a.kind === "connected_key") throw bad("API-key accounts refresh by importing a new key");
-    if (a.kind === "created" && (!passphrase || passphrase.length < 12)) throw new ApiError(403, "wrong passphrase");
+    if (a.kind === "created" && (!passphrase || passphrase.length < 12)) throw new ApiError(401, "invalid passphrase");
     if (a.kind === "created") unfunded.delete(a.id); // demo: pretend the deposit landed
     Object.assign(a, agentFields(`0x${"ca7".repeat(13)}a`, "copycat"));
     await later(null, 600);
@@ -134,12 +141,17 @@ export const demoAccounts: AccountSource = {
     if (!find(from_account_id).has_main_key) throw bad("only copycat-created accounts can send");
     if (!isValidAddress(to_address)) throw bad("to_address is not a 0x address");
     if (!(amount_usd > 0)) throw bad("amount must be positive");
-    if (passphrase.length < 12) throw new ApiError(403, "wrong passphrase");
+    if (passphrase.length < 12) throw new ApiError(401, "invalid passphrase");
     await later(null, 700);
   },
   summary: async (id) => {
     const a = find(id);
-    return later(fixtureSummary({ ...a }, demoNowMs(), !unfunded.has(a.id)));
+    const s = fixtureSummary({ ...a }, demoNowMs(), !unfunded.has(a.id));
+    // accounts added this session: balances yes, discovery metrics not yet (the live api's state too)
+    if (a.id.startsWith("acc_demo_") && !unfunded.has(a.id)) {
+      return later({ ...s, risk_30d: null, trades_30d: null, style: null, avg_hold_h: null, median_hold_h: null, pnl_tier: null, size_tier: null, longest_win_streak_days: null, daily_pnl: [] });
+    }
+    return later(s);
   },
   history: async (id, kind) => {
     const a = find(id);

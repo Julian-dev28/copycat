@@ -65,6 +65,17 @@ describe("normalizeBalances", () => {
 describe("normalizeOrderRows", () => {
   it("delegates to the scout order normalizer", () => {
     const out = normalizeOrderRows({ rows: [{ oid: 1, coin: "BTC", side: "B", limitPx: "100", sz: "2", timestamp: 5 }] });
-    expect(out[0]).toMatchObject({ coin: "BTC", side: "buy", px: 100, notional: 200 });
+    expect(out[0]).toMatchObject({ coin: "BTC", side: "buy", px: 100, notional: 200, status: null });
+  });
+
+  it("keeps HL historicalOrders status, newest status first", async () => {
+    const { orderStatusLabel } = await import("./history");
+    const out = normalizeOrderRows({ kind: "orders", rows: [
+      { oid: 1, coin: "BTC", side: "B", limitPx: "100", sz: "0", origSz: "2", timestamp: 5, status: "filled", status_ms: 9 },
+      { oid: 2, coin: "ETH", side: "A", limitPx: "10", sz: "1", origSz: "1", timestamp: 6, status: "marginCanceled", status_ms: 20 },
+    ] });
+    expect(out.map((o) => [o.oid, o.status])).toEqual([[2, "marginCanceled"], [1, "filled"]]);
+    expect(orderStatusLabel("marginCanceled")).toBe("Margin canceled");
+    expect(orderStatusLabel(null)).toBe("—");
   });
 });

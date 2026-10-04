@@ -69,10 +69,12 @@ describe("demo store", () => {
   });
 
   it("activate is exclusive; import-env only on an empty list", async () => {
-    await demoAccounts.activate("acc_api");
+    await expect(demoAccounts.activate("acc_api")).rejects.toMatchObject({ status: 409 });
+    await demoAccounts.activate("acc_api", true);
     expect((await demoAccounts.list()).filter((a) => a.active).map((a) => a.id)).toEqual(["acc_api"]);
     await expect(demoAccounts.importEnv()).rejects.toThrow(/empty list/);
     resetDemoAccounts(true);
+    expect((await demoAccounts.importEnvStatus()).available).toBe(true);
     expect((await demoAccounts.importEnv())[0].active).toBe(true);
   });
 });
