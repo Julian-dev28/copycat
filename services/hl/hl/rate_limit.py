@@ -33,6 +33,15 @@ copycat process on the host draws from, with two priority classes
 If the file cannot be opened or locked (read-only disk, no fcntl on the
 platform) the shared bucket falls back to a private in-process
 `TokenBucket` and logs once. Pacing degrades to per-process; nothing breaks.
+
+Per-item surcharges are charged AFTER the response, from the real item
+count (`item_surcharge` + `charge`): http_post acquires the base weight
+before the call, then charges ceil(n/20) (or ceil(n/60) for candles) once it
+knows n. Pre-charging the cap instead billed every userFillsByTime page 120
+(the 2000-row max) even when it returned 12 rows. `charge` never waits: the
+request already happened, so the bucket may go negative (debt, floored at
+-capacity) and every later acquire, in either process, waits for refill to
+pay it off. Priority reserve rules apply to acquire, not to charge.
 """
 from __future__ import annotations
 
@@ -71,21 +80,22 @@ _PER_20_ITEMS = frozenset({
 
 
 def endpoint_weight(req_type: Optional[str], item_count: Optional[int] = None) -> int:
-    """Pre-call weight estimate for one /info `type`.
+    """Weight for one /info `type`: the base weight, plus the documented
+    per-item surcharge for `item_count` items when given. http_post charges
+    the base before the call and `item_surcharge` after it."""
+    return _BASE_WEIGHT.get(req_type or "", _DEFAULT_WEIGHT) + item_surcharge(req_type, item_count)
 
-    `item_count`, when known ahead of the call (e.g. a capped page size for
-    userFillsByTime, or an estimated candle count for candleSnapshot), adds
-    the documented per-item surcharge. Omit it to charge just the base
-    weight -- always safe to under-estimate since the limiter only exists
-    to keep OUR pacing under the budget, not to bill exactly what HL bills.
-    """
-    base = _BASE_WEIGHT.get(req_type or "", _DEFAULT_WEIGHT)
-    if item_count:
-        if req_type == "candleSnapshot":
-            return base + math.ceil(item_count / 60)
-        if req_type in _PER_20_ITEMS:
-            return base + math.ceil(item_count / 20)
-    return base
+
+def item_surcharge(req_type: Optional[str], item_count: Optional[int]) -> int:
+    """The per-item part alone: +1 per 20 items (userFillsByTime, ...), +1 per
+    60 for candleSnapshot, 0 for every other type or a missing count."""
+    if not item_count or item_count <= 0:
+        return 0
+    if req_type == "candleSnapshot":
+        return math.ceil(item_count / 60)
+    if req_type in _PER_20_ITEMS:
+        return math.ceil(item_count / 20)
+    return 0
 
 
 class TokenBucket:
@@ -122,11 +132,22 @@ class TokenBucket:
                 return False
             time.sleep(min(sleep_for, 0.5))
 
+    def charge(self, weight: float) -> None:
+        """Deduct weight already spent (a post-response surcharge). Never
+        waits; may leave the bucket in debt, floored at -capacity."""
+        if weight <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            self._tokens = min(self._capacity, self._tokens + (now - self._last) * self._refill)
+            self._last = now
+            self._tokens = max(-self._capacity, self._tokens - weight)
+
     def drain(self) -> None:
         """HL answered 429: our estimate was optimistic. Empty the bucket so
-        every caller waits for real refill before trying again."""
+        every caller waits for real refill before trying again. Debt stays."""
         with self._lock:
-            self._tokens = 0.0
+            self._tokens = min(0.0, self._tokens)
             self._last = time.monotonic()
 
 
@@ -205,7 +226,8 @@ class SharedTokenBucket:
                     except (IndexError, ValueError):
                         tokens, last = self._capacity, now   # new or corrupt file: start full
                     elapsed = max(0.0, now - last)
-                    tokens = min(self._capacity, max(0.0, tokens) + elapsed * self._refill)
+                    # >= -capacity, not >= 0: a post-response charge() may leave debt
+                    tokens = min(self._capacity, max(-self._capacity, tokens) + elapsed * self._refill)
                     new_tokens, result = fn(tokens)
                     data = f"{new_tokens:.6f} {now:.6f}".encode("ascii")
                     os.lseek(fd, 0, os.SEEK_SET)
@@ -253,12 +275,25 @@ class SharedTokenBucket:
                 return False
             time.sleep(min(sleep_for, 0.5))
 
+    def charge(self, weight: float) -> None:
+        """Deduct weight already spent, shared with every process; never
+        waits, may leave debt (floored at -capacity). See module docstring."""
+        if weight <= 0:
+            return
+        if self._fallback is not None:
+            self._fallback.charge(weight)
+            return
+        try:
+            self._with_state(lambda t: (max(-self._capacity, t - weight), None))
+        except OSError as exc:
+            self._fall_back(exc).charge(weight)
+
     def drain(self) -> None:
         if self._fallback is not None:
             self._fallback.drain()
             return
         try:
-            self._with_state(lambda t: (0.0, None))
+            self._with_state(lambda t: (min(0.0, t), None))
         except OSError as exc:
             self._fall_back(exc).drain()
 

@@ -220,3 +220,73 @@ def test_429_honors_retry_after_but_caps_it(monkeypatch):
     monkeypatch.setattr(http, "get_session", lambda: sess)
     http.http_post("/info", {"type": "meta"})
     assert sleeps == [3.0, http.RETRY_429_MAX_SLEEP_S]
+
+
+# ── item surcharge charged AFTER the response, from the real count ──────────
+
+class _LedgerBucket(rate_limit.TokenBucket):
+    def __init__(self):
+        super().__init__(capacity=1_000_000, refill_per_sec=0)
+        self.events = []
+
+    def acquire(self, weight=20, max_wait=10.0):
+        self.events.append(("acquire", weight))
+        return True
+
+    def charge(self, weight):
+        self.events.append(("charge", weight))
+
+
+def _ledger(monkeypatch, body):
+    bucket = _LedgerBucket()
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", bucket)
+    monkeypatch.setattr(http, "get_session", lambda: _FakePostSession(response=_FakeResponse(body)))
+    return bucket
+
+
+def test_fills_page_charges_base_then_real_item_count(monkeypatch):
+    bucket = _ledger(monkeypatch, [{}] * 12)
+    assert len(http.http_post("/info", {"type": "userFillsByTime"})) == 12
+    assert bucket.events == [("acquire", 20), ("charge", 1)]     # 21, not the old pre-charged 120
+
+
+def test_full_fills_page_charges_the_full_surcharge(monkeypatch):
+    bucket = _ledger(monkeypatch, [{}] * 2000)
+    http.http_post("/info", {"type": "userFillsByTime"})
+    assert bucket.events == [("acquire", 20), ("charge", 100)]
+
+
+def test_candles_charge_per_60(monkeypatch):
+    bucket = _ledger(monkeypatch, [{}] * 61)
+    http.http_post("/info", {"type": "candleSnapshot", "req": {}})
+    assert bucket.events == [("acquire", 20), ("charge", 2)]
+
+
+def test_empty_or_non_item_responses_charge_nothing_after(monkeypatch):
+    bucket = _ledger(monkeypatch, [])
+    http.http_post("/info", {"type": "userFillsByTime"})
+    assert bucket.events == [("acquire", 20)]
+    bucket = _ledger(monkeypatch, [{}] * 500)
+    http.http_post("/info", {"type": "frontendOpenOrders"})
+    assert bucket.events == [("acquire", 20)]                       # not a per-item endpoint
+    bucket = _ledger(monkeypatch, {"assetPositions": []})
+    http.http_post("/info", {"type": "clearinghouseState"})
+    assert bucket.events == [("acquire", 2)]
+
+
+def test_failed_read_charges_no_surcharge(monkeypatch):
+    bucket = _LedgerBucket()
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", bucket)
+    monkeypatch.setattr(http, "get_session",
+                        lambda: _FakePostSession(response=_FakeResponse([{}] * 40, status=500)))
+    assert http.http_post("/info", {"type": "userFillsByTime"}) is None
+    assert bucket.events == [("acquire", 20)]
+
+
+def test_charge_failure_never_fails_the_read(monkeypatch):
+    class _Boom(_LedgerBucket):
+        def charge(self, weight):
+            raise OSError("disk gone")
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", _Boom())
+    monkeypatch.setattr(http, "get_session", lambda: _FakePostSession(response=_FakeResponse([{}] * 40)))
+    assert len(http.http_post("/info", {"type": "userFillsByTime"})) == 40

@@ -9,7 +9,6 @@ exchange. See services/hl/README.md for the full contract write-up.
 from __future__ import annotations
 
 import logging
-import math
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,17 +24,6 @@ from .http import http_post
 logger = logging.getLogger(__name__)
 
 LEADERBOARD_HOST = "https://stats-data.hyperliquid.xyz"
-
-# Milliseconds per HL candle interval, used only to estimate an item count
-# for the rate limiter's per-60-item candleSnapshot surcharge -- an
-# under-estimate just under-charges the bucket slightly, never a
-# correctness issue.
-_MS_PER_CANDLE: Dict[str, int] = {
-    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000,
-    "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000,
-    "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000,
-    "3d": 259_200_000, "1w": 604_800_000,
-}
 
 
 def _size_tolerance(sz_dec: Optional[int]) -> float:
@@ -515,42 +503,70 @@ class HlVenue:
     def size_for(self, coin: str, notional_usd: float, mid: float) -> float:
         return sizing.size_for_notional(coin, notional_usd, mid)
 
-    def fills(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
-        """userFillsByTime, paginated. HL caps each response at 2000 fills
-        and returns them oldest-first within the given window (confirmed
-        against mainnet 2026-10-02: 772 fills over a 30d window came back
-        strictly nondecreasing by `time`). A full page is paged forward by
-        setting the next `startTime` to (that page's last fill time + 1) --
-        never by position/offset, which HL's API does not support and
-        would re-request the same page forever on a >2000-fill window.
+    def fills(self, user: str, start_ms: int, end_ms: int,
+              aggregate_by_time: bool = False) -> Optional[List[Dict[str, Any]]]:
+        """userFillsByTime over [start_ms, end_ms] (both inclusive), paginated.
 
-        Stops when a page returns fewer than 2000 fills, or after
-        MAX_PAGES (a safety valve against an API that never shrinks below
-        the cap). Returns None if any page's fetch failed, or if a page's
-        own cursor (last fill's `time`) is unparseable -- pagination
-        cannot continue reliably past that point, and a silently truncated
-        fill list is worse than a clear failure.
+        HL caps each response at 2000 rows and returns them oldest-first
+        (confirmed against mainnet 2026-10-02: 772 fills over a 30d window
+        came back strictly nondecreasing by `time`).
+
+        aggregate_by_time: pass HL's `aggregateByTime: true`. HL then merges
+        every partial fill of ONE order at ONE millisecond (same coin, oid,
+        time) into one row. Verified 2026-10-05 on 0xe2823659 over 30d
+        (870 raw fills -> 189 rows, 71 of them merged from 2-54 partials),
+        every merged row against its raw group:
+          sz          = sum of the partials' sz
+          px          = size-weighted average px (VWAP)
+          closedPnl   = sum;  fee = sum
+          startPosition, hash, tid = the FIRST partial's, so
+          startPosition + signed sz is still the true end position
+          dir         = the FIRST partial's label. A group that flips
+                        (Close Short partials then a "Short > Long" one)
+                        comes back as "Close Short" with sz 200 from -100:
+                        derive open/close/flip from startPosition+side+sz,
+                        never from `dir` (discovery.positions already does).
+        Spot "Spot Dust Conversion" rows (tid 0) are not returned at all.
+        Measured on discovery's candidates: 64,241 -> 10,746 fills.
+
+        Pagination: the next page starts AT the last row's time, not +1, and
+        the rows of that last millisecond are dropped from this page and
+        taken from the next one. HL cuts a page at 2000 rows even in the
+        middle of a millisecond: measured 2026-10-05 on 0xf5d81a13
+        (aggregated), page 1 held 39 rows at its last ms and a refetch from
+        that ms returned 49, so a `last + 1` cursor silently lost 10. A full
+        page whose rows ALL share one millisecond cannot advance that way;
+        it falls back to `last + 1` and logs it.
+
+        Stops when a page returns fewer than 2000 rows, or after MAX_PAGES
+        (a safety valve against an API that never shrinks below the cap).
+        Returns None if any page's fetch failed, or if a page's own cursor
+        (last row's `time`) is unparseable: a silently truncated fill list
+        is worse than a clear failure.
         """
         PAGE_SIZE = 2000
         MAX_PAGES = 50  # 100k-fill ceiling -- far above any realistic window's yield
         out: List[Dict[str, Any]] = []
+        held: List[Dict[str, Any]] = []   # last page's rows at its last ms, re-read by the next page
         cursor = int(start_ms)
         end_ms = int(end_ms)
         for _ in range(MAX_PAGES):
-            raw = http_post(
-                "/info",
-                {"type": "userFillsByTime", "user": user, "startTime": cursor, "endTime": end_ms},
-                item_count=PAGE_SIZE,
-            )
+            held = []
+            payload: Dict[str, Any] = {"type": "userFillsByTime", "user": user,
+                                       "startTime": cursor, "endTime": end_ms}
+            if aggregate_by_time:
+                payload["aggregateByTime"] = True
+            raw = http_post("/info", payload)
             if raw is None:
                 logger.error(f"[hl.venue] fills: userFillsByTime failed for user={user} startTime={cursor}")
                 return None
             if not isinstance(raw, list):
                 logger.error(f"[hl.venue] fills: unexpected userFillsByTime response shape for user={user}")
                 return None
+            page: List[Dict[str, Any]] = []
             for f in raw:
                 try:
-                    out.append({
+                    page.append({
                         "time_ms": int(f["time"]),
                         "coin": str(f["coin"]),
                         "px": float(f["px"]),
@@ -564,16 +580,28 @@ class HlVenue:
                 except (KeyError, TypeError, ValueError) as exc:
                     logger.warning(f"[hl.venue] fills: dropping unparseable fill for {user}: {exc}")
             if len(raw) < PAGE_SIZE:
+                out.extend(page)
                 break
             try:
-                last_time = int(raw[-1]["time"])
+                first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
             except (KeyError, TypeError, ValueError):
                 logger.error(f"[hl.venue] fills: page cursor unreadable for user={user}, aborting pagination")
                 return None
-            cursor = last_time + 1
+            if first_time >= last_time:
+                logger.warning(f"[hl.venue] fills: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
+                               f"user={user}; rows past the cap at that ms are lost")
+                out.extend(page)
+                cursor = last_time + 1
+            else:
+                out.extend(f for f in page if f["time_ms"] < last_time)   # the next page re-reads last_time whole
+                held = [f for f in page if f["time_ms"] >= last_time]
+                cursor = last_time
             if cursor > end_ms:
                 break
-        return out
+        else:
+            logger.warning(f"[hl.venue] fills: hit MAX_PAGES={MAX_PAGES} for user={user}; "
+                           f"result truncated at {cursor}")
+        return out + held
 
     def leaderboard(self) -> Optional[List[Dict[str, Any]]]:
         """GET the public HL leaderboard snapshot for the active network.
@@ -626,18 +654,14 @@ class HlVenue:
         """candleSnapshot. Returns HL's raw candle dicts (t, T, s, i, o, c,
         h, l, v, n) unnormalized. None on failure; an empty list is a
         genuine "no candles in this window" (HL returns a list either way
-        on success, never None)."""
-        ms_per = _MS_PER_CANDLE.get(interval)
-        est_count = None
-        if ms_per and end_ms > start_ms:
-            est_count = min(5000, math.ceil((end_ms - start_ms) / ms_per))
+        on success, never None). The per-60-candle rate surcharge is charged
+        by http_post after the response, from the real candle count."""
         raw = http_post(
             "/info",
             {"type": "candleSnapshot", "req": {
                 "coin": coin, "interval": interval,
                 "startTime": int(start_ms), "endTime": int(end_ms),
             }},
-            item_count=est_count,
         )
         if not isinstance(raw, list):
             logger.error(f"[hl.venue] candles: candleSnapshot failed for {coin} {interval}")

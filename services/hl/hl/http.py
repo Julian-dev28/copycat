@@ -118,11 +118,20 @@ def _retry_after_s(resp: Any, attempt: int) -> float:
     return min(backoff, RETRY_429_MAX_SLEEP_S)
 
 
+def _charge_items(req_type: Optional[str], n: int) -> None:
+    extra = rate_limit.item_surcharge(req_type, n)
+    if extra <= 0:
+        return
+    try:
+        rate_limit.HL_LIMITER.charge(extra)
+    except Exception as exc:   # pacing bookkeeping must never fail a read that succeeded
+        logger.warning(f"[hl.http] could not charge {extra} item weight for {req_type}: {exc}")
+
+
 def http_post(
     path: str,
     payload: Dict[str, Any],
     timeout: Optional[float] = None,
-    item_count: Optional[int] = None,
     max_wait: float = 30.0,
 ) -> Any:
     """POST `payload` to `{base_url}{path}` for the active network.
@@ -136,9 +145,15 @@ def http_post(
     A 429 is retried up to RETRY_429_MAX times with exponential backoff
     (honoring Retry-After, capped), draining the shared limiter first so the
     other copycat process backs off too. Each retry re-acquires its weight.
+
+    Weight: the endpoint's base weight is acquired before the call; for the
+    per-item types (userFillsByTime, candleSnapshot, historicalOrders, ...)
+    the surcharge is charged after a successful response from the real list
+    length (rate_limit.item_surcharge), into the same shared bucket. A
+    12-fill page costs 21, not the 120 a pre-charged 2000-row cap cost.
     """
     req_type = payload.get("type")
-    weight = rate_limit.endpoint_weight(req_type, item_count)
+    weight = rate_limit.endpoint_weight(req_type)
     if timeout is None:
         timeout = env.request_timeout_s()
     url = f"{env.base_url()}{path}"
@@ -165,7 +180,10 @@ def http_post(
                 time.sleep(sleep_s)
                 continue
             resp.raise_for_status()
-            return resp.json()
+            body = resp.json()
+            if isinstance(body, list):
+                _charge_items(req_type, len(body))
+            return body
         except Exception as exc:
             logger.error(f"[hl.http] POST {path} type={req_type!r} failed: {exc}")
             return None

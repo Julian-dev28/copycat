@@ -56,6 +56,62 @@ def test_live_fills_last_1d():
     print(f"\n[live] fills({LEADER}, last 1d): {len(fills)} fills")
 
 
+def test_live_fills_aggregate_by_time_matches_raw():
+    """aggregate_by_time merges one order's partials at one ms. Checked against
+    the raw fills of the same window: per (ms, coin, side) the sizes, closed
+    PnL and fees sum the same, the first row's start_position is the raw
+    group's first, and every coin's end position is unchanged. 2026-10-05:
+    870 raw -> 189 aggregated over 30d (the 2 missing groups were spot dust)."""
+    from collections import OrderedDict
+
+    v = HlVenue()
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - 30 * 86_400_000
+    raw = v.fills(LEADER, start_ms, end_ms)
+    agg = v.fills(LEADER, start_ms, end_ms, aggregate_by_time=True)
+    assert raw is not None and agg is not None
+    assert len(agg) <= len(raw)
+
+    def perp(rows):
+        return [f for f in rows if not f["coin"].startswith("@")]
+
+    def groups(rows):
+        g = OrderedDict()
+        for f in perp(rows):
+            g.setdefault((f["time_ms"], f["coin"], f["side"]), []).append(f)
+        return g
+
+    def signed(f):
+        return f["sz"] if f["side"] == "B" else -f["sz"]
+
+    gr, ga = groups(raw), groups(agg)
+    assert set(gr) == set(ga)
+    merged = 0
+    for k, rs in gr.items():
+        a = ga[k]
+        merged += len(a) < len(rs)
+        assert sum(f["sz"] for f in a) == pytest.approx(sum(f["sz"] for f in rs), rel=1e-9, abs=1e-9)
+        assert sum(f["closed_pnl"] for f in a) == pytest.approx(sum(f["closed_pnl"] for f in rs), abs=1e-4)
+        assert sum(f["fee"] for f in a) == pytest.approx(sum(f["fee"] for f in rs), abs=1e-5)
+        assert a[0]["start_position"] == pytest.approx(rs[0]["start_position"], abs=1e-9)
+        vwap_raw = sum(f["px"] * f["sz"] for f in rs) / sum(f["sz"] for f in rs)
+        vwap_agg = sum(f["px"] * f["sz"] for f in a) / sum(f["sz"] for f in a)
+        assert vwap_agg == pytest.approx(vwap_raw, rel=1e-6)
+
+    def end_positions(rows):
+        last = {}
+        for f in perp(rows):
+            last[f["coin"]] = f["start_position"] + signed(f)
+        return last
+
+    er, ea = end_positions(raw), end_positions(agg)
+    assert er.keys() == ea.keys()
+    for c in er:
+        assert ea[c] == pytest.approx(er[c], abs=1e-6), c
+    print(f"\n[live] fills({LEADER}, 30d): raw={len(raw)} aggregated={len(agg)} "
+          f"groups={len(gr)} merged_groups={merged}")
+
+
 def test_live_leaderboard():
     v = HlVenue()
     rows = v.leaderboard()

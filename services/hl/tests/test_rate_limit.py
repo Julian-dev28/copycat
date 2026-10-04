@@ -209,3 +209,67 @@ def test_set_priority_rebuilds_the_module_limiter(monkeypatch, tmp_path):
     rate_limit.set_priority("background")
     assert rate_limit.HL_LIMITER.priority == "background"
     assert os.environ["COPYCAT_HL_PRIORITY"] == "background"
+
+
+# ── post-response item surcharge: item_surcharge + charge ───────────────────
+
+def test_item_surcharge_matches_documented_steps():
+    from hl.rate_limit import item_surcharge
+    assert item_surcharge("userFillsByTime", 0) == 0
+    assert item_surcharge("userFillsByTime", None) == 0
+    assert item_surcharge("userFillsByTime", 12) == 1
+    assert item_surcharge("userFillsByTime", 2000) == 100
+    assert item_surcharge("historicalOrders", 21) == 2
+    assert item_surcharge("candleSnapshot", 61) == 2
+    assert item_surcharge("clearinghouseState", 5000) == 0
+    assert item_surcharge("meta", 5000) == 0
+
+
+def test_token_bucket_charge_goes_into_debt_and_later_acquire_waits():
+    b = TokenBucket(capacity=100, refill_per_sec=0)
+    assert b.acquire(90, max_wait=0) is True
+    b.charge(30)                                   # 10 -> -20: already spent, never refused
+    assert b._tokens == pytest.approx(-20)
+    assert b.acquire(1, max_wait=0.01) is False
+    b.charge(10_000)
+    assert b._tokens == pytest.approx(-100)        # floored at -capacity
+    b.drain()
+    assert b._tokens == pytest.approx(-100)        # a 429 drain does not forgive debt
+
+
+def test_token_bucket_debt_is_paid_by_refill():
+    b = TokenBucket(capacity=100, refill_per_sec=1000.0)
+    assert b.acquire(100, max_wait=0) is True
+    b.charge(50)
+    assert b.acquire(10, max_wait=1.0) is True     # ~60ms of refill pays 50 debt + 10
+
+
+def test_shared_charge_is_seen_by_the_other_instance(tmp_path):
+    path = tmp_path / "hl_rate.bucket"
+    a, b = _shared(path), _shared(path)
+    assert a.acquire(20, max_wait=0) is True
+    a.charge(100)                                   # 80 -> -20, in the shared file
+    assert b.tokens() == pytest.approx(-20, abs=1e-6)
+    assert b.acquire(1, max_wait=0) is False
+    a.charge(10_000)
+    assert b.tokens() == pytest.approx(-100, abs=1e-6)
+    b.drain()
+    assert a.tokens() == pytest.approx(-100, abs=1e-6)
+
+
+def test_shared_charge_ignores_priority_reserve(tmp_path):
+    """The request already happened: a background charge may dip into the
+    engine's reserve; the reserve rules gate acquire only."""
+    path = tmp_path / "hl_rate.bucket"
+    bg, eng = _shared(path, "background"), _shared(path, "engine")
+    assert bg.acquire(60, max_wait=0) is True       # 100 -> 40, the reserve
+    bg.charge(30)
+    assert eng.tokens() == pytest.approx(10, abs=1e-6)
+
+
+def test_shared_fallback_charge(tmp_path):
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x")
+    b = _shared(blocker / "hl_rate.bucket")
+    b.charge(30)
+    assert b._fallback is not None and b.tokens() == pytest.approx(70)

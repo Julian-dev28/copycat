@@ -187,9 +187,17 @@ If the file cannot be opened or locked, that process falls back to a
 private in-process bucket (logged once): pacing becomes per-process, reads
 keep working.
 
-Every call through `http_post` acquires its estimated weight first; a
-budget that does not free up within `max_wait` makes `http_post` return
-`None` (logged) without touching the network. A real **429** from HL is
+Every call through `http_post` acquires the endpoint's **base** weight
+first; a budget that does not free up within `max_wait` makes `http_post`
+return `None` (logged) without touching the network. The per-item
+surcharge (`userFillsByTime`, `historicalOrders`, `candleSnapshot`, ...)
+is charged **after** a successful response, from the real list length
+(`rate_limit.item_surcharge` + `HL_LIMITER.charge`), into the same shared
+bucket. `charge` never waits: the request already happened, so the bucket
+may go into debt (floored at -capacity) and every later `acquire`, in
+either process, waits for refill to pay it off. Before this, every fills
+page pre-charged the 2000-row cap (120) and every candle read an
+estimated count, even when HL returned a handful of rows. A real **429** from HL is
 retried inside `http_post`: the shared bucket is drained (so the other
 process backs off too), then exponential backoff 1s, 2s, 4s (honoring
 `Retry-After`, each sleep capped at 4s), at most 3 retries, each retry
@@ -201,15 +209,42 @@ reads (once per process) are not metered.
 
 ## Fills pagination (`fills`)
 
-`userFillsByTime` returns at most 2000 fills per call and only the 10,000
+`userFillsByTime` returns at most 2000 rows per call and only the 10,000
 most recent fills are available at all (HL docs). Verified against
-mainnet 2026-10-02: fills come back **oldest-first** (strictly
-nondecreasing by `time`) within the requested window. `HlVenue.fills`
-pages forward by setting the next call's `startTime` to the previous
-page's **last fill's `time` + 1** -- not by offset/position, which the API
-doesn't support -- and stops when a page returns fewer than 2000 fills, or
-after 50 pages (a safety valve against an API that never shrinks below the
-cap).
+mainnet 2026-10-02: rows come back **oldest-first** (nondecreasing by
+`time`), and `startTime`/`endTime` are both inclusive (2026-10-05).
+
+`HlVenue.fills` pages forward by setting the next call's `startTime` to
+the previous page's **last row's `time`** (not `+ 1`, and not by
+offset, which the API doesn't support). The rows of that last millisecond
+are dropped from the full page and re-read whole by the next one, because
+HL cuts a page at 2000 rows in the middle of a millisecond: on 0xf5d81a13
+(aggregated, 2026-10-05) page 1 held 39 rows at its last ms and a refetch
+from that ms returned 49, so a `+ 1` cursor silently lost 10. A full page
+whose rows all share one millisecond cannot advance that way and falls
+back to `+ 1` (logged). Stops on a short page, or after 50 pages (logged;
+safety valve against an API that never shrinks below the cap).
+
+### `aggregate_by_time=True`
+
+Passes HL's `aggregateByTime: true`. HL merges every partial fill of one
+order at one millisecond (same `coin`, `oid`, `time`) into one row.
+Checked 2026-10-05 on `0xe2823659be02e0f48a4660e4da008b5e1abfdf29` over
+30 days: 870 raw fills -> 189 rows, 71 merged from 2-54 partials, and
+every merged row matched its raw group:
+
+| field | aggregated value |
+|---|---|
+| `sz`, `closedPnl`, `fee` | sum of the partials |
+| `px` | size-weighted average (VWAP) |
+| `startPosition`, `hash`, `tid` | the **first** partial's, so `startPosition + signed sz` is still the true end position |
+| `dir` | the first partial's label. A group that flips (`Close Short` partials, then `Short > Long`) comes back as `Close Short` with sz 200 from -100: classify from `startPosition` + `side` + `sz`, never from `dir` (discovery.positions does) |
+
+Spot `Spot Dust Conversion` rows are not returned with aggregation (2 of
+191 groups on that wallet). Measured on discovery's candidate set: 64,241
+-> 10,746 fills, cold discovery time halved. `discovery.fills_cache`
+passes it whenever `venue.fills` accepts the kwarg. Live check:
+`tests/test_live.py::test_live_fills_aggregate_by_time_matches_raw`.
 
 ## Leaderboard (`leaderboard`)
 

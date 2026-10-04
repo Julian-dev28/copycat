@@ -14,7 +14,7 @@ from .http import http_post
 
 def historical_orders(user: str) -> Optional[List[Dict[str, Any]]]:
     """Most recent orders (HL returns at most 2000), newest first."""
-    raw = http_post("/info", {"type": "historicalOrders", "user": user}, item_count=2000)
+    raw = http_post("/info", {"type": "historicalOrders", "user": user})
     return raw if isinstance(raw, list) else None
 
 

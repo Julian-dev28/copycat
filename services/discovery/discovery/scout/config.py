@@ -80,4 +80,3 @@ PAGE_LIMIT_DEFAULT = 50
 ORDERS_TTL_S = 30.0
 WHAT_IF_WAIT_S = 20.0
 SIM_CURVE_STEP_MS = HOUR_MS       # used when sim.simulate_wallet exposes a curve hook
-SIM_CURVE_FALLBACK_STEP_MS = DAY_MS

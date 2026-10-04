@@ -1,17 +1,18 @@
 """Stage C (sim) and the what-if path: one wallet's copy-sim at given
 settings, plus its equity curve.
 
-The pipeline per wallet mirrors discovery.runner.score_one_wallet (perp
-filter, poll coalescing, reconstruct, HFT gate, candles for trip spans,
-sim.simulate_wallet, scoring.score_candidate) but starts from fills already
-cached by stage B and keeps the SimResult skip flags, which Copy Fit's
-capacity part needs and score_one_wallet drops.
+Same pipeline as /discover: runner.prepare_wallet (perp filter, poll
+coalescing, reconstruct, HFT gate, candles for trip spans) then
+runner.simulate_prepared (sim.simulate_wallet, raw SimResult with its skip
+flags, which Copy Fit's capacity part needs and score_one_wallet drops).
+Scout starts from fills already cached by stage B, and the leader's
+per-coin leverage comes from stage B's stored account read (_KnownLeverage),
+not a fresh account_state call.
 
-Sim curve: when sim.simulate_wallet accepts `curve_step_ms` (and returns
-SimResult.curve as [(t_ms, equity)]), one run gives an hourly curve.
-Until then the curve is exact but daily: the sim is causal, so a run over
-the events up to T with window_end_ms=T ends with exactly the equity the
-full run has at T. 30 prefix runs, each shorter than the full one.
+Sim curve: ONE run with curve_step_ms=1h and window_start_ms=window start
+returns the copier's marked equity every hour (flat at sim_equity before his
+first in-window event) plus the final point. This replaced 30 daily prefix
+re-runs.
 
 what-if: cached fills and candles only. CacheOnlyVenue answers every
 candle read with None, so candles_cache.build_series assembles what is on
@@ -20,27 +21,25 @@ Zero HL calls.
 """
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from contracts.models import CurvePoint, LeverageMode, Settings
+from contracts.models import CurvePoint, Settings
 from contracts.venue import Venue
 
-from .. import candles_cache, positions, scoring, sim
 from .. import config as discovery_config
 from .. import db as discovery_db
+from .. import runner, scoring
 from . import config as C
 from . import store
 from .stats import CountingVenue
 
 logger = logging.getLogger(__name__)
 
-HFT_OPENS_PER_DAY = 100.0
 SKIP_PREFIXES = ("worse_entry:", "margin_room:", "max_open_copies:", "max_leverage_unknown:")
 
 
@@ -59,18 +58,23 @@ class CacheOnlyVenue:
         return 0
 
 
+class _KnownLeverage:
+    """What runner.simulate_prepared reads for leverage_mode=match
+    (account_state(addr)["positions"][coin]["lev"]), served from stage B's
+    stored per-coin leverage: no HL call, same numbers Scout always used."""
+
+    def __init__(self, lev_by_coin: Dict[str, float]) -> None:
+        self._pos = {c: {"lev": float(v)} for c, v in (lev_by_coin or {}).items()}
+
+    def account_state(self, user: str) -> Dict[str, Any]:
+        return {"positions": self._pos}
+
+
 @dataclass
 class SimOutcome:
     fields: Dict[str, Any]                       # TraderScore sim fields + fills/coins stats
     curve: List[CurvePoint] = field(default_factory=list)
     coin_max_lev: Dict[str, int] = field(default_factory=dict)
-
-
-def _sim_accepts_curve() -> bool:
-    try:
-        return "curve_step_ms" in inspect.signature(sim.simulate_wallet).parameters
-    except (TypeError, ValueError):
-        return False
 
 
 def _unsimulated(flags: List[str], n_fills: int, opd: float, hold: Optional[float], coins: List[str]) -> Dict[str, Any]:
@@ -91,51 +95,17 @@ def simulate(conn: sqlite3.Connection, venue: Any, fills: List[Dict[str, Any]], 
              sim_equity: float, leader_equity: float, lev_by_coin: Dict[str, float], now_ms: int,
              sizing: Any, coin_max_lev: Optional[Dict[str, int]] = None, cache_only: bool = False) -> SimOutcome:
     ws = now_ms - C.WINDOW_DAYS * C.DAY_MS
-    flags: List[str] = []
-    perp, other = positions.split_perp(fills)
-    if other:
-        flags.append("non_perp_ignored")
-    by_coin = positions.reconstruct(positions.coalesce_by_poll(perp, int(settings.poll_interval_s * 1000)))
-    opd = positions.opens_per_day(by_coin, C.WINDOW_DAYS)
-    hold, _ = positions.median_hold_hours(by_coin)
-    coins = positions.coins_traded(by_coin)
-    n = len(fills)
-    if opd > HFT_OPENS_PER_DAY:
-        return SimOutcome(_unsimulated(flags + ["hft", "hft_not_simulated"], n, opd, hold, coins))
-    spans = positions.trip_spans(by_coin, now_ms)
-    if not spans:
-        return SimOutcome(_unsimulated(flags + ["too_few_trades"], n, opd, hold, coins))
+    p = runner.prepare_wallet(conn, venue, fills, settings, C.WINDOW_DAYS, now_ms, include_hft=False,
+                              fresh_s=discovery_config.CACHE_FRESH_S, coin_max_lev=coin_max_lev,
+                              cache_only=cache_only)
+    if p.skip is not None:
+        return SimOutcome(_unsimulated(p.flags + p.skip, p.n_fills, p.opens_per_day, p.median_hold_h, p.coins))
 
-    known = dict(coin_max_lev or {})
-    max_lev: Dict[str, int] = {}
-    series: Dict[str, candles_cache.Series] = {}
-    for coin, sp in spans.items():
-        lev = int(known.get(coin) or 0)
-        if lev < 1 and not cache_only:
-            lev = int(venue.max_leverage(coin) or 0)
-        max_lev[coin] = lev
-        if lev < 1:
-            continue
-        series[coin], ok = candles_cache.build_series(conn, venue, coin, sp, now_ms, discovery_config.CACHE_FRESH_S)
-        if not ok and not cache_only:
-            flags.append(f"candles_partial:{coin}")
+    r = runner.simulate_prepared(p, _KnownLeverage(lev_by_coin), "", settings, sim_equity, leader_equity, sizing,
+                                 now_ms, curve_step_ms=C.SIM_CURVE_STEP_MS, window_start_ms=ws)
+    curve = [CurvePoint(t_ms=int(t), value=round(float(v), 4)) for t, v in (r.curve or [])]
 
-    events = [e for e in positions.merged_timeline(by_coin) if e.time_ms >= ws]
-    his_lev = lev_by_coin if settings.leverage_mode == LeverageMode.match else {}
-
-    def run(evs: Sequence[Any], end_ms: int, **kw: Any) -> Any:
-        return sim.simulate_wallet(events=list(evs), series=series, coin_max_lev=max_lev,
-                                   leader_equity_usd=leader_equity, leader_leverage_by_coin=his_lev,
-                                   settings=settings, sim_equity_usd=sim_equity, window_end_ms=end_ms,
-                                   sizing=sizing, **kw)
-
-    if _sim_accepts_curve():
-        r = run(events, now_ms, curve_step_ms=C.SIM_CURVE_STEP_MS)
-        curve = [CurvePoint(t_ms=int(t), value=round(float(v), 4)) for t, v in (getattr(r, "curve", None) or [])]
-    else:
-        r = run(events, now_ms)
-        curve = prefix_curve(events, now_ms, sim_equity, run, r)
-
+    flags = list(p.flags)
     flags.extend(sorted({f for f in r.flags if f.startswith(("liquidated:", "max_leverage_unknown:"))}))
     sc = scoring.score_candidate(r.sim_return_pct, r.sim_max_drawdown_pct, r.sim_liquidations, r.sim_copies)
     flags.extend(sc.flags)
@@ -144,28 +114,9 @@ def simulate(conn: sqlite3.Connection, venue: Any, fills: List[Dict[str, Any]], 
                "sim_skipped_min_order": r.sim_skipped_min_order, "sim_fees_usd": round(r.sim_fees_usd, 6),
                "score": round(sc.score, 6),
                "sim_copy_capacity_pct": capacity_pct(r.sim_copies, r.sim_skipped_min_order, r.flags),
-               "flags": sorted(set(flags)), "fills_30d": n, "opens_per_day": opd, "median_hold_h": hold,
-               "coins": coins, "simulated": True}
-    return SimOutcome(fields_, curve, {c: v for c, v in max_lev.items() if v >= 1})
-
-
-def prefix_curve(events: Sequence[Any], now_ms: int, sim_equity: float,
-                 run: Callable[..., Any], full: Any) -> List[CurvePoint]:
-    """Daily equity of the simulated copier: start, each UTC-day step, now."""
-    ws = now_ms - C.WINDOW_DAYS * C.DAY_MS
-    step = C.SIM_CURVE_FALLBACK_STEP_MS
-    pts: List[Tuple[int, float]] = [(ws, sim_equity)]
-    first = events[0].time_ms if events else now_ms
-    t = ws + step
-    while t < now_ms:
-        if t < first:
-            pts.append((t, sim_equity))
-        else:
-            r = run([e for e in events if e.time_ms <= t], t)
-            pts.append((t, sim_equity * (1.0 + r.sim_return_pct / 100.0)))
-        t += step
-    pts.append((now_ms, sim_equity * (1.0 + full.sim_return_pct / 100.0)))
-    return [CurvePoint(t_ms=t, value=round(v, 4)) for t, v in pts]
+               "flags": sorted(set(flags)), "fills_30d": p.n_fills, "opens_per_day": p.opens_per_day,
+               "median_hold_h": p.median_hold_h, "coins": p.coins, "simulated": True}
+    return SimOutcome(fields_, curve, {c: v for c, v in p.coin_max_lev.items() if v >= 1})
 
 
 def wallet_inputs(conn: sqlite3.Connection, address: str) -> Optional[Dict[str, Any]]:

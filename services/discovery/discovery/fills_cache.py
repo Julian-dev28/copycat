@@ -10,14 +10,14 @@ retries instead of silently treating the wallet as flat.
 
 Freshness: when the coverage was fetched less than `fresh_s` ago, the tail
 fetch is skipped (the window then ends at last_ms, at most fresh_s stale).
-That is what makes a warm re-run cheap: every userFillsByTime page is
-charged 120 weight by hl's limiter regardless of how many fills come back.
+That is what makes a warm re-run cheap: every userFillsByTime call costs a
+base weight of 20 plus 1 per 20 fills returned (charged after the response).
 
 Aggregation: HL's userFillsByTime takes `aggregateByTime`, which merges the
 partial fills of one crossing order into one fill. Measured 2026-10-03 on
 0x350e33a7: one 2000-fill page covered 0.9h raw vs 107h aggregated (~120x
-fewer pages). When the venue's `fills()` accepts `aggregate_by_time`, it is
-passed; contracts.venue.Venue does not have it yet (see README).
+fewer pages). contracts.venue.Venue.fills takes `aggregate_by_time`; it is
+passed whenever the venue accepts it (fakes in tests may not).
 """
 from __future__ import annotations
 

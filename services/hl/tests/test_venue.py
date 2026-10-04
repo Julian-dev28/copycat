@@ -264,26 +264,71 @@ def test_fills_single_page(monkeypatch):
     assert out[0]["px"] == 100.0
 
 
+class _HlFillsServer:
+    """Fake userFillsByTime that behaves like HL: rows with startTime <= time
+    <= endTime, oldest first, cut at 2000 rows even mid-millisecond."""
+
+    def __init__(self, corpus):
+        self.corpus = corpus
+        self.calls = []
+
+    def __call__(self, path, payload, **kw):
+        self.calls.append(dict(payload))
+        rows = [f for f in self.corpus if payload["startTime"] <= f["time"] <= payload["endTime"]]
+        return rows[:2000]
+
+
+def _ids(out):
+    return [(f["time_ms"], f["px"]) for f in out]
+
+
 def test_fills_pages_by_last_time_not_offset(monkeypatch):
-    page1 = [_fill(t) for t in range(2000)]               # exactly PAGE_SIZE -> must page again
-    page2 = [_fill(t) for t in range(2000, 2500)]         # short page -> stop
-    calls = []
-
-    def fake_post(path, payload, **kw):
-        calls.append(payload["startTime"])
-        if len(calls) == 1:
-            return page1
-        return page2
-
-    monkeypatch.setattr(venue_mod, "http_post", fake_post)
+    corpus = [_fill(t, px=t) for t in range(2500)]
+    srv = _HlFillsServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
     out = HlVenue().fills("0xabc", 0, 10_000)
-    assert len(calls) == 2
-    assert calls[0] == 0
-    assert calls[1] == page1[-1]["time"] + 1  # next cursor = last fill's time + 1
-    assert len(out) == 2500
+    assert [c["startTime"] for c in srv.calls] == [0, 1999]   # next cursor = last row's time, re-read whole
+    assert _ids(out) == [(t, float(t)) for t in range(2500)]   # no loss, no duplicate
 
 
-def test_fills_stops_after_max_pages_safety_valve(monkeypatch):
+def test_fills_page_cut_mid_millisecond_loses_nothing(monkeypatch):
+    """Measured on 0xf5d81a13 (aggregated, 2026-10-05): page 1 held 39 rows at
+    its last ms, a refetch from that ms returned 49. A `last + 1` cursor lost
+    the other 10. Here rows 1990..2009 share t=1990: the cap cuts at 2000."""
+    corpus = [_fill(min(i, 1990) if i < 2010 else i, px=i) for i in range(2100)]
+    srv = _HlFillsServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    out = HlVenue().fills("0xabc", 0, 10_000)
+    assert [c["startTime"] for c in srv.calls] == [0, 1990]
+    assert sorted(f["px"] for f in out) == [float(i) for i in range(2100)]
+    assert len(out) == 2100
+
+
+def test_fills_full_page_at_one_millisecond_falls_back_to_plus_one(monkeypatch, caplog):
+    corpus = [_fill(7, px=i) for i in range(2000)] + [_fill(8, px=9999)]
+    srv = _HlFillsServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    out = HlVenue().fills("0xabc", 0, 100)
+    assert [c["startTime"] for c in srv.calls] == [0, 8]      # cannot advance by re-reading t=7
+    assert len(out) == 2001 and "one millisecond" in caplog.text
+
+
+def test_fills_aggregate_by_time_flag_reaches_hl(monkeypatch):
+    srv = _HlFillsServer([_fill(1)])
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    HlVenue().fills("0xabc", 0, 10)
+    HlVenue().fills("0xabc", 0, 10, aggregate_by_time=True)
+    assert "aggregateByTime" not in srv.calls[0]
+    assert srv.calls[1]["aggregateByTime"] is True
+    assert {k for k in srv.calls[1]} == {"type", "user", "startTime", "endTime", "aggregateByTime"}
+
+
+def test_fills_accepts_aggregate_kwarg_like_fills_cache_expects():
+    import inspect
+    assert "aggregate_by_time" in inspect.signature(HlVenue().fills).parameters
+
+
+def test_fills_stops_after_max_pages_safety_valve(monkeypatch, caplog):
     calls = {"n": 0}
 
     def fake_post(path, payload, **kw):
@@ -294,7 +339,8 @@ def test_fills_stops_after_max_pages_safety_valve(monkeypatch):
     monkeypatch.setattr(venue_mod, "http_post", fake_post)
     out = HlVenue().fills("0xabc", 0, 10**15)
     assert calls["n"] == 50  # MAX_PAGES, never an infinite loop
-    assert len(out) == 50 * 2000
+    assert len(out) == 50 * 1999 + 1   # each page re-reads the previous page's last ms; the final one is kept
+    assert "MAX_PAGES" in caplog.text
 
 
 def test_fills_none_on_fetch_failure(monkeypatch):
