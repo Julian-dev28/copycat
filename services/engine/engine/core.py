@@ -309,7 +309,7 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
     cy.lead_gross = sizing.gross_notional(now_pos)
     lstate = state.get_leader(leader)
     if lstate is None:
-        if cy.settings.only_new_positions:
+        if es.only_new_positions:          # per-wallet override, else the Settings tab
             state.put_leader(LeaderState(leader, {c: p["szi"] for c, p in now_pos.items()},
                                          sorted(now_pos.keys()), cy.now_ms))
             cy.event("baseline", leader=leader,

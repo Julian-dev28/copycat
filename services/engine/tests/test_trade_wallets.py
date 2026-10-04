@@ -341,3 +341,16 @@ def test_preview_raises_when_his_read_fails(data_dir, venue):
     with pytest.raises(public.PreviewUnavailable):
         public.preview_wallet(LEADER1, WalletCopyRequest(allocation_usd=10.0), Settings(),
                               venue=venue)
+
+
+def test_only_new_positions_is_per_wallet(engine_state, venue):
+    """Global says copy existing positions; this wallet's override says only new
+    ones. LEADER1 (override) is baselined, LEADER2 (global) is copied now."""
+    venue.set_account(OUR, 100_000.0)
+    venue.hold(LEADER1, "BTC", 1.0, entry_px=100.0)
+    venue.hold(LEADER2, "ETH", 1.0, entry_px=100.0)
+    s = wallet(leaders=[LEADER1, LEADER2], only_new_positions=False, sizing_mode="fixed_notional",
+            fixed_notional_usd=20.0,
+            leader_overrides={LEADER1: {"only_new_positions": True}})
+    out = run(venue, s, engine_state)
+    assert out["opened"] == ["ETH"]
