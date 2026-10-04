@@ -169,20 +169,34 @@ still compounds: `engine.core` needs the same cap to match.
 
 ## Runtime
 
-Measured on mainnet, top_n=20, 30 days, $100, fixed_margin $1, leverage max,
-fresh data dir (cold) and an immediate re-run (warm): see the latest numbers
-in the table below.
+Mainnet, top_n=20, 30 days, $100, `Settings()` (fixed_margin $1, leverage
+max), background HL priority, measured 2026-10-04/05:
 
-| run | wall clock | HL calls | notes |
-|---|---|---|---|
-| before (v1, top 5, 7 days) | 628s | | 1m candles over 7d (most never exist), no coverage, failed fills read as flat |
-| cold (top 20, 30 days) | RUNTIME_COLD | | |
-| warm (top 20, 30 days) | RUNTIME_WARM | | leaderboard + fills + candles served from cache |
+| run | wall clock | notes |
+|---|---|---|
+| v1 (top 5, 7 days) | 628s | 1m candles over 7d (HL has 3.5d), no coverage, failed fills read as flat |
+| cold, current hl | 1617s | 494 candle calls; ~307k raw fills = ~160 fills pages at 120 weight |
+| cold, fills aggregated (scratch venue passing `aggregateByTime`) | 816s | 447 candle calls |
+| warm, cache 4.5h old | 165s | one tail fills call per wallet + 46 candle tail calls |
+| warm, immediate re-run (< 15 min) | 20s | leaderboard, fills and candles all from cache, 13 candle calls |
 
-Where cold time goes: fills pages. Every `userFillsByTime` page is charged
-120 weight by hl's limiter (20 + 2000/20) regardless of how many fills come
-back, and busy wallets have 40k-65k raw fills in 30 days (22-33 pages each).
-HL's `aggregateByTime: true` cuts that 4-8x (measured: 64,241 -> 10,746
-fills, 60,946 -> 7,920, 42,483 -> 10,442). `fills_cache` already passes
-`aggregate_by_time=True` whenever `venue.fills` accepts it; `hl.HlVenue.fills`
-does not yet (contract change pending).
+Where cold time goes, in order:
+1. Fills pages. Every `userFillsByTime` page is charged 120 weight by hl's
+   limiter (20 + 2000/20) and busy wallets have 40k-65k raw fills in 30
+   days (22-33 pages each). HL's `aggregateByTime: true` merges the partial
+   fills of one crossing order: measured 64,241 -> 10,746 fills,
+   60,946 -> 7,920, 42,483 -> 10,442. `fills_cache` passes
+   `aggregate_by_time=True` as soon as `venue.fills` accepts it;
+   `hl.HlVenue.fills` does not yet (needs a contract change). Halves cold.
+2. Candle calls (~450 per cold run): spans are fetched per wallet, so a coin
+   traded by several wallets is fetched in several pieces at 20 weight
+   base each. A two-phase run (all fills first, then one fetch per coin over
+   the union of every wallet's spans) is the next cut toward the 3 minute
+   cold target.
+3. Background priority: discovery may only spend down to 40% of the shared
+   bucket, so its sustained rate is the full refill (20/s) only when the
+   engine is idle.
+
+Venue calls from one run are serialized (`runner.SerialVenue`): the budget
+is the ceiling, and 4 unserialized workers made 120-weight pages queue past
+hl's 30s `max_wait` (18 failed reads in one run, now 0).

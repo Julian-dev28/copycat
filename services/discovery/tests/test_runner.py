@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from discovery import runner, scoring
+from discovery.leaderboard import Candidate
+from discovery_fakes import FakeVenue, flat_candles
 from engine import sizing as real_sizing
 
 from contracts.models import LeverageMode, Settings, SizingMode
-from discovery import runner, scoring
-from discovery.leaderboard import Candidate
-
-from discovery_fakes import FakeVenue, flat_candles
 
 DAY = 86_400_000
 NOW = DAY

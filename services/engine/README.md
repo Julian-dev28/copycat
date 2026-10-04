@@ -261,3 +261,17 @@ SQLite, with `running` true if the last cycle is within max(30s, 3x poll).
     COPYCAT_SKIP_DOTENV=1 env -u COPYCAT_AGENT_KEY COPYCAT_DATA_DIR=/tmp/x .venv/bin/python -m engine   # scratch
     .venv/bin/python -m pytest services/engine          # gate, <1s
     .venv/bin/python -m pytest services/engine -m live  # eval, hits HL (read-only)
+
+## Fixed-size cap (fixed_margin / fixed_notional)
+
+In the fixed sizing modes one copy is one fixed-size position: at most
+`max(fixed_margin_usd x exchange leverage, $10.50) x 1.02` (fixed_margin) or
+`max(fixed_notional_usd, $10.50) x 1.02` (fixed_notional), measured at our
+entry price. The leader's adds can top a copy up to that size (an open that was
+trimmed, split or partially filled) but never past it; once full, his adds are
+skipped with "add capped". Before this cap, dozens of tiny adds each bumped to
+$10.50 grew a $1-margin copy to $126 of margin, and one liquidation took a $100
+account to -127% (found by the discovery sim, 2026-10-05; regression tests
+`test_fixed_margin_copy_never_grows_past_its_fixed_size` and
+`test_fixed_notional_add_tops_up_a_partial_open_but_not_past_it`). Use the
+allocation or proportional modes to follow his scaling.

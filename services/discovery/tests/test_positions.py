@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from discovery.positions import coins_traded, median_hold_hours, merged_timeline, opens_per_day, reconstruct
 
 
@@ -82,8 +81,13 @@ def test_median_hold_hours_none_when_no_complete_trips():
     assert n == 0
 
 
-from discovery.positions import (coalesce_by_poll, final_positions, is_perp_coin, split_perp,  # noqa: E402
-                                 trip_spans)
+from discovery.positions import (  # noqa: E402
+    coalesce_by_poll,
+    final_positions,
+    is_perp_coin,
+    split_perp,
+    trip_spans,
+)
 
 
 def test_perp_filter_drops_spot_and_outcome_ids():

@@ -581,3 +581,18 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
         "min_allocation_for_full_book": None,
         "multi_cycle": any(r["fill_cycles"] > 1 for r in copied),
     }
+
+
+
+def fixed_copy_cap_ntl(settings: Settings, exchange_lev: int) -> Optional[float]:
+    """Largest notional ONE copy may reach in a fixed sizing mode, or None for
+    the other modes (allocation has its own wallet-level cap, proportional
+    tracks his book). The $10.50 floor is included because an open may have
+    been bumped to it; 2% slack absorbs size rounding."""
+    if settings.sizing_mode == SizingMode.fixed_margin:
+        base = settings.fixed_margin_usd * max(1, int(exchange_lev))
+    elif settings.sizing_mode == SizingMode.fixed_notional:
+        base = settings.fixed_notional_usd
+    else:
+        return None
+    return max(base, HL_MIN_ORDER_USD) * 1.02

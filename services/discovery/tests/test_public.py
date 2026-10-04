@@ -4,12 +4,11 @@ import threading
 import time
 
 import pytest
+from discovery import config, db, public, runner
+from discovery_fakes import FakeVenue
 from engine import sizing as real_sizing
 
 from contracts.models import Settings
-from discovery import config, db, public, runner
-
-from discovery_fakes import FakeVenue
 
 
 def leaderboard_row(address):

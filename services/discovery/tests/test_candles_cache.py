@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from discovery import candles_cache, db
-
 from discovery_fakes import FakeVenue, flat_candles
 
 M = 60_000
@@ -80,9 +79,9 @@ def test_build_series_uses_1m_recently_and_15m_before(conn):
     venue.set_candles("BTC", "1m", flat_candles(lo1, lo1 + 3_600_000, 1.0))
     s, ok = candles_cache.build_series(conn, venue, "BTC", [(start, lo1 + 3_600_000)], now)
     assert ok
-    assert all(t < lo1 for t, st in zip(s.t, s.step) if st == 900_000)
-    assert all(t >= lo1 for t, st in zip(s.t, s.step) if st == 60_000)
+    assert all(t < lo1 for t, st in zip(s.t, s.step, strict=True) if st == 900_000)
+    assert all(t >= lo1 for t, st in zip(s.t, s.step, strict=True) if st == 60_000)
     assert s.t == sorted(s.t)
-    assert all(e <= n for e, n in zip(s.end, s.t[1:]))              # no overlaps
+    assert all(e <= n for e, n in zip(s.end, s.t[1:], strict=False))              # no overlaps
     assert {iv for _, iv, _, _ in venue.candles_calls} == {"1m", "15m"}
     assert isinstance(conn, sqlite3.Connection)

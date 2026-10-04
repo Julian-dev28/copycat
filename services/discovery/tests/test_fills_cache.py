@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import pytest
-
 from discovery import db, fills_cache
-
 from discovery_fakes import FakeVenue
 
 DAY = 86_400_000

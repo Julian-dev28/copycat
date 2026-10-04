@@ -468,7 +468,9 @@ def test_size_multiplier_scales_proportional_mode_only(engine_state, venue):
     assert venue.orders[0][2] * venue.mid("BTC") == 150.0
 
 
-def test_fixed_margin_add_scales_our_position_by_his_fractional_change(engine_state, venue):
+def test_fixed_margin_copy_at_full_size_skips_his_adds(engine_state, venue):
+    """Fixed modes are one fixed-size copy per position. A full copy does not
+    follow his adds (that is what allocation/proportional sizing is for)."""
     venue.set_account(OUR, 1000.0)
     venue.max_levs["BTC"] = 10
     venue.hold(LEADER1, "BTC", 10.0, entry_px=100.0)
@@ -479,12 +481,14 @@ def test_fixed_margin_add_scales_our_position_by_his_fractional_change(engine_st
 
     venue.hold(LEADER1, "BTC", 15.0, entry_px=100.0)         # he adds 50%
     venue.hold(OUR, "BTC", 0.5, entry_px=100.0)
+    n_orders = len(venue.orders)
     out = run(venue, cfg_fm, engine_state, now_ms=1)
-    assert out["added"] == ["BTC"]
-    assert venue.orders[-1] == ("BTC", True, 0.25, False)    # our_add = 0.5 * 0.5 = 0.25 BTC
+    assert out["added"] == []                                 # $50 copy, cap $51: no room for $25
+    assert len(venue.orders) == n_orders
+    assert "add capped" in out["skipped"]["BTC"]
 
 
-def test_fixed_notional_add_scales_our_position_by_his_fractional_change(engine_state, venue):
+def test_fixed_notional_copy_at_full_size_skips_his_adds(engine_state, venue):
     venue.set_account(OUR, 1000.0)
     venue.hold(LEADER1, "BTC", 10.0, entry_px=100.0)
     cfg_fn = cfg(leaders=[LEADER1], sizing_mode="fixed_notional", fixed_notional_usd=20.0)
@@ -494,8 +498,8 @@ def test_fixed_notional_add_scales_our_position_by_his_fractional_change(engine_
     venue.hold(LEADER1, "BTC", 20.0, entry_px=100.0)          # he doubles his size
     venue.hold(OUR, "BTC", 0.2, entry_px=100.0)
     out = run(venue, cfg_fn, engine_state, now_ms=1)
-    assert out["added"] == ["BTC"]
-    assert venue.orders[-1] == ("BTC", True, 0.2, False)      # our_add = 0.2 * 1.0 = 0.2 BTC
+    assert out["added"] == []                                  # $20 copy, cap $20.40
+    assert "add capped" in out["skipped"]["BTC"]
 
 
 # ── leverage_mode "fixed" (pathiel: test_leverage_mode_fixed_*) ─────────────
@@ -661,3 +665,43 @@ def test_standard_account_keeps_per_dex_margin(engine_state, venue):
     out = run(venue, s, engine_state)
     assert sorted(out["opened"]) == ["BTC", "xyz:TSLA"]
     assert out["available_margin_usd"] == 2.0
+
+
+# ── fixed modes: a copy never grows past its fixed size (live-money bug, 2026-10-05) ──
+
+def test_fixed_margin_copy_never_grows_past_its_fixed_size(engine_state, venue):
+    """The discovery sim found it: $1 margin at 20x opens $20, then dozens of
+    tiny adds by the leader were each bumped to $10.50 and the copy grew to
+    $126 of margin on a $100 account. Adds may only top the copy up to its
+    fixed size (max($1 x 20, $10.50) x 1.02 = $20.40), never past it."""
+    venue.set_account(OUR, 100.0)
+    venue.max_levs["DRAM"] = 20
+    venue.mids["DRAM"] = 100.0
+    s = cfg(leaders=[LEADER1], sizing_mode="fixed_margin", fixed_margin_usd=1.0,
+            leverage_mode="max", max_position_leverage=50, max_worse_entry_pct=100.0)
+    size = 10.0
+    venue.hold(LEADER1, "DRAM", size, entry_px=100.0)
+    out = run(venue, s, engine_state, now_ms=0)
+    assert out["opened"] == ["DRAM"]
+    our = sum(o[2] for o in venue.orders if o[0] == "DRAM")
+    for i in range(1, 41):                                   # 40 adds of +0.3% each
+        size *= 1.003
+        venue.hold(LEADER1, "DRAM", size, entry_px=100.0)
+        venue.hold(OUR, "DRAM", our, entry_px=100.0, equity_perp_usd=100.0)
+        run(venue, s, engine_state, now_ms=i)
+        our = sum(o[2] if o[1] else -o[2] for o in venue.orders if o[0] == "DRAM")
+    assert our * 100.0 <= 20.4 + 1e-6, f"copy grew to ${our * 100.0:.2f} of notional"
+
+
+def test_fixed_notional_add_tops_up_a_partial_open_but_not_past_it(engine_state, venue):
+    venue.set_account(OUR, 10_000.0)
+    s = cfg(leaders=[LEADER1], sizing_mode="fixed_notional", fixed_notional_usd=50.0,
+            max_worse_entry_pct=100.0)
+    venue.hold(LEADER1, "BTC", 1.0, entry_px=100.0)
+    run(venue, s, engine_state, now_ms=0)
+    venue.hold(OUR, "BTC", 0.2, entry_px=100.0, equity_perp_usd=10_000.0)   # only $20 filled
+    venue.hold(LEADER1, "BTC", 3.0, entry_px=100.0)                        # he triples
+    venue.orders.clear()
+    run(venue, s, engine_state, now_ms=1)
+    added = sum(o[2] for o in venue.orders if o[0] == "BTC") * 100.0
+    assert 10.5 <= added <= 51.0 - 20.0 + 1e-6                            # tops up to $51, not 3x

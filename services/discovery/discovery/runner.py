@@ -61,7 +61,7 @@ class SerialVenue:
 
 
 def _default_sizing() -> Any:
-    from engine import sizing as engine_sizing   # lazy: discovery imports without engine on disk
+    from engine import sizing as engine_sizing  # lazy: discovery imports without engine on disk
     return engine_sizing
 
 

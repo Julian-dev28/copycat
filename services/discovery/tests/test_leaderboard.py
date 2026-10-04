@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from discovery.leaderboard import pull_candidates
-
 from discovery_fakes import FakeVenue
 
 

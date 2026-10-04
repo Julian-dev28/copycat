@@ -3,14 +3,13 @@ prove the sim obeys the live engine's rules, not a reimplementation."""
 from __future__ import annotations
 
 import pytest
-from engine import sizing as real_sizing
-
-from contracts.models import HL_MIN_ORDER_USD, LeverageMode, MarginMode, Settings, SizingMode
 from discovery.candles_cache import Series
 from discovery.positions import PositionEvent
 from discovery.sim import FALLBACK_SLIPPAGE_BPS, SLIPPAGE_BPS, TAKER_FEE_RATE, simulate_wallet
-
 from discovery_fakes import flat_candles
+from engine import sizing as real_sizing
+
+from contracts.models import HL_MIN_ORDER_USD, LeverageMode, MarginMode, Settings, SizingMode
 
 M = 60_000
 

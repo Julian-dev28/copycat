@@ -299,3 +299,16 @@ def serve(settings_provider: Callable[[], Settings], sim_equity_provider: Option
     use_background_priority()
     run_scheduler(settings_provider, venue=_default_venue(), sim_equity_provider=sim_equity_provider,
                   stop=stop, sizing=_cfg["sizing"], tick_s=tick_s, db_path=_cfg["db_path"])
+
+
+# ── Account page ────────────────────────────────────────────────────────────
+
+def account_metrics(address: str) -> Optional[Dict[str, Any]]:
+    """AccountSummary metric fields for ANY address, on demand (see
+    scout/account.py: background HL priority, 5 min cache, fills sync
+    bounded by a timeout). None for a bad address or a failed portfolio read."""
+    from . import account
+    a = _addr(address)
+    if a is None:
+        return None
+    return account.account_metrics(a, _default_venue(), _cfg["db_path"] or C.db_path())

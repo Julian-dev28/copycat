@@ -724,6 +724,16 @@ def _concentrate_scale(cy: _Cycle, es: Settings, leader: str, coin: str,
     return scale if coin in eligible else None
 
 
+def _held_entry_notional(cy: _Cycle, coin: str) -> float:
+    """Our copy's size in this coin at its entry price (not mark, so price moves
+    don't open room for more adds)."""
+    pos = cy.our_positions.get(coin) or {}
+    try:
+        return abs(float(pos.get("szi") or 0.0)) * float(pos.get("entry_px") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _leader_margin(cy: _Cycle, leader: str) -> float:
     """Margin this leader's copies hold now: |size| x mark / leverage per
     copy, plus (live) the margin of orders sent earlier this cycle, which
@@ -787,8 +797,28 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         alloc_room = sizing.allocation_room_ntl(es, _leader_margin(cy, leader), lev)
         trimmed = ntl > alloc_room
         ntl = min(ntl, alloc_room)
+    # Fixed modes: one copy is ONE fixed-size position. His adds may top it up
+    # to that size (an open that was trimmed, partially filled or split), never
+    # past it. Without this cap, dozens of tiny adds each bumped to $10.50 grew
+    # a $1-margin copy to $126 of margin and one liquidation took the account to
+    # -127% (found by the discovery sim, 2026-10-05).
+    fixed_cap = sizing.fixed_copy_cap_ntl(es, lev)
+    if copy is not None and fixed_cap is not None:
+        held = _held_entry_notional(cy, coin)
+        allowed = max(0.0, fixed_cap - held)
+        if ntl > allowed:
+            trimmed = True
+            ntl = allowed
+        if allowed < HL_MIN_ORDER_USD:
+            if catch_up:
+                _set_catch_up(state, coin, None)
+            cy.skip(coin, f"add capped: copy already at its fixed size (${held:,.2f} of ${fixed_cap:,.2f})")
+            return "skip"
     if not catch_up:
         ntl = sizing.bump(ntl, es)
+    if copy is not None and fixed_cap is not None and ntl > allowed + 1e-9:
+        cy.skip(coin, f"add capped: rounding up to ${ntl:.2f} would pass the copy's fixed size")
+        return "skip"
     if ntl < HL_MIN_ORDER_USD:
         if copy is None:
             ignored.add(coin)

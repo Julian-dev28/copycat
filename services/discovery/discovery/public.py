@@ -50,7 +50,7 @@ def _conn() -> sqlite3.Connection:
 
 
 def _default_venue() -> Any:
-    from hl import HlVenue   # lazy: discovery must not hard-depend on services/hl at import time
+    from hl import HlVenue  # lazy: discovery must not hard-depend on services/hl at import time
     return HlVenue()
 
 

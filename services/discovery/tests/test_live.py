@@ -15,9 +15,9 @@ from __future__ import annotations
 import time
 
 import pytest
+from discovery import public
 
 from contracts.models import LeverageMode, MarginMode, Settings, SizingMode
-from discovery import public
 
 
 @pytest.mark.live
