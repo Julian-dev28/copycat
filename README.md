@@ -127,3 +127,19 @@ generated web types are stale.
   is baked in at build time. Change it, then `docker compose build web`.
 - Containers run as uid 1000. On Linux, if `./data` belongs to another user:
   `sudo chown -R 1000:1000 data`.
+
+## Strategy theses with Claude Code (MCP)
+
+Every trader in Scout gets a deterministic TA fingerprint and thesis (no AI).
+For a deeper written thesis, let your own Claude Code do the research:
+
+```
+make mcp-install RUN=1        # registers the copycat MCP server + /copycat-thesis
+# then in Claude Code:
+/copycat-thesis 0x<trader address>
+```
+
+Claude Code pulls the fingerprint, trades and candles through copycat, writes
+the thesis and saves it; it shows on the trader's Strategy tab. The MCP server
+can read and add leaders, but can never enable trading, change leverage or close
+positions. See services/mcp/README.md.

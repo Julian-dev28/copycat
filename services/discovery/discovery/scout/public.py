@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from contracts.models import (LeaderFillView, LeaderOverride, ScoutStatus, Settings, TraderPage, TraderProfile,
+from contracts.models import (LeaderFillView, LeaderOverride, ScoutPresets, ScoutStatus, Settings, TraderPage, TraderProfile,
                               TraderRow, TraderScore, WhatIfResult, norm_addr)
 
 from . import config as C
@@ -111,21 +111,27 @@ def scout_page(query: Optional[Dict[str, Any]] = None) -> TraderPage:
                       stale_settings=bool(wanted and wanted != ptr["settings_hash"]))
 
 
-def scout_presets() -> Dict[str, Any]:
-    """Coin chips = the 6 coins most often a trader's #1 asset; hip3 = traders
-    with >= 50% of volume on HIP-3 markets. From the served board."""
+def scout_presets() -> ScoutPresets:
+    """Preset tabs + coin chips from the served board (contracts ScoutPresets):
+    coin_counts = traders with the coin in their top 5; coins = the 6 chips
+    with the most traders; hip3_count = traders with any HIP-3 coin in their
+    top 5, the same predicate as the `preset=hip3` filter, so the tab count
+    always equals the tab's total."""
     conn = _conn()
     ptr = store.pointer(conn)
     if ptr is None:
-        return {"all": 0, "hip3": 0, "coins": []}
+        return ScoutPresets()
     rid = ptr["refresh_id"]
-    total = conn.execute("SELECT COUNT(*) FROM scout_rows WHERE refresh_id = ?", (rid,)).fetchone()[0]
-    hip3 = conn.execute("SELECT COUNT(*) FROM scout_rows WHERE refresh_id = ? AND hip3_share >= ?",
-                        (rid, C.HIP3_PRESET_SHARE)).fetchone()[0]
-    coins = conn.execute("SELECT top_coin, COUNT(*) n FROM scout_rows WHERE refresh_id = ? AND top_coin IS NOT NULL "
-                         "GROUP BY top_coin ORDER BY n DESC, top_coin ASC LIMIT 6", (rid,)).fetchall()
-    return {"all": int(total), "hip3": int(hip3),
-            "coins": [{"coin": r["top_coin"], "traders": int(r["n"])} for r in coins]}
+    counts: Dict[str, int] = {}
+    hip3 = total = 0
+    for r in conn.execute("SELECT coins_csv FROM scout_rows WHERE refresh_id = ?", (rid,)).fetchall():
+        total += 1
+        coins = [c for c in (r["coins_csv"] or "").split(",") if c]
+        hip3 += int(any(":" in c for c in coins))
+        for c in coins:
+            counts[c] = counts.get(c, 0) + 1
+    order = sorted(counts, key=lambda c: (-counts[c], c))
+    return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total)
 
 
 # ── trader file ───────────────────────────────────────────────────────────

@@ -158,7 +158,7 @@ export function ApiTooOld({ what }: { what: string }) {
   return (
     <Notice
       tone="warning"
-      title="This api build has no Scout routes yet"
+      title="Scout is not available on this api yet"
       action={
         demo ? undefined : (
           <Link href="?demo=1" className="text-sm font-medium text-accent underline-offset-2 hover:underline">
@@ -168,7 +168,8 @@ export function ApiTooOld({ what }: { what: string }) {
       }
     >
       <p>
-        The api answered 404 for {what}. Pull and restart services/api (and services/discovery) to get{" "}
+        The api answered 404 or 503 for {what}: this build predates Scout, or discovery is not running. Pull and restart
+        services/api and services/discovery to get{" "}
         <span className="font-num text-foreground">/api/scout/*</span>. Meanwhile the demo board shows the page with sample data.
       </p>
     </Notice>

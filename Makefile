@@ -13,7 +13,7 @@ NEXT_PUBLIC_COPYCAT_API ?= http://localhost:$(API_PORT)
 
 export PYTHONPATH := .:services/hl:services/engine:services/discovery:services/api
 
-.PHONY: help install dev test eval openapi up down
+.PHONY: help install dev test eval openapi up down mcp-install
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -49,3 +49,8 @@ up: ## docker compose up (api, engine, scout, web)
 
 down: ## docker compose down
 	docker compose down
+
+mcp-install: ## print (or with RUN=1, run) the `claude mcp add` command and install the /copycat-thesis slash command
+	@echo 'claude mcp add copycat -s user -- $(CURDIR)/services/mcp/run.sh'
+	@echo 'mkdir -p ~/.claude/commands && cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md ~/.claude/commands/'
+	@if [ "$(RUN)" = "1" ]; then 	  claude mcp add copycat -s user -- $(CURDIR)/services/mcp/run.sh && 	  mkdir -p $$HOME/.claude/commands && 	  cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md $$HOME/.claude/commands/ && 	  echo "installed: copycat MCP server + /copycat-thesis"; 	else echo "(dry run; re-run with RUN=1 to execute)"; fi

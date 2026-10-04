@@ -166,8 +166,8 @@ def where(q: Query, refresh_id: str, now_ms: Optional[int] = None) -> Tuple[str,
         args.extend(q.styles)
     coins: Sequence[str] = list(q.coins)
     if q.preset == "hip3":
-        clauses.append("hip3_share >= ?")
-        args.append(C.HIP3_PRESET_SHARE)
+        clauses.append("coins_csv LIKE ?")       # any HIP-3 (dex:COIN) market in the top 5
+        args.append("%:%")
     elif q.preset.startswith("coin:"):
         clauses.append("top_coin = ?")
         args.append(q.preset[5:])

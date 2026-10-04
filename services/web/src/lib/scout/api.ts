@@ -93,7 +93,11 @@ export const demoScout: ScoutSource = {
   refresh: () => later({ ...fixtureStatus(demoNowMs()), state: "running" as const, stage: "stats" as const, done: 40, total: 280, eta_s: 1260 }),
 };
 
-/** True when the api is reachable but predates the scout routes. */
+/**
+ * True when the api is reachable but cannot serve Scout: 404/405 (a build
+ * that predates /api/scout/*) or 503 (the route exists but the discovery
+ * service behind it is not running yet).
+ */
 export function isApiTooOld(err: unknown): boolean {
-  return isNotSupported(err);
+  return isNotSupported(err) || (err instanceof ApiError && err.status === 503);
 }

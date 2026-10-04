@@ -12,6 +12,7 @@ dependencies = [
   "uvicorn[standard]>=0.30",
   "sse-starlette>=2.1",
   "python-dotenv>=1.0",
+  "mcp>=2.3,<3",          # services/mcp (MCPServer, the v2 name for FastMCP)
 ]
 
 [project.optional-dependencies]
@@ -19,8 +20,10 @@ dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "services/hl", "services/engine", "services/discovery", "services/api",
-              "services/engine/tests", "services/discovery/tests", "services/api/tests"]
-testpaths = ["services/hl/tests", "services/engine/tests", "services/discovery/tests", "services/api/tests"]
+              "services/mcp", "services/engine/tests", "services/discovery/tests", "services/api/tests",
+              "services/mcp/tests"]
+testpaths = ["services/hl/tests", "services/engine/tests", "services/discovery/tests", "services/api/tests",
+             "services/mcp/tests"]
 markers = ["live: hits the real Hyperliquid API (eval lane, not the gate)"]
 addopts = "-m 'not live' -q --import-mode=importlib"
 
