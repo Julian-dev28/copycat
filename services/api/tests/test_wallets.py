@@ -194,3 +194,86 @@ def test_every_wallet_route_requires_auth(client: TestClient):
     for action in ("copy", "preview", "stop"):
         r = client.post(f"/api/wallets/{A}/{action}", json={"allocation_usd": 10})
         assert r.status_code == 401, action
+
+
+# ── v7: settings_source global | custom ─────────────────────────────────────
+
+def test_global_copy_adds_the_wallet_with_no_terms(client, auth_headers):
+    r = client.post(f"/api/wallets/{A}/copy", headers=auth_headers,
+                    json={"settings_source": "global"})
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["leaders"] == [A]
+    o = s["leader_overrides"][A]
+    # bookkeeping only: invested_ms for the PnL ledger, nothing that sizes
+    assert isinstance(o["invested_ms"], int)
+    assert {k for k, v in o.items() if v is not None} == {"invested_ms"}
+    row = client.get("/api/wallets", headers=auth_headers).json()[0]
+    assert row["settings_source"] == "global" and row["roe_pct"] is None
+
+
+def test_global_copy_clears_an_existing_custom_override_and_keeps_invested_ms(client, auth_headers):
+    first = copy(client, auth_headers, leverage_mode="fixed", leverage=3).json()
+    inv = first["leader_overrides"][A]["invested_ms"]
+    s = client.post(f"/api/wallets/{A}/copy", headers=auth_headers,
+                    json={"settings_source": "global", "allocation_usd": 50}).json()
+    assert s["leader_overrides"][A] == {**{k: None for k in s["leader_overrides"][A]},
+                                        "invested_ms": inv}
+
+
+def test_global_to_custom_keeps_the_investment(client, auth_headers):
+    inv = client.post(f"/api/wallets/{A}/copy", headers=auth_headers,
+                      json={"settings_source": "global"}).json()["leader_overrides"][A]["invested_ms"]
+    o = copy(client, auth_headers).json()["leader_overrides"][A]
+    assert o["invested_ms"] == inv and o["sizing_mode"] == "allocation"
+
+
+def test_custom_writes_leverage_and_only_new_positions(client, auth_headers):
+    o = copy(client, auth_headers, leverage_mode="fixed", leverage=7,
+             only_new_positions=True).json()["leader_overrides"][A]
+    assert (o["leverage_mode"], o["leverage"], o["only_new_positions"]) == ("fixed", 7, True)
+    row = client.get("/api/wallets", headers=auth_headers).json()[0]
+    assert row["settings_source"] == "custom"
+
+
+def test_custom_without_allocation_is_422(client, auth_headers):
+    r = client.post(f"/api/wallets/{A}/copy", headers=auth_headers, json={"settings_source": "custom"})
+    assert r.status_code == 422
+    r = client.post(f"/api/wallets/{A}/copy", headers=auth_headers, json={})
+    assert r.status_code == 422                                     # custom is the default
+
+
+def test_global_copy_409_and_400(client, auth_headers):
+    for i in range(MAX_LEADERS):
+        client.post(f"/api/wallets/{'0x' + f'{i + 1:040x}'}/copy", headers=auth_headers,
+                    json={"settings_source": "global"})
+    r = client.post(f"/api/wallets/{B}/copy", headers=auth_headers, json={"settings_source": "global"})
+    assert r.status_code == 409
+    r = client.post(f"/api/wallets/{OUR_ADDRESS}/copy", headers=auth_headers,
+                    json={"settings_source": "global"})
+    assert r.status_code == 400
+
+
+def test_wallet_added_by_hand_is_global(client, auth_headers):
+    client.post("/api/leaders", headers=auth_headers, json={"address": A})
+    assert client.get("/api/wallets", headers=auth_headers).json()[0]["settings_source"] == "global"
+
+
+def test_winding_down_source_follows_the_terms_it_ran_with(client, auth_headers, fake_engine):
+    ran_custom = Settings(sizing_mode="allocation", allocation_usd=100.0, invested_ms=5)
+    fake_engine._status = EngineStatus(running=True, enabled=True, dry_run=False, leaders=[
+        LeaderStatus(address=A, read_ok=True, effective=ran_custom, open_copies=1),
+        LeaderStatus(address=B, read_ok=True, effective=Settings(), open_copies=1)])
+    rows = {r["address"]: r for r in client.get("/api/wallets", headers=auth_headers).json()}
+    assert rows[A]["settings_source"] == "custom" and rows[B]["settings_source"] == "global"
+
+
+def test_preview_global_needs_no_allocation(client, auth_headers, fake_engine):
+    fake_engine.preview_result = WalletPreview(
+        address=A, as_of_ms=1, allocation_usd=0.0, exposure_mode=ExposureMode.match,
+        small_account_mode=SmallAccountMode.concentrate, his_equity_usd=1.0,
+        his_gross_notional_usd=1.0)
+    r = client.post(f"/api/wallets/{A}/preview", headers=auth_headers,
+                    json={"settings_source": "global"})
+    assert r.status_code == 200, r.text
+    assert fake_engine.preview_calls[0][1].settings_source == "global"

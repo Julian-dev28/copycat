@@ -609,6 +609,8 @@ class WalletPosition(BaseModel):
     The LeaderStatus "position" fields plus the allocation terms."""
     address: str
     in_book: bool                              # false: stopped, copies winding down
+    # v7: "global" = no per-wallet terms, runs on the Settings tab; "custom" = its own override
+    settings_source: Literal["global", "custom"] = "custom"
     read_ok: bool = False
     equity_usd: Optional[float] = None         # his equity at the last read
     open_copies: int = 0

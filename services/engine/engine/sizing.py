@@ -496,3 +496,88 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
         "min_allocation_for_full_book": min_full,
         "multi_cycle": any(r["fill_cycles"] > 1 for r in copied),
     }
+
+
+def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]],
+              his_equity: float, coin_max_lev: Mapping[str, int], *,
+              our_equity: Optional[float] = None, n_leaders: int = 1,
+              lev_by_coin: Optional[Mapping[str, int]] = None,
+              liq_cap: Optional[Mapping[str, Optional[float]]] = None,
+              open_copies: int = 0,
+              taken: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+    """`plan_allocation`'s sibling for the other sizing modes (fixed_margin,
+    fixed_notional, proportional): what a first sight of his book would open
+    under `settings` (a global wallet runs on the Settings tab as-is). Same
+    result shape, so one preview renders both. Pure.
+
+    Per coin, in coin-name order (the engine's first-sight order):
+      - `taken[coin]` (another wallet owns our copy of it): skipped.
+      - `max_open_copies`: opens past it (counting `open_copies` already
+        open across all wallets) are skipped.
+      - notional `open_notional(settings, his notional, his_equity,
+        our_equity, n_leaders, lev)` at `lev_by_coin` (else the coin max
+        capped by max_position_leverage); proportional needs `our_equity`.
+      - `bump` (min_order_bump / small_account_mode), then the $10.50 floor.
+      - liquidity: `split_order` / `fill_cycles` as in `plan_allocation`.
+    Not modelled: our free margin (room cap) and price moves."""
+    ntl = {c: his_notional(p) for c, p in his_positions.items()}
+    ntl = {c: v for c, v in ntl.items() if v > 0}
+    gross = sum(ntl.values())
+    taken = taken or {}
+    opened = 0
+    slices: List[Dict[str, Any]] = []
+    for c in sorted(ntl):
+        if lev_by_coin and c in lev_by_coin:
+            lev = max(1, int(lev_by_coin[c]))
+        else:
+            lev = max(1, min(int(coin_max_lev.get(c, 1) or 1), int(settings.max_position_leverage)))
+        szi = float(his_positions[c].get("szi") or 0.0)
+        row: Dict[str, Any] = {
+            "coin": c, "side": "long" if szi > 0 else "short",
+            "his_notional_usd": ntl[c], "weight_pct": ntl[c] / gross * 100.0 if gross else 0.0,
+            "leverage": lev, "notional_usd": 0.0, "margin_usd": 0.0, "status": "copy",
+            "reason": None, "liquidity_cap_usd": None, "fill_cycles": 1,
+        }
+        slices.append(row)
+        if c in taken:
+            row["status"], row["reason"] = "skip", f"owned by wallet {taken[c]}"
+            continue
+        if open_copies + opened >= settings.max_open_copies:
+            row["status"] = "skip"
+            row["reason"] = f"max_open_copies reached ({settings.max_open_copies})"
+            continue
+        if settings.sizing_mode == SizingMode.proportional and our_equity is None:
+            row["status"], row["reason"] = "skip", "our equity unknown (engine status unavailable)"
+            continue
+        s = open_notional(settings, ntl[c], his_equity, float(our_equity or 0.0),
+                          max(1, n_leaders), lev)
+        bumped = bump(s, settings)
+        if bumped != s:
+            row["status"] = "bump"
+        s = bumped
+        if s < HL_MIN_ORDER_USD:
+            row["status"] = "skip"
+            row["reason"] = f"copy ${s:,.2f} under the ${HL_MIN_ORDER_USD} minimum"
+            continue
+        if liq_cap is not None:
+            cap = liq_cap.get(c)
+            row["liquidity_cap_usd"] = cap
+            _send, _carry, why = split_order(s, cap)
+            if why:
+                row["status"], row["reason"] = "skip", why
+                continue
+            row["fill_cycles"] = fill_cycles(s, cap)
+        row["notional_usd"] = s
+        row["margin_usd"] = s / lev
+        opened += 1
+    copied = [r for r in slices if r["status"] != "skip"]
+    return {
+        "slices": slices,
+        "scale": 1.0,
+        "planned_notional_usd": sum(r["notional_usd"] for r in copied),
+        "planned_margin_usd": sum(r["margin_usd"] for r in copied),
+        "copied": [r["coin"] for r in copied],
+        "skipped": [r["coin"] for r in slices if r["status"] == "skip"],
+        "min_allocation_for_full_book": None,
+        "multi_cycle": any(r["fill_cycles"] > 1 for r in copied),
+    }

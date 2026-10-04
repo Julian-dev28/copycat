@@ -147,16 +147,23 @@ discovery exposes it.
 
 Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
 
-- **copy** (`SettingsStore.copy_wallet`): one flock'd write adds the wallet if
-  new (409 at `MAX_LEADERS`, 400 bad/own address) and sets
+- **copy** (`SettingsStore.copy_wallet`), `settings_source` global: one
+  flock'd write adds the wallet if new and clears its override down to
+  `{invested_ms}` (bookkeeping for the PnL ledger; nothing sizes from it), so
+  the wallet runs on the Settings tab exactly. `settings_source` custom
+  (default; `allocation_usd` required, else 422): one flock'd write adds the
+  wallet if new (409 at `MAX_LEADERS`, 400 bad/own address) and sets
   `leader_overrides[address]` to `sizing_mode: allocation` plus the ticket's
   `allocation_usd`, `exposure_mode`, `target_leverage`, and, when given,
-  `margin_mode`, `max_worse_entry_pct`, `small_account_mode`. Other fields of
-  an existing override are kept. `invested_ms` is now for a new wallet or one
-  that was not on allocation sizing; a re-post keeps it (an adjust does not
-  reset the PnL ledger). Target exposure without `target_leverage` is 422.
+  `margin_mode`, `max_worse_entry_pct`, `small_account_mode`, `leverage_mode`,
+  `leverage`, `only_new_positions`. Other fields of an existing override are
+  kept. `invested_ms` is now for a new wallet (or one without it); a re-post
+  or a global/custom switch keeps it (the PnL ledger is not reset). Target exposure without `target_leverage` is 422.
   A pending stop flag for the wallet is deleted (newer command wins).
-- **preview**: `engine.public.preview_wallet` via `RealEngineClient.preview`
+- **preview** (global: the book-wide settings via `engine.sizing.plan_copy`,
+  per-position sizes in fixed_margin / fixed_notional / proportional; custom:
+  `plan_allocation`; `only_new_positions` on a new wallet previews nothing
+  copied now): `engine.public.preview_wallet` via `RealEngineClient.preview`
   (lazy import, flips the process to background HL priority first). It is
   `engine.sizing.plan_allocation` on live reads, the same function the engine
   sizes with, so the ticket shows what the engine will do: per position the
@@ -174,7 +181,9 @@ Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
   orphan with open copies or a pending stop. Position fields are the
   engine's `LeaderStatus` from its last cycle; `pnl_usd` = realized +
   unrealized, `roe_pct` = pnl / `allocation_usd` x 100 (None off allocation
-  sizing). Terms come from settings for book wallets and from the engine's
+  sizing). `settings_source`: global when the wallet has no override beyond
+  `invested_ms`, else custom (winding-down rows: custom if they ran on
+  allocation terms). Terms come from settings for book wallets and from the engine's
   `effective` (the terms it last ran with) for winding-down ones. If the
   engine package is missing the book rows still come back, zeroed.
 

@@ -32,7 +32,7 @@ from ..config import Config
 from ..deps import get_config, get_engine_client, get_store, require_auth
 from ..engine_client import EngineClient, EngineUnavailable, PreviewFailed
 from ..schemas import WalletStopResponse
-from ..settings_store import _ADDR_RE, LeaderLimitError, SettingsStore
+from ..settings_store import _ADDR_RE, LeaderLimitError, SettingsStore, settings_source
 from ..wallet_stop import clear_stop, is_stop_pending, request_stop
 
 router = APIRouter(prefix="/api/wallets", tags=["wallets"], dependencies=[Depends(require_auth)])
@@ -46,20 +46,24 @@ def _addr_or_400(address: str) -> str:
 
 
 def _target_needs_leverage(req: WalletCopyRequest) -> None:
-    if req.exposure_mode == ExposureMode.target and req.target_leverage is None:
-        raise HTTPException(422,
-                            "target_leverage is required when exposure_mode is target")
+    """Belt and braces: WalletCopyRequest's own validator already 422s this."""
+    if (req.settings_source == "custom" and req.exposure_mode == ExposureMode.target
+            and req.target_leverage is None):
+        raise HTTPException(422, "target_leverage is required when exposure_mode is target")
 
 
 @router.post("/{address}/copy", response_model=Settings)
 def copy_wallet(address: str, body: WalletCopyRequest,
                 store: SettingsStore = Depends(get_store),
                 config: Config = Depends(get_config)) -> Settings:
-    """Invest `allocation_usd` in this wallet, or adjust an existing
-    investment (keeps `invested_ms`, so its PnL ledger carries on). 409 at
-    MAX_LEADERS, 400 for a bad address or our own account, 422 for target
-    exposure without `target_leverage`. A pending stop for the wallet is
-    cancelled: the newer command wins."""
+    """Copy this wallet. `settings_source` global: it runs on the Settings
+    tab (its override is cleared to bookkeeping only). custom: invest
+    `allocation_usd` with its own terms, or adjust them. `invested_ms` is set
+    when the wallet is added and kept on a re-post, so its PnL ledger carries
+    on. 409 at MAX_LEADERS, 400 for a bad address or our own account, 422
+    for custom without `allocation_usd` or target exposure without
+    `target_leverage`. A pending stop for the wallet is cancelled: the newer
+    command wins."""
     addr = _addr_or_400(address)
     _target_needs_leverage(body)
     try:
@@ -123,14 +127,14 @@ def stop_wallet(address: str, body: WalletStopRequest,
 
 
 def _position(addr: str, in_book: bool, row: Optional[LeaderStatus], eff: Settings,
-              stopping: bool) -> WalletPosition:
+              stopping: bool, source: str) -> WalletPosition:
     allocation = eff.sizing_mode == SizingMode.allocation
     realized = row.realized_pnl_usd if row else 0.0
     unrealized = row.unrealized_pnl_usd if row else 0.0
     pnl = realized + unrealized
     alloc_usd = eff.allocation_usd if allocation else None
     return WalletPosition(
-        address=addr, in_book=in_book, read_ok=bool(row and row.read_ok),
+        address=addr, in_book=in_book, settings_source=source, read_ok=bool(row and row.read_ok),
         equity_usd=row.equity_usd if row else None,
         open_copies=row.open_copies if row else 0,
         margin_used_usd=row.margin_used_usd if row else 0.0,
@@ -147,7 +151,7 @@ def _position(addr: str, in_book: bool, row: Optional[LeaderStatus], eff: Settin
         target_leverage=(eff.target_leverage if allocation and eff.exposure_mode == ExposureMode.target
                          else None),
         small_account_mode=eff.small_account_mode if allocation else None,
-        invested_ms=eff.invested_ms if allocation else None,
+        invested_ms=eff.invested_ms,
     )
 
 
@@ -169,11 +173,16 @@ def list_wallets(store: SettingsStore = Depends(get_store),
     out: List[WalletPosition] = []
     for addr in settings.leaders:
         out.append(_position(addr, True, rows.get(addr), settings.for_leader(addr),
-                             is_stop_pending(config.data_dir, addr)))
+                             is_stop_pending(config.data_dir, addr),
+                             settings_source(settings.leader_overrides.get(addr))))
     for addr, row in rows.items():
         if addr in settings.leaders:
             continue
         pending = is_stop_pending(config.data_dir, addr)
         if row.open_copies > 0 or row.owned_coins or row.stopping or pending:
-            out.append(_position(addr, False, row, row.effective, pending))
+            # winding down: custom if it ran on its own allocation terms (the engine
+            # puts its last terms in `effective`), else it ran on the Settings tab
+            src = ("custom" if row.effective.sizing_mode == SizingMode.allocation
+                   and row.effective.invested_ms is not None else "global")
+            out.append(_position(addr, False, row, row.effective, pending, src))
     return out

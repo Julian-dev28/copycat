@@ -228,7 +228,9 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     configured_set = set(configured)
     for leader in configured:
         es = settings.for_leader(leader)
-        if es.sizing_mode == SizingMode.allocation:
+        # any wallet with invested_ms (custom allocation, or a global copy, whose
+        # override holds only invested_ms) gets its ledger reset on a re-invest
+        if es.invested_ms is not None:
             state.sync_ledger(leader, es.invested_ms, _terms(es), now_ms)
 
     if not cy.dry:

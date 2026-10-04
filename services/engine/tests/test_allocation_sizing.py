@@ -184,3 +184,41 @@ def test_fill_fee_uses_the_reported_fee_else_the_taker_estimate():
     assert fill_fee_usd({"fee": "-0.12"}, 1000.0) == 0.12
     assert fill_fee_usd({}, 1000.0) == 1000.0 * TAKER_FEE_BPS / 10_000   # $0.45 at 4.5 bps
     assert fill_fee_usd({}, 0.0) == 0.0
+
+
+# ── v7: plan_copy (global wallets on the Settings tab) ──────────────────────
+
+def test_plan_copy_fixed_margin_at_max_leverage():
+    pos = {"BTC": {"szi": 10.0, "entry_px": 100.0}, "ETH": {"szi": -5.0, "entry_px": 100.0}}
+    s = Settings(sizing_mode="fixed_margin", fixed_margin_usd=1.0, leverage_mode="max")
+    p = sizing.plan_copy(s, pos, 1e6, {"BTC": 40, "ETH": 25})
+    by = {r["coin"]: r for r in p["slices"]}
+    # $1 margin x coin max: BTC $40, ETH $25, margin $1 each
+    assert (by["BTC"]["notional_usd"], by["BTC"]["leverage"]) == (40.0, 40)
+    assert (by["ETH"]["notional_usd"], by["ETH"]["side"]) == (25.0, "short")
+    assert p["planned_margin_usd"] == pytest.approx(2.0) and p["min_allocation_for_full_book"] is None
+
+
+def test_plan_copy_bump_floor_max_open_copies_and_taken():
+    pos = {c: {"szi": 1.0, "entry_px": 100.0} for c in ("AAA", "BBB", "CCC", "DDD")}
+    s = Settings(sizing_mode="fixed_margin", fixed_margin_usd=0.1, leverage_mode="fixed",
+                 leverage=50, max_open_copies=3)
+    p = sizing.plan_copy(s, pos, 1e6, {c: 50 for c in pos}, open_copies=1, taken={"AAA": "0xother"})
+    by = {r["coin"]: r for r in p["slices"]}
+    # 0.1 x 50 = $5 >= 25% of 10.50 -> bumped; AAA owned elsewhere; 1 open + 2 = cap 3 -> DDD skipped
+    assert "owned by wallet" in by["AAA"]["reason"]
+    assert (by["BBB"]["status"], by["BBB"]["notional_usd"]) == ("bump", 10.5)
+    assert by["CCC"]["status"] == "bump" and "max_open_copies" in by["DDD"]["reason"]
+    tiny = sizing.plan_copy(s.model_copy(update={"fixed_margin_usd": 0.01}), pos, 1e6,
+                            {c: 50 for c in pos})
+    assert tiny["copied"] == []                                     # $0.50 < 25% of the floor
+
+
+def test_plan_copy_proportional_needs_our_equity():
+    pos = {"BTC": {"szi": 1000.0, "entry_px": 100.0}}
+    s = Settings(sizing_mode="proportional", sleeve_frac=0.5, size_multiplier=1.0)
+    # 100k / 1M * (10_000 * 0.5 / 2 leaders) = $250
+    p = sizing.plan_copy(s, pos, 1e6, {"BTC": 50}, our_equity=10_000.0, n_leaders=2)
+    assert p["slices"][0]["notional_usd"] == pytest.approx(250.0)
+    q = sizing.plan_copy(s, pos, 1e6, {"BTC": 50})
+    assert "equity unknown" in q["slices"][0]["reason"]

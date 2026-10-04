@@ -98,6 +98,10 @@ Every rule below is pinned by a gate test in `tests/`.
     - `skip`: slices under $10.50 are dropped.
     - Other sizing modes: `skip` disables the bump; otherwise
       `min_order_bump` as before.
+  - `sizing.plan_copy` is the sibling for global wallets (the Settings tab's
+    fixed_margin / fixed_notional / proportional): per position the open
+    notional at the exchange leverage, bump, floor, `max_open_copies`, coins
+    owned by another wallet, liquidity.
   - `sizing.plan_allocation` runs the same steps in the same order (coin
     name order, like a first-sight batch) and is what the Trade ticket
     preview shows. Not in the preview: our free margin (room cap) and
@@ -123,7 +127,8 @@ slippage band bounds each fill, and partial exits already retry.
 the order's `avg_px`, else the mid. Fees only when the result reports one
 (HL order responses do not, so `fees_usd` stays 0 today). Fills before
 `invested_ms` are not counted; a new `invested_ms` (fresh investment) resets
-the row; a re-post that keeps it does not.
+the row; a re-post that keeps it does not. Any wallet with `invested_ms`
+is synced, including a global copy (override `{invested_ms}` only).
 
 **Wallet status**: every `LeaderStatus` row carries `open_copies`,
 `margin_used_usd` (HL `marginUsed`, else notional / leverage),

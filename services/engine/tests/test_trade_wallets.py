@@ -354,3 +354,54 @@ def test_only_new_positions_is_per_wallet(engine_state, venue):
             leader_overrides={LEADER1: {"only_new_positions": True}})
     out = run(venue, s, engine_state)
     assert out["opened"] == ["ETH"]
+
+
+# ── v7: preview for global and custom wallets ───────────────────────────────
+
+def test_preview_global_uses_the_settings_tab_as_is(data_dir, venue):
+    from engine import public
+
+    from contracts.models import WalletCopyRequest
+    venue.max_levs["BTC"] = 40
+    venue.hold(LEADER1, "BTC", 10.0, entry_px=100.0)
+    book = Settings(sizing_mode="fixed_margin", fixed_margin_usd=2.0, leverage_mode="max",
+                    leader_overrides={LEADER1: {"sizing_mode": "allocation", "allocation_usd": 9.0}})
+    req = WalletCopyRequest(settings_source="global")
+    pv = public.preview_wallet(LEADER1, req, book, venue=venue)
+    # the existing override is ignored: $2 x 40 = $80
+    assert pv.copied == 1 and pv.slices[0].notional_usd == pytest.approx(80.0)
+    assert pv.slices[0].leverage == 40 and any("fixed_margin" in n for n in pv.notes)
+
+
+def test_preview_custom_honors_per_wallet_leverage(data_dir, venue):
+    from engine import public
+
+    from contracts.models import WalletCopyRequest
+    venue.hold(LEADER1, "BTC", 1000.0, entry_px=100.0)
+    req = WalletCopyRequest(allocation_usd=1000.0, leverage_mode="fixed", leverage=7)
+    pv = public.preview_wallet(LEADER1, req, Settings(), venue=venue)
+    # match: 100k / 1M * 1000 = $100 at the wallet's fixed 7x -> margin $14.29
+    assert pv.slices[0].leverage == 7 and pv.slices[0].notional_usd == pytest.approx(100.0)
+    assert pv.planned_margin_usd == pytest.approx(100 / 7)
+
+
+def test_preview_only_new_positions_copies_nothing_now(data_dir, venue):
+    from engine import public
+
+    from contracts.models import WalletCopyRequest
+    venue.hold(LEADER1, "BTC", 1000.0, entry_px=100.0)
+    req = WalletCopyRequest(allocation_usd=1000.0, only_new_positions=True)
+    pv = public.preview_wallet(LEADER1, req, Settings(), venue=venue)
+    assert pv.copied == 0 and pv.planned_notional_usd == 0.0
+    assert "only_new_positions" in pv.slices[0].reason
+
+
+def test_global_wallet_ledger_resets_on_reinvest(engine_state, venue):
+    venue.set_account(OUR, 1000.0)
+    venue.set_account(LEADER1, 1000.0)
+    engine_state.book_pnl(LEADER1, 5.0, 0.0, 1)
+    s = Settings(enabled=True, dry_run=False, leaders=[LEADER1],
+                 leader_overrides={LEADER1: {"invested_ms": 100}})   # a global copy's bookkeeping
+    out = run(venue, s, engine_state, now_ms=200)
+    assert out["leaders"][0].realized_pnl_usd == 0.0
+    assert engine_state.get_ledger(LEADER1)["invested_ms"] == 100

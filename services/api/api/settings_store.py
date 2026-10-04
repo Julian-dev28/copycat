@@ -204,16 +204,26 @@ class SettingsStore:
 
     def copy_wallet(self, address: str, req: WalletCopyRequest, now_ms: int) -> Settings:
         """Invest in (or adjust) a wallet in ONE locked write: add the leader
-        if new (LeaderLimitError at MAX_LEADERS) and set its override to
-        allocation sizing with the ticket's terms. The previous override's
-        other fields (leverage_mode, fixed amounts, ...) are kept.
-        `invested_ms` is `now_ms` for a new wallet or one that was not on
-        allocation sizing; an adjust (re-post) keeps it, so the wallet's
-        PnL ledger is not reset. Raises ValueError (400) on a bad address or
-        a target exposure without target_leverage (the route checks that
-        first and answers 422), OwnAddressError (400) for our own account."""
+        if new (LeaderLimitError at MAX_LEADERS), then:
+
+        - settings_source global: the wallet runs entirely on the Settings
+          tab. Its override is cleared down to bookkeeping only:
+          `LeaderOverride(invested_ms=...)`, which no sizing reads, so
+          `for_leader` equals the book-wide settings. `invested_ms` keeps
+          the engine's per-wallet PnL ledger honest (a re-add resets it).
+        - settings_source custom: the override becomes allocation sizing with
+          the ticket's terms (allocation, exposure, target leverage, and when
+          given margin mode, worse-entry %, small-account mode, leverage
+          mode, leverage, only_new_positions). Other fields of a previous
+          override are kept.
+
+        `invested_ms` is `now_ms` for a new wallet or one without it yet; a
+        re-post (adjust, or a global <-> custom switch) keeps it, so the
+        ledger is not reset. Raises ValueError (400) on a bad address,
+        OwnAddressError (400) for our own account."""
         addr = self._valid_leader_addr(address)
-        if req.exposure_mode == ExposureMode.target and req.target_leverage is None:
+        if (req.settings_source == "custom" and req.exposure_mode == ExposureMode.target
+                and req.target_leverage is None):
             raise ValueError("target_leverage is required for exposure_mode target")
         with self._locked():
             current = self.load()
@@ -221,20 +231,24 @@ class SettingsStore:
             if newly_added and len(current.leaders) >= MAX_LEADERS:
                 raise LeaderLimitError(f"max {MAX_LEADERS} leaders")
             prev = current.leader_overrides.get(addr)
-            fresh = (newly_added or prev is None or prev.sizing_mode != SizingMode.allocation
-                     or prev.invested_ms is None)
-            data = prev.model_dump() if prev is not None else {}
-            data.update({
-                "sizing_mode": SizingMode.allocation, "allocation_usd": req.allocation_usd,
-                "exposure_mode": req.exposure_mode,
-                "invested_ms": now_ms if fresh else prev.invested_ms,
-            })
-            for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode"):
-                v = getattr(req, k)
-                if v is not None:
-                    data[k] = v
+            fresh = newly_added or prev is None or prev.invested_ms is None
+            invested_ms = now_ms if fresh else prev.invested_ms
+            if req.settings_source == "global":
+                override = LeaderOverride(invested_ms=invested_ms)
+            else:
+                data = prev.model_dump() if prev is not None else {}
+                data.update({
+                    "sizing_mode": SizingMode.allocation, "allocation_usd": req.allocation_usd,
+                    "exposure_mode": req.exposure_mode, "invested_ms": invested_ms,
+                })
+                for k in ("target_leverage", "margin_mode", "max_worse_entry_pct",
+                          "small_account_mode", "leverage_mode", "leverage", "only_new_positions"):
+                    v = getattr(req, k)
+                    if v is not None:
+                        data[k] = v
+                override = LeaderOverride.model_validate(data)
             overrides = dict(current.leader_overrides)
-            overrides[addr] = LeaderOverride.model_validate(data)
+            overrides[addr] = override
             leaders = current.leaders + [addr] if newly_added else list(current.leaders)
             merged = Settings(**{**current.model_dump(mode="json"), "leaders": leaders,
                                  "leader_overrides": {a: o.model_dump(mode="json")
@@ -259,3 +273,12 @@ class SettingsStore:
             })
             self._write_atomic(merged)
             return merged, was_in_book
+
+
+def settings_source(override: Optional[LeaderOverride]) -> str:
+    """"global" when a wallet has no per-wallet terms (no override, or only
+    the `invested_ms` bookkeeping a global copy writes), else "custom"."""
+    if override is None:
+        return "global"
+    terms = {k: v for k, v in override.model_dump().items() if v is not None and k != "invested_ms"}
+    return "custom" if terms else "global"

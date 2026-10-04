@@ -350,14 +350,20 @@ class PreviewUnavailable(RuntimeError):
 
 def wallet_settings(settings: Settings, address: str, req: WalletCopyRequest) -> Settings:
     """The effective settings a wallet would run with after
-    POST /api/wallets/{address}/copy with `req` (book-wide merged with its
-    current override, then the ticket's fields)."""
+    POST /api/wallets/{address}/copy with `req`.
+    global: the book-wide settings as they are (no override at all).
+    custom: book-wide merged with its current override, then the ticket's
+    fields (allocation sizing plus any per-wallet leverage and
+    only_new_positions)."""
+    if req.settings_source == "global":
+        return settings.model_copy(update={"leader_overrides": {}})
     es = settings.for_leader(address)
     patch: Dict[str, Any] = {
         "sizing_mode": SizingMode.allocation, "allocation_usd": req.allocation_usd,
         "exposure_mode": req.exposure_mode,
     }
-    for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode"):
+    for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode",
+              "leverage_mode", "leverage", "only_new_positions"):
         v = getattr(req, k)
         if v is not None:
             patch[k] = v
@@ -416,21 +422,46 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
     held: List[str] = []
     margin_used = 0.0
     available: Optional[float] = None
+    our_equity: Optional[float] = None
+    known = address in settings.leaders      # the engine has (or will have) a baseline already
+    open_copies = 0
+    taken: Dict[str, str] = {}
     try:
         st = status()
         available = st.available_margin_usd
+        our_equity = st.equity_usd
+        open_copies = len(st.positions)
+        taken = {p.coin: p.leader for p in st.positions if p.leader != address}
         for row in st.leaders:
             if row.address == address:
+                known = True
                 held = list(row.owned_coins)
                 margin_used = float(row.margin_used_usd or 0.0)
     except Exception:
         logger.warning("preview: engine status unreadable, previewing as a fresh wallet",
                        exc_info=True)
 
-    plan = sizing.plan_allocation(
-        positions, his_equity, es.allocation_usd, es.exposure_mode, es.target_leverage,
-        es.small_account_mode, coin_max, lev_by_coin=levs, held=held, liq_cap=liq,
-        margin_used_usd=margin_used, max_position_leverage=es.max_position_leverage)
+    if es.sizing_mode == SizingMode.allocation:
+        plan = sizing.plan_allocation(
+            positions, his_equity, es.allocation_usd, es.exposure_mode, es.target_leverage,
+            es.small_account_mode, coin_max, lev_by_coin=levs, held=held, liq_cap=liq,
+            margin_used_usd=margin_used, max_position_leverage=es.max_position_leverage)
+    else:
+        n_leaders = len(settings.leaders) + (0 if address in settings.leaders else 1)
+        plan = sizing.plan_copy(
+            es, {c: p for c, p in positions.items() if c not in held}, his_equity, coin_max,
+            our_equity=our_equity, n_leaders=n_leaders, lev_by_coin=levs, liq_cap=liq,
+            open_copies=open_copies, taken=taken)
+        notes.append(f"Settings tab sizing: {es.sizing_mode.value}, leverage {es.leverage_mode.value}")
+    if es.only_new_positions and not known and positions:
+        # first sight is a baseline: what he holds now is never copied
+        for r in plan["slices"]:
+            if r["status"] != "skip":
+                r.update(status="skip", notional_usd=0.0, margin_usd=0.0, fill_cycles=1,
+                         reason="only_new_positions: his current positions are not copied")
+        plan.update(planned_notional_usd=0.0, planned_margin_usd=0.0, copied=[],
+                    skipped=[r["coin"] for r in plan["slices"]], multi_cycle=False)
+        notes.append("only_new_positions: only positions he opens from now on are copied")
     if not positions:
         notes.append("he holds no positions now: nothing opens until he does")
     if plan["multi_cycle"]:
