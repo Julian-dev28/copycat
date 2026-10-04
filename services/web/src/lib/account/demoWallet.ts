@@ -7,7 +7,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import type { Eip1193Provider } from "./eip1193";
 
-/** Fixed, public, worthless: the demo wallet's key. Never fund it. */
+/** Hardhat's public test account #5: known to everyone, so never fund it. Demo only. */
 const DEMO_WALLET_KEY = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" as const;
 export const DEMO_WALLET_ADDRESS = privateKeyToAccount(DEMO_WALLET_KEY).address.toLowerCase();
 export const DEMO_OTHER_ADDRESS = "0x5e1f00000000000000000000000000000000ca75";

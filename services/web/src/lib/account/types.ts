@@ -111,6 +111,13 @@ export interface AccountSummary {
   as_of_ms: number;
 }
 
+/** GET /api/accounts/import-env: whether the one-click .env migration applies. */
+export interface ImportEnvStatus {
+  available: boolean;
+  address?: string | null;
+  reason?: string | null;
+}
+
 export type HistoryKind = "fills" | "orders" | "transfers" | "balances";
 
 /** One ledger movement (deposit, withdrawal, send, spot/perp move). */

@@ -1,16 +1,27 @@
 "use client";
 
-import { BarChart3, KeyRound, Moon, Settings as SettingsIcon, Sun, Telescope, Wallet } from "lucide-react";
+import { BarChart3, CircleUserRound, KeyRound, Moon, Settings as SettingsIcon, Sun, Telescope, Wallet } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { Suspense, useSyncExternalStore, type CSSProperties } from "react";
 import { clsx } from "clsx";
 import { useAuth } from "@/context/AuthContext";
 import { CatLogo } from "@/components/CatLogo";
+import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { isNavActive, NAV_LINKS } from "@/lib/trade/nav";
 
-const ICONS = { "/": BarChart3, "/scout": Telescope, "/portfolio": Wallet, "/settings": SettingsIcon } as const;
+const ICONS = { "/": BarChart3, "/scout": Telescope, "/portfolio": Wallet, "/account": CircleUserRound, "/settings": SettingsIcon } as const;
+
+/** NAV_LINKS (lib/trade/nav) plus Account, slotted before Settings: Trade · Scout · Portfolio · Account · Settings. */
+type Href = keyof typeof ICONS;
+const LINKS: { href: Href; label: string }[] = [
+  ...NAV_LINKS.filter((l) => l.href !== "/settings"),
+  { href: "/account", label: "Account" },
+  ...NAV_LINKS.filter((l) => l.href === "/settings"),
+];
+const isActive = (href: Href, pathname: string | null) =>
+  href === "/account" ? Boolean(pathname && (pathname === href || pathname.startsWith(`${href}/`))) : isNavActive(href, pathname);
 
 const noopSubscribe = () => () => {};
 const demoQuery = () => {
@@ -46,9 +57,9 @@ export function TopNav() {
             </span>
           </Link>
           <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Primary">
-            {NAV_LINKS.map(({ href, label }) => {
+            {LINKS.map(({ href, label }) => {
               const Icon = ICONS[href];
-              const active = isNavActive(href, pathname);
+              const active = isActive(href, pathname);
               return (
                 <Link
                   key={href}
@@ -61,13 +72,16 @@ export function TopNav() {
                   )}
                 >
                   <Icon size={15} aria-hidden="true" />
-                  <span className={active ? "" : "hidden md:inline"}>{label}</span>
+                  <span className={active ? "hidden min-[480px]:inline" : "hidden md:inline"}>{label}</span>
                 </Link>
               );
             })}
           </nav>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
+          <Suspense fallback={null}>
+            <AccountSwitcher />
+          </Suspense>
           {!hasToken && !demo ? <span className="hidden text-xs text-warning lg:inline">no API token set</span> : null}
           <button
             type="button"

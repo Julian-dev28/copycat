@@ -17,7 +17,13 @@ import type { TradingAccount } from "./types";
 
 const DAY = 86_400_000;
 const KEY_RE = /^0x[0-9a-fA-F]{64}$/;
-const later = <T>(v: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(v), ms));
+let latency = 1;
+const later = <T>(v: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(v), ms * latency));
+
+/** Tests set 0 so the store answers on the next tick. */
+export function setDemoLatency(scale: number): void {
+  latency = scale;
+}
 const bad = (msg: string) => new ApiError(422, msg);
 
 let store: TradingAccount[] | null = null;

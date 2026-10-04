@@ -115,7 +115,7 @@ describe("runSignFlow", () => {
     const { p } = provider({ eth_requestAccounts: () => [OTHER, MAIN] });
     const { prepare, state } = await run({ provider: p, expectedAddress: MAIN.toUpperCase().replace("0X", "0x") });
     expect(state.step).toBe("done");
-    expect(prepare.mock.calls[0][0]).toMatchObject({ main_address: MAIN });
+    expect((prepare.mock.calls[0] as unknown[])[0]).toMatchObject({ main_address: MAIN });
   });
 
   it("switches the wallet to the domain's chain before signing", async () => {
@@ -169,5 +169,19 @@ describe("runSignFlow", () => {
 
   it("reset returns to idle", () => {
     expect(signReducer({ ...initialSign, step: "error" }, { type: "reset" })).toEqual(initialSign);
+  });
+});
+
+describe("signSteps", () => {
+  it("maps each state to the two visible steps", async () => {
+    const { signSteps } = await import("./signView");
+    const st = (s: Partial<SignState>) => signSteps({ ...initialSign, ...s }).map((x) => x.state);
+    expect(st({})).toEqual(["todo", "todo"]);
+    expect(st({ step: "connecting" })).toEqual(["doing", "todo"]);
+    expect(st({ step: "switching", address: MAIN, targetChain: 42161 })).toEqual(["done", "doing"]);
+    expect(signSteps({ ...initialSign, step: "switching", address: MAIN, targetChain: 42161 })[1].detail).toMatch(/Arbitrum One/);
+    expect(st({ step: "error", error: { kind: "rejected", message: "no", phase: "approve" }, address: MAIN })).toEqual(["done", "failed"]);
+    expect(st({ step: "error", error: { kind: "no_wallet", message: "no", phase: "connect" } })).toEqual(["failed", "todo"]);
+    expect(st({ step: "done", address: MAIN })).toEqual(["done", "done"]);
   });
 });

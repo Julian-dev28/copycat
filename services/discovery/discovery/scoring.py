@@ -1,13 +1,17 @@
 """Risk-adjusted score: ranks candidates by what copying them would have
 earned a simulated copier, not by the leader's own PnL.
 
-    raw = sim_return_pct / max(5, |sim_max_drawdown_pct|) - 50 * liquidations
+    raw = sim_return_pct / max(5, |sim_max_drawdown_pct|) - 10 * liquidations
 
 Return over drawdown, with a 5% drawdown floor so ~0% drawdown can't blow
-the ratio up. Each liquidation subtracts LIQUIDATION_PENALTY (50): with
+the ratio up. Each liquidation subtracts LIQUIDATION_PENALTY (10): with
 fixed-margin sizing one liquidation costs only ~1% of equity, so without
 the penalty a leader whose moves wipe out max-leverage copies could rank
-above a steady one. 50 makes even a 40x raw ratio go negative after one.
+above a steady one. It was 50 until the first 30-day live eval: at
+leverage=max most real wallets have 1-9 liquidations, and 50 per
+liquidation clamped six of nine simulated wallets to the same -100, so
+the ranking could no longer tell 3 liquidations from 9. At 10, a typical
+ratio (|raw| < 5) still loses to any wallet with one fewer liquidation.
 
 Two bands, so a tiny sample can never outrank a real track record:
 
@@ -25,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
-LIQUIDATION_PENALTY = 50.0
+LIQUIDATION_PENALTY = 10.0
 MIN_TRUSTED_COPIES = 5
 DRAWDOWN_FLOOR_PCT = 5.0
 SCORE_CAP = 100.0

@@ -124,7 +124,7 @@ flags intact) are shared by `score_one_wallet` and Scout's simstage.
 ## Score
 
 ```
-raw = sim_return_pct / max(5, |sim_max_drawdown_pct|) - 50 * liquidations
+raw = sim_return_pct / max(5, |sim_max_drawdown_pct|) - 10 * liquidations
 trusted (>= 5 copies):  score = clamp(raw, -100, 100)
 fewer than 5 copies:    score = -200 + clamp(raw, -100, 100) / 100   (in [-201, -199])
 not simulated:          score = -200, reason in flags

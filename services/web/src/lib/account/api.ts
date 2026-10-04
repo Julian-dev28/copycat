@@ -10,19 +10,22 @@
  */
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { injectedProvider, type Eip1193Provider } from "./eip1193";
+import { secretFetch } from "./secretFetch";
 import type {
   AccountSummary, AgentApprovalPrepareRequest, AgentApprovalPrepareResponse, AgentApprovalSubmitRequest,
-  CreateAccountRequest, CreateAccountResponse, HistoryKind, ImportApiKeyRequest, TradingAccount, TransferRequest,
+  CreateAccountRequest, CreateAccountResponse, HistoryKind, ImportApiKeyRequest, ImportEnvStatus, TradingAccount, TransferRequest,
 } from "./types";
 
 export interface AccountSource {
   list(): Promise<TradingAccount[]>;
   create(req: CreateAccountRequest): Promise<CreateAccountResponse>;
   importKey(req: ImportApiKeyRequest): Promise<TradingAccount>;
+  importEnvStatus(): Promise<ImportEnvStatus>;
   importEnv(): Promise<TradingAccount[]>;
   prepare(req: AgentApprovalPrepareRequest): Promise<AgentApprovalPrepareResponse>;
   submit(req: AgentApprovalSubmitRequest): Promise<TradingAccount>;
-  activate(id: string): Promise<void>;
+  /** 409 while the current account still has engine copies; `force` leaves them unmanaged. */
+  activate(id: string, force?: boolean): Promise<void>;
   rename(id: string, label: string): Promise<void>;
   remove(id: string): Promise<void>;
   refreshAgent(id: string, passphrase: string | null): Promise<void>;
@@ -62,11 +65,12 @@ export const liveAccounts: AccountSource = {
   list: async () => asAccountList(await apiFetch<unknown>("/api/accounts")),
   create: (req) => apiFetch<CreateAccountResponse>("/api/accounts/create", post(req)),
   importKey: async (req) => asAccount(await apiFetch<unknown>("/api/accounts/import-key", post(req))),
+  importEnvStatus: () => apiFetch<ImportEnvStatus>("/api/accounts/import-env"),
   importEnv: async () => asAccountList(await apiFetch<unknown>("/api/accounts/import-env", post())),
   prepare: (req) => apiFetch<AgentApprovalPrepareResponse>("/api/accounts/approve/prepare", post(req)),
   submit: async (req) => asAccount(await apiFetch<unknown>("/api/accounts/approve/submit", post(req))),
-  activate: async (id) => {
-    await apiFetch(`/api/accounts/${enc(id)}/activate`, post());
+  activate: async (id, force = false) => {
+    await apiFetch(`/api/accounts/${enc(id)}/activate${force ? "?force=true" : ""}`, post());
   },
   rename: async (id, label) => {
     await apiFetch(`/api/accounts/${enc(id)}`, { method: "PATCH", body: JSON.stringify({ label }) });
@@ -75,10 +79,10 @@ export const liveAccounts: AccountSource = {
     await apiFetch(`/api/accounts/${enc(id)}`, { method: "DELETE" });
   },
   refreshAgent: async (id, passphrase) => {
-    await apiFetch(`/api/accounts/${enc(id)}/refresh-agent`, post(passphrase ? { passphrase } : {}));
+    await secretFetch(`/api/accounts/${enc(id)}/refresh-agent`, passphrase ? { passphrase } : {});
   },
   transfer: async (req) => {
-    await apiFetch("/api/accounts/transfer", post(req));
+    await secretFetch("/api/accounts/transfer", req);
   },
   summary: (id) => apiFetch<AccountSummary>(`/api/accounts/${enc(id)}/summary`),
   history: (id, kind) => apiFetch<unknown>(`/api/accounts/${enc(id)}/history?kind=${kind}`),

@@ -22,7 +22,7 @@ def test_liquidated_high_pnl_leader_ranks_below_steady_leader():
 
 def test_trusted_scores_are_clamped():
     assert score_candidate(10_000.0, -1.0, 0, 50).score == 100.0
-    assert score_candidate(-100.0, -100.0, 5, 50).score == -100.0
+    assert score_candidate(-100.0, -100.0, 20, 50).score == -100.0
 
 
 def test_too_few_trades_never_outranks_any_real_copier():
@@ -42,3 +42,11 @@ def test_no_sentinel_scores():
     zero = score_candidate(0.0, 0.0, 0, 0)
     assert zero.score == UNSCORED == -200.0
     assert -201.0 <= score_candidate(-1e6, -100.0, 3, 2).score <= -199.0
+
+
+def test_liquidation_count_still_ranks_below_the_clamp():
+    """Regression (first 30d live eval): 50/liquidation clamped wallets with
+    3, 4, 6 and 9 liquidations to the same -100."""
+    scores = [score_candidate(1.0, -5.0, n, 10).score for n in (1, 3, 6, 9)]
+    assert scores == sorted(scores, reverse=True) and len(set(scores)) == 4
+    assert min(scores) > -100.0

@@ -3,13 +3,13 @@
  * UI runs, with real EIP-712 signatures, so the typed data, the agent key
  * and the signature are checked for real, not mocked.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { demoAccounts, resetDemoAccounts } from "./demo";
+import { beforeEach, describe, expect, it } from "vitest";
+import { demoAccounts, resetDemoAccounts, setDemoLatency } from "./demo";
 import { DEMO_WALLET_ADDRESS, fakeWalletProvider } from "./demoWallet";
 import { initialSign, runSignFlow, signReducer, type SignState } from "./signFlow";
 
 beforeEach(() => {
-  vi.useFakeTimers({ shouldAdvanceTime: true, advanceTimeDelta: 50 });
+  setDemoLatency(0);
   resetDemoAccounts();
 });
 
