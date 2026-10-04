@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatSignedUsd } from "@/lib/format";
 import { buildCalendar, type CalendarCell } from "@/lib/scout/calendar";
 import type { CurvePoint } from "@/lib/scout/types";
@@ -27,6 +27,12 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
   const [days, setDays] = useState(182);
   const [hover, setHover] = useState<CalendarCell | null>(null);
   const grid = buildCalendar(daily, days);
+  const scroller = useRef<HTMLDivElement>(null);
+  // newest weeks first on narrow screens: start the strip scrolled to its right end
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [days, daily]);
   const w = grid.weeks.length * (CELL + GAP) + 28;
   const h = 7 * (CELL + GAP) + 16;
   const shown = hover ?? grid.best;
@@ -61,7 +67,7 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div ref={scroller} className="overflow-x-auto">
         <svg width={w} height={h} role="img" aria-label={`Daily PnL calendar, ${grid.green} green and ${grid.red} red days, net ${formatSignedUsd(Math.round(grid.total))}`}>
           {grid.months.map((m) => (
             <text key={`${m.col}-${m.label}`} x={28 + m.col * (CELL + GAP)} y={9} fontSize="9" fill="var(--muted)">
