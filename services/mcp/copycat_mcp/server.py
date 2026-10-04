@@ -44,9 +44,10 @@ Window = Literal["1d", "7d", "30d", "all"]
 Style = Literal["algo", "scalp", "intraday", "swing", "position"]
 Sort = Literal["fit", "sim_return", "sim_dd", "pnl", "roi", "account_value", "sharpe", "max_dd",
                "win_rate", "trips", "last_active", "volume"]
-Interval = Literal["1m", "5m", "15m", "1h", "4h", "1d"]
-INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000,
-               "4h": 14_400_000, "1d": 86_400_000}
+Interval = Literal["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d"]
+INTERVAL_MS = {"1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
+               "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "8h": 28_800_000,
+               "12h": 43_200_000, "1d": 86_400_000}
 MAX_CANDLES = 500
 CURVE_FIELDS = ("pnl_curve", "value_curve", "sim_curve", "daily_pnl")
 
@@ -141,14 +142,18 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         return res if include_curves else trim_profile(res)
 
     @mcp.tool(annotations=READ)
-    async def trader_fingerprint(address: Address) -> Dict[str, Any]:
+    async def trader_fingerprint(
+        address: Address,
+        window_days: Annotated[int, Field(ge=7, le=90, description="Lookback in days.")] = 30,
+    ) -> Dict[str, Any]:
         """The deterministic strategy fingerprint, computed by copycat from fills and candles (no AI):
         style, hold times, long share, entry habits (% trend-aligned / breakout / pullback, RSI at
         entry), sizing (adds, scale in/out, avg/max leverage), outcomes (win rate, payoff ratio,
         loser-vs-winner hold, worst trip % of equity, coin concentration), UTC hour and weekday
         histograms, tags, a templated summary, up to 8 example trades with entry context, and
         caveats. `trips_analyzed` is the sample size: weigh every claim by it."""
-        res = await call("GET", f"/api/scout/traders/{norm_address(address)}/fingerprint")
+        res = await call("GET", f"/api/scout/traders/{norm_address(address)}/fingerprint",
+                         params={"window_days": window_days})
         if isinstance(res, Accepted):
             return building(res.body, "fingerprint")
         return res
@@ -156,29 +161,32 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
     @mcp.tool(annotations=READ)
     async def trader_trades(
         address: Address,
-        limit: Annotated[int, Field(ge=1, le=200, description="Most recent round trips to return.")] = 50,
+        limit: Annotated[int, Field(ge=1, le=100, description="Most recent round trips to return "
+                                                              "in `recent_trips`.")] = 50,
     ) -> Dict[str, Any]:
-        """Recent round trips (open -> close of one position) newest first: coin, side, open/close
-        time, hold hours, entry/exit price, max notional, net PnL after fees, and the market
-        context at entry (trend-aligned, breakout, pullback, RSI-14, 24h move, UTC hour) where
-        candles exist. Falls back to the profile's recent_trips (no entry context) on an older
-        api build."""
+        """Round trips for one trader, two lists:
+        `examples`: up to 8 representative trips picked by the 30d fingerprint (largest win, typical
+        breakout entry, ...), each WITH entry context (trend-aligned, breakout, pullback, RSI-14,
+        24h move, UTC hour) and `why_shown`.
+        `recent_trips`: the latest round trips, newest first, without entry context: coin, side,
+        open/close time, hold hours, entry/exit price, max notional, net PnL after fees, win.
+        Pick key entries from both, then check them with market_candles."""
         a = norm_address(address)
+        out: Dict[str, Any] = {}
         try:
-            res = await api.request("GET", f"/api/scout/traders/{a}/trades", params={"limit": limit})
+            ex = await api.request("GET", f"/api/scout/traders/{a}/trades")
         except RouteMissing:
-            prof = await call("GET", f"/api/scout/traders/{a}")
-            if isinstance(prof, Accepted):
-                return building(prof.body, "profile")
-            trips = (prof.get("recent_trips") or [])[:limit]
-            return {"trades": trips, "entry_context": False,
-                    "note": "this api build has no /trades route; these are profile.recent_trips "
-                            "without entry context"}
+            ex, out["note"] = [], "this api build has no /trades route: no entry-context examples"
         except ApiError as e:
             raise ToolError(str(e)) from e
-        if isinstance(res, Accepted):
-            return building(res.body, "trades")
-        return {"trades": res, "entry_context": True} if isinstance(res, list) else res
+        if isinstance(ex, Accepted):
+            return building(ex.body, "fingerprint")
+        prof = await call("GET", f"/api/scout/traders/{a}")
+        if isinstance(prof, Accepted):
+            return building(prof.body, "profile")
+        out["examples"] = ex
+        out["recent_trips"] = (prof.get("recent_trips") or [])[:limit]
+        return out
 
     @mcp.tool(annotations=READ)
     async def trader_fills(
@@ -211,7 +219,7 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         start = start_ms if start_ms is not None else end - 100 * step
         if start >= end:
             raise ToolError(f"start_ms ({start}) must be before end_ms ({end}).")
-        bars = (end - start) // step
+        bars = (end - start) // step + 1          # inclusive range, same count as the api
         if bars > MAX_CANDLES:
             raise ToolError(f"That range is {bars} {interval} bars; the limit is {MAX_CANDLES}. "
                             f"Use a larger interval or a shorter range.")
@@ -239,20 +247,19 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
                                                                               "'BTC breakout swing trader'.")],
         markdown: Annotated[str, Field(min_length=1, description="The full thesis in markdown, with the "
                                                                  "write_thesis prompt's ## sections.")],
-        fingerprint_as_of_ms: Annotated[Optional[int], Field(description="as_of_ms of the fingerprint "
-                                                                         "the thesis is based on.")] = None,
-        author: Annotated[Optional[str], Field(max_length=120, description="Who wrote it, e.g. "
+        author: Annotated[Optional[str], Field(max_length=200, description="Who wrote it, e.g. "
                                                                            "'claude-opus-5-5 via copycat MCP'.")]
         = None,
     ) -> Dict[str, Any]:
-        """Save a Claude Code strategy thesis for a trader in copycat (source "claude_code"), shown
-        on the trader's page. Replaces this source's previous thesis for the trader. Text only:
+        """Save a Claude Code strategy thesis for a trader in copycat, shown on the trader's page.
+        copycat stores it as source "claude_code" (the api sets source, time and the link to the
+        current 30d fingerprint; this tool cannot write a "ta" thesis). The newest one is shown. Text only:
         it changes nothing about copying or trading. The result lists any required sections the
         markdown is missing; if so, fix and save again."""
         if len(markdown) > THESIS_MAX_CHARS:
             raise ToolError(f"Thesis is {len(markdown)} chars; the limit is {THESIS_MAX_CHARS}. Shorten it.")
-        body = {"source": "claude_code", "title": title.strip(), "markdown": markdown,
-                "author": (author or config.author).strip(), "fingerprint_as_of_ms": fingerprint_as_of_ms}
+        # Exactly the api's ThesisWrite fields (extra="forbid"). source="claude_code" is server-set.
+        body = {"title": title.strip(), "markdown": markdown, "author": (author or config.author).strip()}
         res = await call("PUT", f"/api/scout/traders/{norm_address(address)}/thesis", json=body)
         missing = missing_sections(markdown)
         return {"saved": res, "missing_sections": missing,

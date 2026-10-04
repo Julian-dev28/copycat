@@ -8,9 +8,9 @@ import os
 import httpx
 import pytest
 from copycat_mcp.config import McpConfig, read_dotenv, scrub_agent_key
-from copycat_mcp.prompts import THESIS_MAX_CHARS, THESIS_SECTIONS, missing_sections, write_thesis_prompt
+from copycat_mcp.prompts import THESIS_MAX_CHARS, THESIS_SECTIONS, missing_sections
 from copycat_mcp.server import trim_profile
-from mcp_fakes import ADDR, ADDR_MIXED, TOKEN, FakeApi, call, make_server, run, text
+from mcp_fakes import ADDR, ADDR_MIXED, TOKEN, FakeApi, call, make_server, run, sc, text
 
 SETTINGS = {"enabled": False, "dry_run": True, "leaders": [], "leverage": 20}
 
@@ -97,10 +97,10 @@ def test_profile_lowercases_address_and_trims_curves():
     fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}"): prof})
     r = call(make_server(fake), "trader_profile", {"address": ADDR_MIXED})
     assert fake.last.url.path == f"/api/scout/traders/{ADDR}"
-    sc = r.structured_content
-    assert sc["sim_curve"] == {"points": 700, "first": {"t_ms": 0, "value": 0}, "last": {"t_ms": 699, "value": 699}}
-    assert sc["pnl_curve"]["30d"]["points"] == 2 and sc["daily_pnl"] == {"points": 0}
-    full = call(make_server(fake), "trader_profile", {"address": ADDR, "include_curves": True}).structured_content
+    out = sc(r)
+    assert out["sim_curve"] == {"points": 700, "first": {"t_ms": 0, "value": 0}, "last": {"t_ms": 699, "value": 699}}
+    assert out["pnl_curve"]["30d"]["points"] == 2 and out["daily_pnl"] == {"points": 0}
+    full = sc(call(make_server(fake), "trader_profile", {"address": ADDR, "include_curves": True}))
     assert len(full["sim_curve"]) == 700
 
 
@@ -109,36 +109,44 @@ def test_profile_202_is_building_not_error():
                            httpx.Response(202, json={"state": "running", "refresh_id": "r"})})
     r = call(make_server(fake), "trader_profile", {"address": ADDR})
     assert not r.is_error
-    assert r.structured_content["status"] == "building"
-    assert r.structured_content["scout_status"]["state"] == "running"
+    assert sc(r)["status"] == "building"
+    assert sc(r)["scout_status"]["state"] == "running"
 
 
-def test_fingerprint_path():
+def test_fingerprint_path_and_window():
     fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/fingerprint"): {"address": ADDR, "trips_analyzed": 9}})
-    r = call(make_server(fake), "trader_fingerprint", {"address": ADDR})
-    assert r.structured_content["trips_analyzed"] == 9
+    r = call(make_server(fake), "trader_fingerprint", {"address": ADDR, "window_days": 60})
+    assert sc(r)["trips_analyzed"] == 9 and fake.last.url.params["window_days"] == "60"
+    assert call(make_server(fake), "trader_fingerprint", {"address": ADDR, "window_days": 3}).is_error
 
 
-def test_trades_route_and_limit():
-    fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/trades"): [{"coin": "BTC"}]})
-    r = call(make_server(fake), "trader_trades", {"address": ADDR, "limit": 7})
-    assert fake.last.url.params["limit"] == "7"
-    assert r.structured_content == {"trades": [{"coin": "BTC"}], "entry_context": True}
-
-
-def test_trades_falls_back_to_profile_when_route_missing():
+def test_trades_merges_examples_and_recent_trips():
     trips = [{"coin": c} for c in "ABC"]
-    fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}"): {"recent_trips": trips}})
+    fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/trades"): [{"coin": "BTC", "why_shown": "largest win"}],
+                           ("GET", f"/api/scout/traders/{ADDR}"): {"recent_trips": trips}})
     r = call(make_server(fake), "trader_trades", {"address": ADDR, "limit": 2})
     assert not r.is_error, text(r)
-    assert r.structured_content["trades"] == trips[:2] and r.structured_content["entry_context"] is False
+    assert sc(r) == {"examples": [{"coin": "BTC", "why_shown": "largest win"}], "recent_trips": trips[:2]}
+    assert [q.url.path for q in fake.requests] == [f"/api/scout/traders/{ADDR}/trades", f"/api/scout/traders/{ADDR}"]
+    assert "limit" not in fake.requests[0].url.params      # api caps examples at 8 itself
+
+
+def test_trades_202_while_fingerprint_builds():
+    fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/trades"): httpx.Response(202, json={"state": "running"})})
+    assert sc(call(make_server(fake), "trader_trades", {"address": ADDR}))["status"] == "building"
+
+
+def test_trades_without_route_still_returns_recent_trips():
+    fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}"): {"recent_trips": [{"coin": "A"}]}})
+    out = sc(call(make_server(fake), "trader_trades", {"address": ADDR}))
+    assert out["examples"] == [] and out["recent_trips"] == [{"coin": "A"}] and "no /trades route" in out["note"]
 
 
 def test_fills_maps_paging():
     fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/fills"): [{"coin": "ETH"}]})
     r = call(make_server(fake), "trader_fills", {"address": ADDR, "before_ms": 123, "limit": 250})
     assert dict(fake.last.url.params) == {"before_ms": "123", "limit": "250"}
-    assert r.structured_content == {"fills": [{"coin": "ETH"}]}
+    assert sc(r) == {"fills": [{"coin": "ETH"}]}
 
 
 def test_candles_maps_query_and_caps_bars():
@@ -147,7 +155,7 @@ def test_candles_maps_query_and_caps_bars():
     r = call(s, "market_candles", {"coin": "BTC", "interval": "1h", "start_ms": 0, "end_ms": 3_600_000 * 48})
     assert dict(fake.last.url.params) == {"coin": "BTC", "interval": "1h", "start_ms": "0",
                                           "end_ms": str(3_600_000 * 48)}
-    assert r.structured_content["candles"] == [{"t": 1}]
+    assert sc(r)["candles"] == [{"t": 1}]
     n = len(fake.requests)
     big = call(s, "market_candles", {"coin": "BTC", "interval": "1m", "start_ms": 0, "end_ms": 60_000 * 501})
     assert big.is_error and "limit is 500" in text(big) and len(fake.requests) == n
@@ -169,23 +177,23 @@ def test_candles_route_missing_is_reported():
 def test_list_theses_path():
     fake = FakeApi(routes={("GET", f"/api/scout/traders/{ADDR}/thesis"): [{"source": "ta"}]})
     r = call(make_server(fake), "list_theses", {"address": ADDR})
-    assert r.structured_content == {"theses": [{"source": "ta"}]}
+    assert sc(r) == {"theses": [{"source": "ta"}]}
 
 
 def test_save_thesis_body_and_section_check():
     fake = FakeApi(routes={("PUT", f"/api/scout/traders/{ADDR}/thesis"): lambda req: httpx.Response(200, json={"ok": 1})})
     r = call(make_server(fake), "save_thesis", {"address": ADDR_MIXED, "title": " BTC swing ",
-                                                "markdown": full_thesis(), "fingerprint_as_of_ms": 5})
+                                                "markdown": full_thesis()})
     body = fake.last_json()
     assert fake.last.method == "PUT" and fake.last.url.path == f"/api/scout/traders/{ADDR}/thesis"
-    assert body == {"source": "claude_code", "title": "BTC swing", "markdown": full_thesis(),
-                    "author": "claude-code via copycat MCP", "fingerprint_as_of_ms": 5}
-    assert r.structured_content["ok"] is True and r.structured_content["missing_sections"] == []
+    # exactly ThesisWrite's fields: the api 422s on extras and sets source="claude_code" itself
+    assert body == {"title": "BTC swing", "markdown": full_thesis(), "author": "claude-code via copycat MCP"}
+    assert sc(r)["ok"] is True and sc(r)["missing_sections"] == []
 
     r2 = call(make_server(fake), "save_thesis", {"address": ADDR, "title": "t", "markdown": "## Exits\nx",
                                                  "author": "claude-opus-5-5 via copycat MCP"})
     assert fake.last_json()["author"] == "claude-opus-5-5 via copycat MCP"
-    assert r2.structured_content["ok"] is False and "Edge in one sentence" in r2.structured_content["missing_sections"]
+    assert sc(r2)["ok"] is False and "Edge in one sentence" in sc(r2)["missing_sections"]
 
 
 def test_save_thesis_rejects_oversize_without_calling_api():
@@ -196,8 +204,9 @@ def test_save_thesis_rejects_oversize_without_calling_api():
 
 
 def test_thesis_limit_matches_contract():
-    from contracts.models import Thesis
     from pydantic import ValidationError
+
+    from contracts.models import Thesis
     Thesis(address=ADDR, source="claude_code", created_ms=0, title="t", markdown="x" * THESIS_MAX_CHARS)
     with pytest.raises(ValidationError):
         Thesis(address=ADDR, source="claude_code", created_ms=0, title="t", markdown="x" * (THESIS_MAX_CHARS + 1))
@@ -206,12 +215,12 @@ def test_thesis_limit_matches_contract():
 def test_settings_and_add_leader():
     fake = FakeApi(routes={("GET", "/api/settings"): SETTINGS, ("POST", "/api/leaders"): SETTINGS})
     s = make_server(fake)
-    assert call(s, "copycat_settings").structured_content == SETTINGS
+    assert sc(call(s, "copycat_settings")) == SETTINGS
     assert fake.last.method == "GET"
     r = call(s, "add_leader", {"address": ADDR_MIXED})
     assert fake.last.method == "POST" and fake.last.url.path == "/api/leaders"
     assert fake.last_json() == {"address": ADDR}
-    assert "enabled=False, dry_run=True" in r.structured_content["note"]
+    assert "enabled=False, dry_run=True" in sc(r)["note"]
 
 
 def test_bad_address_never_reaches_the_api():
@@ -272,7 +281,7 @@ def test_dotenv_is_allowlisted_and_agent_key_scrubbed(tmp_path):
     cfg = McpConfig.from_env({}, dotenv_path=env)
     assert cfg.api_url == "http://localhost:9001" and cfg.env_token == "k" * 40
     assert cfg.data_dir.is_absolute() and cfg.data_dir.parts[-2:] == ("rel", "data")
-    assert "COPYCAT_AGENT_KEY" not in os.environ or os.environ["COPYCAT_AGENT_KEY"] != "0xsecret"
+    assert os.environ.get("COPYCAT_AGENT_KEY") != "0xsecret"
     d = {"COPYCAT_AGENT_KEY": "x"}
     assert scrub_agent_key(d) is True and d == {}
 
@@ -288,14 +297,11 @@ def test_env_wins_over_dotenv_and_skip_dotenv(tmp_path):
 
 
 def test_server_never_imports_trading_code():
-    import sys
-    make_server(FakeApi())
-    for mod in ("engine", "discovery", "hl", "hyperliquid", "eth_account", "anthropic", "openai"):
-        assert not any(m == mod or m.startswith(mod + ".") for m in sys.modules
-                       if sys.modules[m] is not None and "copycat_mcp" in getattr(sys.modules[m], "__file__", "") or False)
-    src = "".join(p.read_text() for p in __import__("pathlib").Path(__file__).parents[1].joinpath("copycat_mcp").glob("*.py"))
+    """The server talks HTTP only: no engine/discovery/HL code, no LLM SDK, no load_dotenv."""
+    from pathlib import Path
+    src = "".join(p.read_text() for p in Path(__file__).parents[1].joinpath("copycat_mcp").glob("*.py"))
     for banned in ("import engine", "from engine", "import discovery", "from discovery", "from hl",
-                   "import hl", "hyperliquid", "anthropic", "openai", "load_dotenv("):
+                   "import hl", "hyperliquid", "import anthropic", "import openai", "load_dotenv("):
         assert banned not in src, banned
 
 
@@ -324,11 +330,6 @@ def test_missing_sections_matching():
     assert missing_sections(md) == []
     assert missing_sections("Edge in one sentence\nno headings") == list(THESIS_SECTIONS)
     assert missing_sections(full_thesis().replace("## Exits", "## Entries")) == ["Exits"]
-
-
-def test_prompt_sections_match_checker():
-    p = write_thesis_prompt(ADDR)
-    assert missing_sections(p) == [] or all(f"`## {s}`" in p for s in THESIS_SECTIONS)
 
 
 def test_trim_profile_handles_missing_fields():

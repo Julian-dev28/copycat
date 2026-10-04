@@ -64,7 +64,7 @@ def test_fills_read_failure_is_flagged_not_fatal(conn):
     runner.FILLS_RETRY_S = 0.0
     r = score(conn, v, "0xdead")
     assert "error:fills_read_failed" in r.flags and r.score == scoring.UNSCORED
-    assert len(v.fills_calls) == 2   # one retry
+    assert len(v.fills_calls) == runner.FILLS_RETRIES
 
 
 def test_leverage_max_mode_spends_no_account_state_reads(conn):
@@ -104,3 +104,29 @@ def test_eta():
     assert runner.eta_s(0, 10, 5.0) is None
     assert runner.eta_s(5, 10, 50.0) == 50.0
     assert runner.eta_s(10, 10, 50.0) == 0.0
+
+
+def test_serial_venue_allows_one_call_in_flight_and_keeps_signatures():
+    import inspect
+    import threading
+    import time as _t
+
+    active, peak = [0], [0]
+    lock = threading.Lock()
+
+    class Slow(FakeVenue):
+        def fills(self, user, start_ms, end_ms, aggregate_by_time=False):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            _t.sleep(0.01)
+            with lock:
+                active[0] -= 1
+            return []
+
+    sv = runner.SerialVenue(Slow())
+    ts = [threading.Thread(target=sv.fills, args=("0x", 0, 1)) for _ in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert peak[0] == 1
+    assert "aggregate_by_time" in inspect.signature(sv.fills).parameters

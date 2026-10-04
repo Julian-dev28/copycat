@@ -56,11 +56,16 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | GET | /api/scout/traders | `TraderPage`. Query (spec section 5): `window` 1d/7d/30d/all, `preset` all/hip3/coin:X, `coin` (repeat), `min_av` `max_av` `min_pnl` `max_pnl`, `style` (repeat), `min_fit` `max_fit` 0..100, `max_dd` 0..100, `min_trips`, `active_within_h`, `hide_flagged`, `q`, `sort` (fit default, sim_return, sim_dd, pnl, roi, account_value, sharpe, max_dd, win_rate, trips, last_active, volume), `order` asc/desc, `limit` 1..200, `offset`. Unknown param or min > max is 422. `in_book` filled from `Settings.leaders`. Weak `ETag` = refresh_id:settings_hash:book, `If-None-Match` -> 304 |
 | GET | /api/scout/traders/{address} | `TraderProfile`; 404 not a 0x address or no data; 202 + `ScoutStatus` while discovery builds it (poll) |
 | GET | /api/scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]` from the fills cache, `limit` 1..500 (default 100) |
-| GET | /api/scout/traders/{address}/orders | open orders as discovery returns them (untyped list; no contract model yet) |
+| GET | /api/scout/traders/{address}/orders | `OpenOrderView[]` (raw HL open-order rows are mapped by the api) |
 | POST | /api/scout/traders/{address}/what-if | `WhatIfRequest` -> `WhatIfResult`, sim at the current `data/settings.json` + `override`. One at a time per api process, 409 while one runs |
-| GET | /api/scout/presets | coin chips + hip3 count (untyped object; no contract model yet) |
+| GET | /api/scout/presets | `ScoutPresets` (coin chips, counts, hip3 count) |
 | GET | /api/scout/status | `ScoutStatus` |
 | POST | /api/scout/refresh | `ScoutStatus`; 409 if a refresh is running |
+| GET | /api/scout/traders/{address}/fingerprint?window_days= | `StrategyFingerprint` (window 7..90, default 30). 404 bad address; 202 + `ScoutStatus` while queued/computing (one at a time, child process, cached 15 min, stale served while refreshing); 429 queue full; 502 compute failed (next GET retries) |
+| GET | /api/scout/traders/{address}/trades?limit= | `TradeExample[]` (round trips with entry context) = the 30d fingerprint's examples, `limit` 1..8; 202 while the fingerprint builds |
+| GET | /api/scout/traders/{address}/thesis | `Thesis[]`, latest per source, `ta` first then `claude_code`; `[]` if none |
+| PUT | /api/scout/traders/{address}/thesis | `{title, markdown, author?}` -> `Thesis` saved with source `claude_code`, server-set `created_ms`. markdown 1..20000 chars; any other field (e.g. `source`) is 422 |
+| GET | /api/market/candles?coin=&interval=&start_ms=&end_ms= | bars `{t_ms,o,h,l,c,v}[]` via `discovery.public.candles`; interval in 1m..1d (HL set), end > start, at most 5000 bars, else 422 |
 
 ## Processes, data files, HL rate budget
 - `data/` must be the same absolute path for every process (`python -m api` / `python -m engine`

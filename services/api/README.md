@@ -25,11 +25,16 @@ writer) and the bearer token. Never signs orders, never holds the agent key.
 | GET | /scout/traders | `TraderPage`; filters/sorts below; `in_book` from `Settings.leaders`; `ETag` + 304 |
 | GET | /scout/traders/{address} | `TraderProfile`; 404 bad address or no data; 202 + `ScoutStatus` while being built |
 | GET | /scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]`, limit 1..500 (100) |
-| GET | /scout/traders/{address}/orders | live open orders (untyped list) |
+| GET | /scout/traders/{address}/orders | `OpenOrderView[]` (live) |
 | POST | /scout/traders/{address}/what-if | `WhatIfRequest` -> `WhatIfResult` at the current settings file; 409 while one runs |
-| GET | /scout/presets | coin chips + hip3 count (untyped object) |
+| GET | /scout/presets | `ScoutPresets` |
 | GET | /scout/status | `ScoutStatus` |
 | POST | /scout/refresh | `ScoutStatus`; 409 if running |
+| GET | /scout/traders/{address}/fingerprint?window_days= | `StrategyFingerprint`; 202 while computing; 429 queue full; 502 failed |
+| GET | /scout/traders/{address}/trades?limit= | `TradeExample[]` (fingerprint examples, limit 1..8); 202 while computing |
+| GET | /scout/traders/{address}/thesis | `Thesis[]`, latest per source (ta, claude_code) |
+| PUT | /scout/traders/{address}/thesis | `{title, markdown<=20k, author?}` -> `Thesis` (source claude_code, server time) |
+| GET | /market/candles?coin=&interval=&start_ms=&end_ms= | candle bars, <= 5000, 422 on bad interval/range |
 
 ## Auth
 
@@ -106,4 +111,30 @@ wallet's sim on cached data (seconds), also on the threadpool, guarded by
 `app.state.scout_what_if_lock` (non-blocking: second request is 409, never
 queued). The first real Scout call sets `COPYCAT_HL_PRIORITY=background` in
 the api process, so live reads such as open orders only spend down to the
-engine's reserve.
+engine's reserve. Orders are typed `OpenOrderView`; the adapter maps raw HL
+`frontendOpenOrders` rows (camelCase strings) if discovery passes those on.
+
+## Strategy theses
+
+Routes in `api/routes/thesis.py`, adapter `api/thesis_client.py` (lazy
+`discovery.thesis.public`). `fingerprint()` is slow (fills + candles), so it
+never runs in a request: `api/fingerprint_jobs.FingerprintJobs`
+(`app.state.fingerprint_jobs`) queues it (dedupe per address+window, max 16
+pending -> 429), one worker thread runs one at a time, and the work itself
+is a spawned child (`thesis_client.fingerprint_child`, background HL
+priority, no agent key) that also refreshes and saves the "ta" thesis.
+Results are cached in memory 15 min; a stale one is served while a refresh
+runs; a failure is reported once (502/503) and the next GET retries.
+
+`/trades` returns `TradeExample`, not `RoundTrip`: the entry context is
+what a thesis needs. They are the 30d fingerprint's examples (max 8). The
+full context-free trip list is `TraderProfile.recent_trips`.
+
+PUT thesis takes only `{title, markdown, author?}` (extra="forbid"): the
+server sets `source="claude_code"`, `address`, `created_ms`, and links
+`fingerprint_as_of_ms` to the cached 30d fingerprint. A client can never
+write a "ta" thesis.
+
+`GET /market/candles` (`api/routes/market.py`, `api/market_client.py`) calls
+`discovery.public.candles(coin, interval, start_ms, end_ms)`; 503 until
+discovery exposes it.

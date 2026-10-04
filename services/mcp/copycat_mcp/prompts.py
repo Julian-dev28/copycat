@@ -48,7 +48,7 @@ The reader is a copycat user deciding whether to copy this trader and wanting to
    outcomes (win rate, payoff ratio, loser vs winner hold), timing histograms, tags, its own
    templated summary, `examples` and `caveats`. Note `trips_analyzed`, `window_days` and `as_of_ms`.
 2. `trader_profile(address)`: account size, open positions, risk stats, per-window trade stats, coins.
-3. `trader_trades(address)`: recent round trips with entry context.
+3. `trader_trades(address)`: up to 8 fingerprint examples WITH entry context, plus recent round trips.
 4. Pick 3-5 key entries: the fingerprint's examples plus anything that contradicts the pattern
    (largest win, largest loss, a typical entry). For each, call `market_candles(coin, "1h",
    start_ms=opened_ms - 48h, end_ms=closed_ms + 6h)` (use "15m" for holds under ~6h) and look at
@@ -84,6 +84,6 @@ What each section must contain:
 
 ## 4. Save
 Call `save_thesis(address="{address}", title=<short title naming the style>, markdown=<the thesis>,
-fingerprint_as_of_ms=<the fingerprint's as_of_ms>)`. If it reports missing sections, fix the draft and
+author=<your model name> + " via copycat MCP")`. If it reports missing sections, fix the draft and
 save again. Then show the user the title and the "Edge in one sentence" line.
 """

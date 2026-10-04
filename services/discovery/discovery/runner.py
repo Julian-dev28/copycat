@@ -32,7 +32,32 @@ logger = logging.getLogger(__name__)
 DAY_MS = 86_400_000
 HFT_OPENS_PER_DAY = 100.0
 WORKERS = 4
-FILLS_RETRY_S = 3.0
+FILLS_RETRIES = 3
+FILLS_RETRY_S = 10.0
+
+
+class SerialVenue:
+    """Proxy that lets only ONE Venue call from this run be in flight at a
+    time. The HL budget (20 weight/s) is the throughput ceiling, so
+    concurrent calls buy nothing; they only make every thread queue at hl's
+    limiter, where a 120-weight fills page could wait past hl's 30s
+    max_wait and come back None (measured: 18 such failures in one run with
+    4 unserialized workers). Threads still overlap sqlite and sim CPU."""
+
+    def __init__(self, venue: Venue):
+        self._venue = venue
+        self._lock = threading.Lock()
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._venue, name)
+        if not callable(attr):
+            return attr
+
+        def call(*a: Any, **kw: Any) -> Any:
+            with self._lock:
+                return attr(*a, **kw)
+        call.__wrapped__ = attr   # keeps inspect.signature (aggregate_by_time detection) truthful
+        return call
 
 
 def _default_sizing() -> Any:
@@ -92,11 +117,14 @@ def _flagged(c: "leaderboard.Candidate", flags: List[str], fills_n: int = 0, opd
 
 def _sync_fills_retry(conn: sqlite3.Connection, venue: Venue, address: str, opts: RunOptions,
                       now_ms: int) -> List[Dict[str, Any]]:
-    try:
-        return fills_cache.sync_fills(conn, venue, address, opts.window_days, now_ms, opts.fresh_s)
-    except fills_cache.FillsFetchError:
-        time.sleep(FILLS_RETRY_S)
-        return fills_cache.sync_fills(conn, venue, address, opts.window_days, now_ms, opts.fresh_s)
+    for attempt in range(FILLS_RETRIES):
+        try:
+            return fills_cache.sync_fills(conn, venue, address, opts.window_days, now_ms, opts.fresh_s)
+        except fills_cache.FillsFetchError:
+            if attempt == FILLS_RETRIES - 1:
+                raise
+            time.sleep(FILLS_RETRY_S * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 def _leader_leverage(venue: Venue, address: str, settings: Settings, coins: List[str]) -> Dict[str, float]:
@@ -190,6 +218,7 @@ def execute(conn: sqlite3.Connection, venue: Venue, run_id: str, settings: Setti
     opts = opts or RunOptions()
     sizing_module = sizing_module or _default_sizing()
     db_path = db_path or config.DB_PATH
+    venue = SerialVenue(venue)
     started = time.time()
     now_ms = int(started * 1000)
     try:

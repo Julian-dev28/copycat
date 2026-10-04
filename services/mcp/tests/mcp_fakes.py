@@ -70,3 +70,9 @@ def call(server, name: str, args: Optional[Dict[str, Any]] = None):
 
 def text(result) -> str:
     return "\n".join(getattr(b, "text", "") for b in result.content)
+
+
+def sc(result):
+    """Structured tool output. The SDK wraps a `Dict[str, Any]` return as {"result": ...}."""
+    d = result.structured_content
+    return d["result"] if isinstance(d, dict) and set(d) == {"result"} else d
