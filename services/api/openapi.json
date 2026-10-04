@@ -722,6 +722,15 @@
         "title": "EntryContext",
         "type": "object"
       },
+      "ExposureMode": {
+        "description": "How an `allocation` wallet turns the invested dollars into exposure.\nmatch:  his book at his own leverage. Copy notional = his notional / his equity x allocation_usd.\ntarget: his book at YOUR leverage. Copy notional = his notional / his gross notional\n        x allocation_usd x target_leverage, i.e. allocation x L spread in his proportions.",
+        "enum": [
+          "match",
+          "target"
+        ],
+        "title": "ExposureMode",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -813,6 +822,28 @@
       "LeaderOverride": {
         "description": "Per-leader override. Absent field = inherit the book-wide value.",
         "properties": {
+          "allocation_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Usd"
+          },
+          "exposure_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposureMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fixed_margin_usd": {
             "anyOf": [
               {
@@ -836,6 +867,17 @@
               }
             ],
             "title": "Fixed Notional Usd"
+          },
+          "invested_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Ms"
           },
           "leverage": {
             "anyOf": [
@@ -905,6 +947,19 @@
                 "type": "null"
               }
             ]
+          },
+          "target_leverage": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Leverage"
           }
         },
         "title": "LeaderOverride",
@@ -930,6 +985,16 @@
             ],
             "title": "Equity Usd"
           },
+          "exposure_usd": {
+            "default": 0.0,
+            "title": "Exposure Usd",
+            "type": "number"
+          },
+          "fees_usd": {
+            "default": 0.0,
+            "title": "Fees Usd",
+            "type": "number"
+          },
           "last_read_ms": {
             "anyOf": [
               {
@@ -940,6 +1005,16 @@
               }
             ],
             "title": "Last Read Ms"
+          },
+          "margin_used_usd": {
+            "default": 0.0,
+            "title": "Margin Used Usd",
+            "type": "number"
+          },
+          "open_copies": {
+            "default": 0,
+            "title": "Open Copies",
+            "type": "integer"
           },
           "open_positions": {
             "default": 0,
@@ -956,6 +1031,21 @@
           "read_ok": {
             "title": "Read Ok",
             "type": "boolean"
+          },
+          "realized_pnl_usd": {
+            "default": 0.0,
+            "title": "Realized Pnl Usd",
+            "type": "number"
+          },
+          "stopping": {
+            "default": false,
+            "title": "Stopping",
+            "type": "boolean"
+          },
+          "unrealized_pnl_usd": {
+            "default": 0.0,
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
           }
         },
         "required": [
@@ -1388,8 +1478,14 @@
       "Settings": {
         "description": "The whole user-editable configuration. Stored at data/settings.json,\nowned by the api service (the only writer), read by the engine every cycle.",
         "properties": {
+          "allocation_usd": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Allocation Usd",
+            "type": "number"
+          },
           "contract_version": {
-            "default": 3,
+            "default": 4,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -1409,6 +1505,10 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "exposure_mode": {
+            "$ref": "#/components/schemas/ExposureMode",
+            "default": "match"
+          },
           "fixed_margin_usd": {
             "default": 1.0,
             "minimum": 0.01,
@@ -1425,6 +1525,17 @@
             "default": false,
             "title": "Include Spot Staked",
             "type": "boolean"
+          },
+          "invested_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Ms"
           },
           "leader_overrides": {
             "additionalProperties": {
@@ -1511,6 +1622,13 @@
             "minimum": 0.0,
             "title": "Sleeve Frac",
             "type": "number"
+          },
+          "target_leverage": {
+            "default": 5,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Target Leverage",
+            "type": "integer"
           }
         },
         "title": "Settings",
@@ -1780,7 +1898,8 @@
         "enum": [
           "fixed_margin",
           "fixed_notional",
-          "proportional"
+          "proportional",
+          "allocation"
         ],
         "title": "SizingMode",
         "type": "string"

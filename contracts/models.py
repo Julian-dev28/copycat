@@ -12,7 +12,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CONTRACT_VERSION = 3   # v3: Scout models (docs/research/copytrading_page_spec.md section 6)
+CONTRACT_VERSION = 4   # v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
+# v3: Scout models (docs/research/copytrading_page_spec.md section 6)
 # v2: Venue cloid/order_status/ambiguous, partial-fill semantics
 
 MAX_LEADERS = 10
@@ -30,12 +31,22 @@ class SizingMode(str, Enum):
     fixed_margin = "fixed_margin"        # new copy posts this much margin at the exchange leverage
     fixed_notional = "fixed_notional"    # new copy is a flat notional
     proportional = "proportional"        # his exposure / his equity x our allocation x size_multiplier
+    allocation = "allocation"            # "invest $X in this wallet" (Trade page): see ExposureMode
 
 
 class LeverageMode(str, Enum):
     max = "max"          # the coin's max leverage
     match = "match"      # the leader's leverage on that coin
     fixed = "fixed"      # Settings.leverage
+
+
+class ExposureMode(str, Enum):
+    """How an `allocation` wallet turns the invested dollars into exposure.
+    match:  his book at his own leverage. Copy notional = his notional / his equity x allocation_usd.
+    target: his book at YOUR leverage. Copy notional = his notional / his gross notional
+            x allocation_usd x target_leverage, i.e. allocation x L spread in his proportions."""
+    match = "match"
+    target = "target"
 
 
 class MarginMode(str, Enum):
@@ -54,6 +65,11 @@ class LeaderOverride(BaseModel):
     leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
     margin_mode: Optional[MarginMode] = None
     max_worse_entry_pct: Optional[float] = Field(None, ge=0, le=100)
+    # Trade page ("invest in a wallet"), used when sizing_mode is allocation
+    allocation_usd: Optional[float] = Field(None, ge=0)
+    exposure_mode: Optional[ExposureMode] = None
+    target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
+    invested_ms: Optional[int] = None          # when this wallet was first invested in (set by the api)
 
 
 class Settings(BaseModel):
@@ -81,6 +97,11 @@ class Settings(BaseModel):
     max_open_copies: int = Field(10, ge=1, le=50)
     poll_interval_s: float = Field(5.0, ge=2, le=300)
     leader_overrides: Dict[str, LeaderOverride] = Field(default_factory=dict)
+    # Book-wide defaults for allocation wallets; the Trade ticket sets them per wallet.
+    allocation_usd: float = Field(0.0, ge=0)
+    exposure_mode: ExposureMode = ExposureMode.match
+    target_leverage: int = Field(5, ge=1, le=MAX_LEVERAGE_CAP)
+    invested_ms: Optional[int] = None
 
     @field_validator("leaders")
     @classmethod
@@ -149,6 +170,14 @@ class LeaderStatus(BaseModel):
     owned_coins: List[str] = Field(default_factory=list)   # coins we mirror from this leader
     last_read_ms: Optional[int] = None
     effective: Settings
+    # per-wallet "position" for the Trade page (our copies of this leader only)
+    open_copies: int = 0
+    margin_used_usd: float = 0.0
+    exposure_usd: float = 0.0                  # sum |notional| of our copies
+    unrealized_pnl_usd: float = 0.0
+    realized_pnl_usd: float = 0.0              # since invested_ms, from our own closes/reduces
+    fees_usd: float = 0.0
+    stopping: bool = False                     # a stop-and-close is in progress
 
 
 class EngineStatus(BaseModel):
@@ -507,3 +536,25 @@ class Thesis(BaseModel):
     markdown: str = Field(max_length=20_000)
     fingerprint_as_of_ms: Optional[int] = None
     author: Optional[str] = None               # e.g. "claude-opus-5-5 via copycat MCP"
+
+
+
+# ── Trade page (v3.2): invest in a wallet like a perp ───────────────────────
+
+class WalletCopyRequest(BaseModel):
+    """POST /api/wallets/{address}/copy: add the wallet to the book (if new)
+    and set its allocation in one atomic settings write."""
+    model_config = ConfigDict(extra="forbid")
+    allocation_usd: float = Field(gt=0)
+    exposure_mode: ExposureMode = ExposureMode.match
+    target_leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)   # required for target
+    margin_mode: Optional[MarginMode] = None
+    max_worse_entry_pct: Optional[float] = Field(None, ge=0, le=100)
+
+
+class WalletStopRequest(BaseModel):
+    """POST /api/wallets/{address}/stop. close_positions true: close our copies
+    of this wallet now (reduce-only, like close-all for one wallet). False: stop
+    opening new copies and let the open ones follow him out."""
+    model_config = ConfigDict(extra="forbid")
+    close_positions: bool = True
