@@ -47,15 +47,16 @@ Added for the standalone product:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import secrets
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from contracts.models import (
+    HL_MIN_ORDER_USD,
     CopyPosition,
     EngineEvent,
-    HL_MIN_ORDER_USD,
     LeaderStatus,
     MarginMode,
     Settings,
@@ -779,17 +780,19 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
     room = max(0.0, float(cy.available.get(dex, 0.0))) * lev * 0.95
     ntl = min(ntl, room)
     alloc_room: Optional[float] = None
+    trimmed = False
     if es.sizing_mode == SizingMode.allocation:
         alloc_room = sizing.allocation_room_ntl(es, _leader_margin(cy, leader), lev)
+        trimmed = ntl > alloc_room
         ntl = min(ntl, alloc_room)
     if not catch_up:
         ntl = sizing.bump(ntl, es)
     if ntl < HL_MIN_ORDER_USD:
         if copy is None:
             ignored.add(coin)
-        if alloc_room is not None and alloc_room < HL_MIN_ORDER_USD:
-            reason = (f"allocation full: ${es.allocation_usd:,.2f} wallet has no room for a "
-                      f"${HL_MIN_ORDER_USD} order")
+        if trimmed:
+            reason = (f"allocation full: the ${es.allocation_usd:,.2f} wallet has ${ntl:.2f} of room, "
+                      f"under the ${HL_MIN_ORDER_USD} minimum")
         else:
             reason = f"copy ${ntl:.2f} under the ${HL_MIN_ORDER_USD} minimum"
         if catch_up:
@@ -888,6 +891,9 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
             carry += short
     _spend_margin(cy, dex, ntl / lev)
     cy.alloc_spent[leader] = cy.alloc_spent.get(leader, 0.0) + ntl / lev
+    open_fee = fill_fee_usd(res, ntl)
+    if open_fee:
+        state.book_pnl(leader, -open_fee, open_fee, cy.now_ms)
     if copy is None:
         state.promote_copy(coin)
         out["opened"].append(coin)
@@ -1134,12 +1140,26 @@ def _close_size(res: Dict[str, Any], want: float) -> float:
     return _filled(res) if "filled_sz" in res else want
 
 
+TAKER_FEE_BPS = float(os.environ.get("COPYCAT_TAKER_FEE_BPS", "4.5"))   # HL base tier taker
+
+
+def fill_fee_usd(res: Dict[str, Any], notional_usd: float) -> float:
+    """Fee for one fill: the one HL reported, else an estimate at the taker
+    rate. HL order responses carry no fee, and every copy order is an IOC
+    (taker), so the estimate is the right default; a volume-tier discount
+    makes it a slight overstatement, which is the safe direction for PnL."""
+    reported = _float_or_none(res.get("fee")) or _float_or_none(res.get("fee_usd"))
+    if reported:
+        return abs(reported)
+    return abs(notional_usd) * TAKER_FEE_BPS / 10_000
+
+
 def _book_fill(state: EngineState, venue: Venue, leader: str, coin: str, pos: Dict[str, Any],
                res: Dict[str, Any], size: float, now_ms: int) -> None:
     """Realized PnL of one reduce/close fill of OUR copy into the leader's
     ledger: `(fill px - our entry px) x size x side - fee`. Fill px is the
-    order's avg_px, else the mid. Fee only when the result reports one
-    (`fee` / `fee_usd`; HL order responses do not, so it is usually 0). Our
+    order's avg_px, else the mid. Fee: what the result reports (`fee` /
+    `fee_usd`), else the taker-rate estimate from `fill_fee_usd`. Our
     entry is the average entry from the account read before the order, so
     a partial reduce does not move it. Nothing is booked without a size,
     an entry or a price."""
@@ -1159,7 +1179,7 @@ def _book_fill(state: EngineState, venue: Venue, leader: str, coin: str, pos: Di
     if px <= 0:
         logger.warning("no fill px or mid for %s, realized PnL not booked", coin)
         return
-    fee = abs(_float_or_none(res.get("fee")) or _float_or_none(res.get("fee_usd")) or 0.0)
+    fee = fill_fee_usd(res, px * size)
     sign = 1.0 if szi > 0 else -1.0
     state.book_pnl(leader, (px - entry) * size * sign - fee, fee, now_ms)
 

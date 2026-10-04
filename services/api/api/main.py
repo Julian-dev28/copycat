@@ -22,15 +22,15 @@ from .auth import BearerAuth
 from .config import API_VERSION, Config
 from .discovery_client import RealDiscoveryClient
 from .engine_client import RealEngineClient
+from .errors import register_exception_handlers
 from .fingerprint_jobs import FingerprintJobs
 from .market_client import RealMarketClient
-from .scout_client import RealScoutClient
-from .thesis_client import RealThesisClient
-from .errors import register_exception_handlers
-from .routes import discovery, engine, events_stream, health, market, scout, thesis
+from .routes import discovery, engine, events_stream, health, market, scout, thesis, wallets
 from .routes import leaders as leaders_routes
 from .routes import settings as settings_routes
+from .scout_client import RealScoutClient
 from .settings_store import SettingsStore
+from .thesis_client import RealThesisClient
 
 
 def create_app(config: Optional[Config] = None) -> FastAPI:
@@ -82,6 +82,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(scout.router)
     app.include_router(thesis.router)
     app.include_router(market.router)
+    app.include_router(wallets.router)
 
     return app
 

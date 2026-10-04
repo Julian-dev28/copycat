@@ -1,6 +1,6 @@
 # copycat architecture
 
-Self-hosted, one trader. Mirror up to 10 Hyperliquid wallets with your own
+Self-hosted, one trader. Mirror up to 25 Hyperliquid wallets with your own
 leverage and sizing. No AI anywhere.
 
 ```
@@ -43,9 +43,13 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | GET | /api/settings | `Settings` |
 | PUT | /api/settings | full `Settings` -> `Settings` (validated) |
 | PATCH | /api/settings | partial `Settings` -> `Settings`. `leader_overrides` replace per leader; `null` clears one |
-| POST | /api/leaders | `{address}` -> `Settings` (409 at 10, 400 bad address or our own `COPYCAT_ACCOUNT_ADDRESS`) |
+| POST | /api/leaders | `{address}` -> `Settings` (409 at 25, 400 bad address or our own `COPYCAT_ACCOUNT_ADDRESS`) |
 | DELETE | /api/leaders/{address} | -> `Settings` (also drops its override) |
-| GET | /api/status | `EngineStatus` |
+| GET | /api/status | `EngineStatus` (`effective_poll_s`: the poll interval stretched to the HL read budget) |
+| POST | /api/wallets/{address}/copy | `WalletCopyRequest` -> `Settings`. Trade page "invest $X": one locked write adds the wallet (409 at 25, 400 bad/own address) and sets its override to `sizing_mode` allocation with the ticket's terms; `invested_ms` = now when new or not on allocation before, kept on a re-post (adjust). 422: target exposure without `target_leverage`. Cancels a pending stop flag |
+| POST | /api/wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`: what would be copied of his book now, from `engine.sizing.plan_allocation` (the engine's own sizing) on live reads (his account, max leverage, 24h volume, book depth). 400 bad address, 422 target without leverage, 502 his read failed, 503 engine missing |
+| POST | /api/wallets/{address}/stop | `WalletStopRequest` -> `{settings, stopping}`. Removes the wallet + override, writes `data/stop/<address>.flag` `{close_positions, requested_ms}`. close_positions: the engine closes its copies reduce-only (even in dry_run), retrying until flat (`close` "stop wallet", then `skip` "wallet stopped"); else they follow his exits. 404 if neither in the book nor an orphan with copies |
+| GET | /api/wallets | `WalletPosition[]`: book wallets, then wallets winding down (orphans with copies or a pending stop). Position fields from the engine's last cycle; `roe_pct` = (realized + unrealized) / allocation x 100 (None when not on allocation sizing) |
 | GET | /api/events?limit=&since_ms= | `EngineEvent[]` newest first |
 | GET | /api/events/stream | SSE of `EngineEvent` |
 | POST | /api/engine/halt | flips `enabled` false (exits keep mirroring) |
@@ -71,7 +75,8 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 - `data/` must be the same absolute path for every process (`python -m api` / `python -m engine`
   resolve `COPYCAT_DATA_DIR` to an absolute path at startup).
 - Files: `settings.json` (api writes), `engine.db` + `events.jsonl` (engine writes), `discovery.db`,
-  `close_all.flag` (api writes, engine deletes), `api_token` (api), `engine.lock` (flock held by the one
+  `close_all.flag` (api writes, engine deletes), `stop/<address>.flag` (api writes, engine deletes once
+  that wallet is stopped), `api_token` (api), `engine.lock` (flock held by the one
   engine worker; a second worker on the same dir exits 1), `hl_rate.bucket` (shared HL token bucket).
 - Discovery runs execute in a child process spawned by the api (`api.discovery_client.run_child`) with
   `COPYCAT_HL_PRIORITY=background` and no agent key: its HL reads only take rate tokens while the

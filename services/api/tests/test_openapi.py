@@ -55,6 +55,10 @@ def test_openapi_has_every_documented_route() -> None:
         ("GET", "/api/scout/traders/{address}/thesis"),
         ("PUT", "/api/scout/traders/{address}/thesis"),
         ("GET", "/api/market/candles"),
+        ("GET", "/api/wallets"),
+        ("POST", "/api/wallets/{address}/copy"),
+        ("POST", "/api/wallets/{address}/preview"),
+        ("POST", "/api/wallets/{address}/stop"),
     }
     actual = {
         (method.upper(), path) for path, methods in paths.items() for method in methods

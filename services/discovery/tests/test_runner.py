@@ -130,3 +130,25 @@ def test_serial_venue_allows_one_call_in_flight_and_keeps_signatures():
     [t.join() for t in ts]
     assert peak[0] == 1
     assert "aggregate_by_time" in inspect.signature(sv.fills).parameters
+
+
+def test_prepare_wallet_cache_only_uses_known_leverage_and_no_venue_calls(conn):
+    v = FakeVenue()
+    v.set_candles("BTC", "1m", flat_candles(0, NOW, 100.0))
+    fills = round_trips("BTC", 6)
+    warm = runner.prepare_wallet(conn, v, fills, Settings(), 1, NOW, fresh_s=0)
+    assert warm.skip is None and warm.coin_max_lev == {"BTC": 20} and len(warm.events) == 12
+
+    class NoNet(FakeVenue):
+        def candles(self, *a):
+            return None
+
+        def max_leverage(self, coin):
+            raise AssertionError("cache_only must not ask the venue")
+
+    cold = runner.prepare_wallet(conn, NoNet(), fills, Settings(), 1, NOW, coin_max_lev={"BTC": 20},
+                                 cache_only=True, fresh_s=0)
+    assert cold.flags == [] and len(cold.series["BTC"]) == len(warm.series["BTC"])
+    r = runner.simulate_prepared(cold, NoNet(), "0xa", Settings(), 100.0, 1e5, real_sizing, NOW,
+                                 curve_step_ms=3_600_000)
+    assert r.sim_copies == 6 and r.curve

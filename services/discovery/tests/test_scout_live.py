@@ -18,11 +18,11 @@ import json
 import time
 
 import pytest
+from discovery.scout import metrics as M
+from discovery.scout import public, store
+from discovery.scout import refresh as R
 
 from contracts.models import Settings
-from discovery.scout import public, store
-from discovery.scout import metrics as M
-from discovery.scout import refresh as R
 
 
 @pytest.mark.live

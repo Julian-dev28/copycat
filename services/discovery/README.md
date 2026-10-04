@@ -92,19 +92,34 @@ Per wallet, starting at `sim_equity_usd`, copying ONLY this wallet
 - Sizing, leverage, min-order bump and liquidation distance all come from
   `engine.sizing` (imported, not re-implemented). Maintenance margin is
   `1 / (2 * coin_max_leverage)`. Leverage is fixed per copy at open.
-- Open: skipped if max leverage is unknown, `max_open_copies` reached,
-  worse than `max_worse_entry_pct` vs his fill, under the order minimum
-  after bump, or not enough free margin. Isolated free margin is cash minus
-  posted margin (an open copy's unrealized gain cannot back new orders).
-- Add: `engine.sizing.add_notional` (his fractional increase applied to our
-  size in fixed modes), bumped like the engine bumps, at the copy's
-  leverage; average entry and liquidation price move with it.
+- Entry sizing follows `engine.core._execute_entry`: raw notional from
+  `engine.sizing` (`open_notional` / `add_notional`, all four sizing modes
+  incl. `allocation`, whose `his_gross_ntl_after` comes from his in-window
+  book), trimmed to margin room (free margin x lev x 0.95), trimmed to the
+  allocation cap (allocation mode), bumped, skipped if still under $10.50.
+  Opens also skip on unknown max leverage, `max_open_copies`, or worse than
+  `max_worse_entry_pct` vs his fill. Isolated free margin is cash minus
+  posted margin: an open copy's unrealized gain cannot back new orders.
+- **Fixed modes never grow a copy past its fixed size**: in `fixed_margin`
+  / `fixed_notional`, total copy margin <= max(fixed margin, margin posted
+  at open) x 1.02. Adds beyond that are skipped (`add_capped:<coin>`); after
+  a reduce, adds may refill up to it. See "Fixed-size cap" below.
+- Add: at the copy's leverage; average entry and liquidation price move.
 - Reduce/close: proportional / full; exits are never gated.
 - Mark-to-market: bar by bar across coins in end-time order; max drawdown
   is on the marked equity. Liquidation: a wick through the liquidation
   price loses exactly that copy's posted margin. Unrealized loss of a copy
   is floored at its margin, so a price gap in the data can never cost more.
 - Fees: 0.045% taker on every leg.
+- Optional equity curve: `simulate_wallet(..., curve_step_ms=3_600_000)`
+  returns `SimResult.curve = [(t_ms, equity)]` at every step plus the end.
+- Not modeled from the engine: `small_account_mode` concentrate (needs his
+  full live book), liquidity caps and catch-up orders (need historical
+  depth/volume), the daily loss limit.
+
+`runner.prepare_wallet` (fills -> perp filter -> coalesce -> reconstruct ->
+HFT gate -> candles) and `runner.simulate_prepared` (raw `SimResult`, skip
+flags intact) are shared by `score_one_wallet` and Scout's simstage.
 
 ## Score
 
@@ -138,14 +153,19 @@ Flags: `vault`, `hft`, `hft_not_simulated`, `too_few_trades`, `liquidated`,
 - **Pre-window positions** are never copied (we never saw the open), which
   matches a copier starting now with `only_new_positions`.
 - **Window edge**: with a fresh cache the window ends up to 15 min early.
-- **Fixed-margin add compounding** (engine behaviour, mirrored on purpose):
-  each add is `our_notional * his_fractional_increase`, then bumped to the
-  $10.50 minimum. A leader who opens tiny and scales in with many small
-  adds makes a $1-margin copy grow to most of the account. Traced on
-  `0x30afce2f` / `xyz:DRAM`: open $20 at 20x, then 60+ adds (his +928%,
-  then +77%, ..., then many +0.3% adds bumped to $10.50) took margin from
-  $1 to ~$100 before one liquidation. That is what the live engine would
-  do; see the coordinator report for the engine-side proposal.
+
+## Fixed-size cap (sim rule the engine does not have yet)
+
+Found tracing `0x30afce2f` (xyz:DRAM, -127%) and reported on `0xbf732ea0`
+(-99.96%, 2 liquidated coins), both at `Settings()` defaults ($1 fixed
+margin, max leverage, $100). Cause: `engine.sizing.add_notional` in the
+fixed modes scales OUR copy by HIS fractional add, and the engine then
+bumps every sub-minimum add to $10.50. A leader who opens small and scales
+in (DRAM: +928%, +77%, ..., then 40+ adds of +0.3% each bumped to $10.50)
+takes a $1-margin copy to $100+ of margin; one liquidation then wipes the
+account. The sim now caps fixed-mode copies at their fixed size (above),
+so one $1-margin copy loses at most its margin plus fees. The live engine
+still compounds: `engine.core` needs the same cap to match.
 
 ## Runtime
 

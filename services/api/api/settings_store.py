@@ -17,9 +17,17 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Tuple
 
-from contracts.models import MAX_LEADERS, Settings, norm_addr
+from contracts.models import (
+    MAX_LEADERS,
+    ExposureMode,
+    LeaderOverride,
+    Settings,
+    SizingMode,
+    WalletCopyRequest,
+    norm_addr,
+)
 
 from .schemas import SettingsPatch
 
@@ -182,3 +190,72 @@ class SettingsStore:
             validated = Settings(**updated.model_dump(mode="json"))
             self._write_atomic(validated)
             return validated
+
+    # ── Trade page wallets ──────────────────────────────────────────────
+
+    def _valid_leader_addr(self, address: str) -> str:
+        addr = norm_addr(address)
+        if not _ADDR_RE.match(addr):
+            raise ValueError(f"not a 0x address: {address!r}")
+        if self.our_address and addr == self.our_address:
+            raise OwnAddressError(
+                f"{addr} is this copycat's own account (COPYCAT_ACCOUNT_ADDRESS); it cannot be a leader")
+        return addr
+
+    def copy_wallet(self, address: str, req: WalletCopyRequest, now_ms: int) -> Settings:
+        """Invest in (or adjust) a wallet in ONE locked write: add the leader
+        if new (LeaderLimitError at MAX_LEADERS) and set its override to
+        allocation sizing with the ticket's terms. The previous override's
+        other fields (leverage_mode, fixed amounts, ...) are kept.
+        `invested_ms` is `now_ms` for a new wallet or one that was not on
+        allocation sizing; an adjust (re-post) keeps it, so the wallet's
+        PnL ledger is not reset. Raises ValueError (400) on a bad address or
+        a target exposure without target_leverage (the route checks that
+        first and answers 422), OwnAddressError (400) for our own account."""
+        addr = self._valid_leader_addr(address)
+        if req.exposure_mode == ExposureMode.target and req.target_leverage is None:
+            raise ValueError("target_leverage is required for exposure_mode target")
+        with self._locked():
+            current = self.load()
+            newly_added = addr not in current.leaders
+            if newly_added and len(current.leaders) >= MAX_LEADERS:
+                raise LeaderLimitError(f"max {MAX_LEADERS} leaders")
+            prev = current.leader_overrides.get(addr)
+            fresh = (newly_added or prev is None or prev.sizing_mode != SizingMode.allocation
+                     or prev.invested_ms is None)
+            data = prev.model_dump() if prev is not None else {}
+            data.update({
+                "sizing_mode": SizingMode.allocation, "allocation_usd": req.allocation_usd,
+                "exposure_mode": req.exposure_mode,
+                "invested_ms": now_ms if fresh else prev.invested_ms,
+            })
+            for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode"):
+                v = getattr(req, k)
+                if v is not None:
+                    data[k] = v
+            overrides = dict(current.leader_overrides)
+            overrides[addr] = LeaderOverride.model_validate(data)
+            leaders = current.leaders + [addr] if newly_added else list(current.leaders)
+            merged = Settings(**{**current.model_dump(mode="json"), "leaders": leaders,
+                                 "leader_overrides": {a: o.model_dump(mode="json")
+                                                      for a, o in overrides.items()}})
+            self._write_atomic(merged)
+            return merged
+
+    def stop_wallet(self, address: str) -> Tuple[Settings, bool]:
+        """Remove a wallet and its override (one locked write). Returns
+        `(settings, was_in_book)`. Never raises for an unknown address."""
+        addr = norm_addr(address)
+        with self._locked():
+            current = self.load()
+            was_in_book = addr in current.leaders
+            if not was_in_book and addr not in current.leader_overrides:
+                return current, False
+            merged = Settings(**{
+                **current.model_dump(mode="json"),
+                "leaders": [a for a in current.leaders if a != addr],
+                "leader_overrides": {a: o.model_dump(mode="json")
+                                     for a, o in current.leader_overrides.items() if a != addr},
+            })
+            self._write_atomic(merged)
+            return merged, was_in_book

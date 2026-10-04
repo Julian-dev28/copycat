@@ -13,8 +13,12 @@ writer) and the bearer token. Never signs orders, never holds the agent key.
 |---|---|---|
 | GET | /health | `{ok, version}`, no auth |
 | GET / PUT / PATCH | /settings | `Settings`. PATCH semantics below |
-| POST | /leaders | `{address}`; 400 bad address or our own account, 409 at 10 leaders |
+| POST | /leaders | `{address}`; 400 bad address or our own account, 409 at 25 leaders |
 | DELETE | /leaders/{address} | also drops its override; idempotent |
+| POST | /wallets/{address}/copy | `WalletCopyRequest` -> `Settings`; invest or adjust (see Trade page) |
+| POST | /wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`; 502 his read failed, 503 engine missing |
+| POST | /wallets/{address}/stop | `WalletStopRequest` -> `{settings, stopping}`; 404 not in book and no copies |
+| GET | /wallets | `WalletPosition[]`: book wallets, then wallets winding down |
 | GET | /status | `EngineStatus` from `engine.public.status()`; 503 if the engine package is missing |
 | GET | /events?limit=&since_ms= | newest first |
 | GET | /events/stream | SSE, tails `data/events.jsonl` from its end, one `EngineEvent` JSON per message |
@@ -138,3 +142,42 @@ write a "ta" thesis.
 `GET /market/candles` (`api/routes/market.py`, `api/market_client.py`) calls
 `discovery.public.candles(coin, interval, start_ms, end_ms)`; 503 until
 discovery exposes it.
+
+## Trade page (wallets)
+
+Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
+
+- **copy** (`SettingsStore.copy_wallet`): one flock'd write adds the wallet if
+  new (409 at `MAX_LEADERS`, 400 bad/own address) and sets
+  `leader_overrides[address]` to `sizing_mode: allocation` plus the ticket's
+  `allocation_usd`, `exposure_mode`, `target_leverage`, and, when given,
+  `margin_mode`, `max_worse_entry_pct`, `small_account_mode`. Other fields of
+  an existing override are kept. `invested_ms` is now for a new wallet or one
+  that was not on allocation sizing; a re-post keeps it (an adjust does not
+  reset the PnL ledger). Target exposure without `target_leverage` is 422.
+  A pending stop flag for the wallet is deleted (newer command wins).
+- **preview**: `engine.public.preview_wallet` via `RealEngineClient.preview`
+  (lazy import, flips the process to background HL priority first). It is
+  `engine.sizing.plan_allocation` on live reads, the same function the engine
+  sizes with, so the ticket shows what the engine will do: per position the
+  slice, leverage, margin, status (copy / trimmed / bump / skip + reason),
+  liquidity cap and `fill_cycles`; plus `min_allocation_for_full_book` and
+  notes (e.g. not enough free margin). Our existing copies of him count
+  against the allocation cap, so a bigger re-post previews the adjust.
+- **stop** (`SettingsStore.stop_wallet` + `api/wallet_stop.py`): removes the
+  wallet and its override, then writes `data/stop/<address>.flag`
+  `{close_positions, requested_ms}` atomically. 404 when the wallet is neither
+  in the book nor an orphan the engine still holds copies of (503 if the
+  engine status cannot be read to check). `stopping` is true for a pending
+  stop-and-close.
+- **list**: one `WalletPosition` per book wallet (settings order), then every
+  orphan with open copies or a pending stop. Position fields are the
+  engine's `LeaderStatus` from its last cycle; `pnl_usd` = realized +
+  unrealized, `roe_pct` = pnl / `allocation_usd` x 100 (None off allocation
+  sizing). Terms come from settings for book wallets and from the engine's
+  `effective` (the terms it last ran with) for winding-down ones. If the
+  engine package is missing the book rows still come back, zeroed.
+
+`PATCH /settings` also accepts the v5 book-wide fields (`allocation_usd`,
+`exposure_mode`, `target_leverage`, `invested_ms`, `small_account_mode`,
+`max_order_volume_pct`, `max_slippage_pct`).

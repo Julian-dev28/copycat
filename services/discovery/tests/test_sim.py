@@ -27,11 +27,18 @@ def series(rows, step=M) -> Series:
     return s
 
 
-def run(events, ser, settings, equity=1000.0, end_ms=420_000, max_lev=50, trace=None):
+def run(events, ser, settings, equity=1000.0, end_ms=420_000, max_lev=50, trace=None, his_equity=1_000_000.0,
+        **kw):
     coins = {e.coin for e in events}
     return simulate_wallet(events=events, series=ser, coin_max_lev={c: max_lev for c in coins},
-                           leader_equity_usd=1_000_000.0, leader_leverage_by_coin={}, settings=settings,
-                           sim_equity_usd=equity, window_end_ms=end_ms, sizing=real_sizing, trace=trace)
+                           leader_equity_usd=his_equity, leader_leverage_by_coin={}, settings=settings,
+                           sim_equity_usd=equity, window_end_ms=end_ms, sizing=real_sizing, trace=trace, **kw)
+
+
+def prop(lev=5, **kw):
+    return Settings(sizing_mode=SizingMode.proportional, leverage_mode=LeverageMode.fixed, leverage=lev,
+                    max_position_leverage=50, margin_mode=MarginMode.isolated, max_worse_entry_pct=50.0,
+                    min_order_bump=True, **kw)
 
 
 def fixed(ntl=20.0, lev=5, **kw):
@@ -42,12 +49,12 @@ def fixed(ntl=20.0, lev=5, **kw):
 
 def test_open_add_reduce_close_mechanics_and_fee_accounting():
     events = [
-        evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0),
-        evt("BTC", 120_000, "add", "long", 0.5, 1.0, 1.5, 102.0),
-        evt("BTC", 240_000, "reduce", "long", 0.75, 1.5, 0.75, 98.0),
-        evt("BTC", 360_000, "close", "long", 0.75, 0.75, 0.0, 101.0),
+        evt("BTC", 0, "open", "long", 0.2, 0.0, 0.2, 100.0),          # $20 at his equity == ours
+        evt("BTC", 120_000, "add", "long", 0.1, 0.2, 0.3, 102.0),     # $10.20 -> bumped $10.50
+        evt("BTC", 240_000, "reduce", "long", 0.15, 0.3, 0.15, 98.0),
+        evt("BTC", 360_000, "close", "long", 0.15, 0.15, 0.0, 101.0),
     ]
-    r = run(events, {"BTC": series(flat_candles(0, 420_000, 100.0))}, fixed())
+    r = run(events, {"BTC": series(flat_candles(0, 420_000, 100.0))}, prop(), his_equity=1000.0)
     assert r.sim_copies == 1 and r.sim_liquidations == 0 and r.sim_skipped_min_order == 0
     # open=20, add 10 bumped to 10.5, reduce half of 30.5, close the rest
     assert r.sim_fees_usd == pytest.approx(TAKER_FEE_RATE * (20.0 + 10.5 + 15.25 + 15.25), rel=1e-6)
@@ -160,9 +167,9 @@ def test_add_moves_the_liquidation_price_with_the_average_entry():
         if row["t"] >= 120_000:
             row["o"] = row["h"] = row["l"] = row["c"] = 110.0
     rows[6]["l"] = 107.0         # below the new liq (~107.9) but far above the old one (~99)
-    events = [evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0),
-              evt("BTC", 150_000, "add", "long", 9.0, 1.0, 10.0, 110.0)]
-    r = run(events, {"BTC": series(rows)}, fixed(HL_MIN_ORDER_USD, 50), equity=1000.0, end_ms=600_000)
+    events = [evt("BTC", 0, "open", "long", 0.105, 0.0, 0.105, 100.0),
+              evt("BTC", 150_000, "add", "long", 0.945, 0.105, 1.05, 110.0)]
+    r = run(events, {"BTC": series(rows)}, prop(50), equity=1000.0, end_ms=600_000, his_equity=1000.0)
     assert r.sim_liquidations == 1
 
 
@@ -174,9 +181,81 @@ def test_isolated_unrealized_gain_cannot_back_more_margin():
     for row in rows:
         if row["t"] >= 120_000:
             row["o"] = row["h"] = row["l"] = row["c"] = 150.0     # big unrealized gain after our entry
-    events = [evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0)]
-    events += [evt("BTC", 120_000 + i * 1000, "add", "long", 1.0, 1.0 + i, 2.0 + i, 150.0) for i in range(60)]
-    s = fixed(90.0, 1)        # $90 margin on open, $100 account: adds must find no room
-    r = run(events, {"BTC": series(rows)}, s, equity=100.0, end_ms=600_000)
+    events = [evt("BTC", 0, "open", "long", 0.9, 0.0, 0.9, 100.0)]          # $90 at 1x on a $100 account
+    events += [evt("BTC", 120_000 + i * 1000, "add", "long", 1.0, 0.9 + i, 1.9 + i, 150.0) for i in range(60)]
+    r = run(events, {"BTC": series(rows)}, prop(1), equity=100.0, end_ms=600_000, his_equity=100.0)
     assert any(f.startswith("margin_room:BTC") for f in r.flags)
     assert r.sim_return_pct > -100.0
+
+
+def test_fixed_margin_copy_never_grows_past_its_fixed_size():
+    """Regression (coordinator: 0xbf732ea0 at -99.96% with Settings()
+    defaults and 2 liquidated coins; 0x30afce2f xyz:DRAM -127%). He opens
+    tiny then scales in with hundreds of small adds; add_notional scales
+    our copy by his fraction and every sub-minimum add was bumped to
+    $10.50, so a $1-margin copy grew to the whole account. One $1-margin
+    copy must never lose more than its margin plus fees."""
+    rows = flat_candles(0, 3_600_000, 100.0)
+    rows[-5]["l"] = 1.0                                   # liquidating wick near the end
+    events = [evt("xyz:DRAM", 0, "open", "long", 0.01, 0.0, 0.01, 100.0),
+              evt("xyz:DRAM", 60_000, "add", "long", 0.09, 0.01, 0.10, 100.0)]          # his +900%
+    events += [evt("xyz:DRAM", 120_000 + i * 10_000, "add", "long", 0.001, 0.10 + i * 0.001,
+                   0.101 + i * 0.001, 100.0) for i in range(300)]                      # 300 tiny adds
+    s = Settings(sizing_mode=SizingMode.fixed_margin, fixed_margin_usd=1.0, leverage_mode=LeverageMode.max,
+                 margin_mode=MarginMode.isolated)
+    r = run(events, {"xyz:DRAM": series(rows)}, s, equity=100.0, end_ms=3_600_000, max_lev=20)
+    assert r.sim_copies == 1 and r.sim_liquidations == 1
+    assert any(f.startswith("add_capped:xyz:DRAM") for f in r.flags)
+    loss = -r.sim_return_pct            # % of $100 == dollars
+    assert loss <= 1.0 * FIXED_SLACK_FOR_TEST + r.sim_fees_usd + 1e-9
+
+
+FIXED_SLACK_FOR_TEST = 1.02
+
+
+def test_bumped_open_can_refill_after_a_reduce_but_not_beyond_open_size():
+    # 3x lev: $1 margin -> $3 notional, bumped to $10.50 ($3.50 margin). Cap = $3.50 x 1.02.
+    s = Settings(sizing_mode=SizingMode.fixed_margin, fixed_margin_usd=1.0, leverage_mode=LeverageMode.fixed,
+                 leverage=3, max_worse_entry_pct=50.0)
+    lines = []
+    events = [evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0),
+              evt("BTC", 60_000, "reduce", "long", 0.5, 1.0, 0.5, 100.0),     # can't: $5.25 < min after bump? bumped
+              evt("BTC", 120_000, "add", "long", 0.5, 0.5, 1.0, 100.0)]
+    r = run(events, {"BTC": series(flat_candles(0, 300_000, 100.0))}, s, equity=100.0, end_ms=300_000,
+            max_lev=50, trace=lines.append)
+    assert r.sim_copies == 1
+    adds = [ln for ln in lines if " ADD " in ln]
+    assert all(float(ln.split("margin=$")[1]) <= 3.5 * 1.02 + 1e-9 for ln in adds)
+
+
+def test_entry_is_trimmed_to_margin_room_like_the_engine():
+    s = fixed(500.0, 1)       # wants $500 at 1x on a $100 account: engine trims to 95% of free margin
+    r = run([evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0)], {"BTC": series(flat_candles(0, 120_000, 100.0))},
+            s, equity=100.0, end_ms=120_000)
+    assert r.sim_copies == 1
+    assert r.sim_fees_usd == pytest.approx(95.0 * TAKER_FEE_RATE, rel=1e-3)
+
+
+def test_curve_has_a_point_per_step_and_ends_at_window_end():
+    rows = flat_candles(0, 7_200_000, 100.0)
+    for row in rows:
+        if row["t"] >= 3_600_000:
+            row["o"] = row["h"] = row["l"] = row["c"] = 101.0
+    r = run([evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0)], {"BTC": series(rows)}, fixed(100.0, 5),
+            equity=1000.0, end_ms=7_200_000, curve_step_ms=3_600_000, window_start_ms=0)
+    ts = [t for t, _ in r.curve]
+    assert ts == [0, 3_600_000, 7_200_000]
+    assert r.curve[0][1] == pytest.approx(1000.0)
+    assert r.curve[-1][1] > r.curve[1][1] - 1   # gained after the price step
+    assert run([evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0)], {"BTC": series(rows)}, fixed(),
+               end_ms=7_200_000).curve == []
+
+
+def test_allocation_mode_sizes_off_his_book_and_caps_at_the_allocation():
+    s = Settings(sizing_mode=SizingMode.allocation, allocation_usd=50.0, leverage_mode=LeverageMode.fixed,
+                 leverage=10, max_worse_entry_pct=50.0)
+    # match exposure: his $100k open / his $100k equity x $50 = $50 notional
+    r = run([evt("BTC", 0, "open", "long", 1000.0, 0.0, 1000.0, 100.0)],
+            {"BTC": series(flat_candles(0, 120_000, 100.0))}, s, equity=1000.0, end_ms=120_000, his_equity=100_000.0)
+    assert r.sim_copies == 1
+    assert r.sim_fees_usd == pytest.approx(50.0 * TAKER_FEE_RATE, rel=1e-3)

@@ -17,8 +17,8 @@ import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from contracts.models import (
-    ExposureMode,
     HL_MIN_ORDER_USD,
+    ExposureMode,
     LeverageMode,
     Settings,
     SizingMode,
@@ -466,8 +466,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
             else:
                 row["status"] = "skip"
                 row["reason"] = (f"allocation full (margin ${used:,.2f} of ${cap_total:,.2f})"
-                                 if row["status"] == "trimmed" or room < HL_MIN_ORDER_USD
-                                 else f"slice ${s:,.2f} under the ${HL_MIN_ORDER_USD} minimum")
+                                 if row["status"] == "trimmed" else f"slice ${s:,.2f} under the ${HL_MIN_ORDER_USD} minimum")
                 continue
         if liq_cap is not None:
             cap = liq_cap.get(c)

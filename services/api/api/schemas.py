@@ -10,12 +10,14 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from contracts.models import (
+    ExposureMode,
     LeaderOverride,
     LeverageMode,
     MarginMode,
     PnlWindow,
     Settings,
     SizingMode,
+    SmallAccountMode,
     TradingStyle,
 )
 
@@ -58,6 +60,13 @@ class SettingsPatch(BaseModel):
     daily_loss_limit_usd: Optional[float] = None
     max_open_copies: Optional[int] = None
     poll_interval_s: Optional[float] = None
+    allocation_usd: Optional[float] = None
+    exposure_mode: Optional[ExposureMode] = None
+    target_leverage: Optional[int] = None
+    invested_ms: Optional[int] = None
+    small_account_mode: Optional[SmallAccountMode] = None
+    max_order_volume_pct: Optional[float] = None
+    max_slippage_pct: Optional[float] = None
     # address -> override. None clears that leader's override; a value
     # REPLACES whatever override that leader had, wholesale (not merged
     # field by field with the old override).
@@ -93,6 +102,15 @@ class CloseAllResponse(BaseModel):
     requested_ms: int
     pending: bool
     settings: Settings
+
+
+class WalletStopResponse(BaseModel):
+    """POST /api/wallets/{address}/stop. `settings` no longer has the wallet.
+    `stopping` true: a stop-and-close is pending; the engine closes the copies
+    on its next cycles (events: `close` reason "stop wallet", then `skip`
+    "wallet stopped") and `GET /api/wallets` shows the row winding down."""
+    settings: Settings
+    stopping: bool
 
 
 # ── Scout (docs/research/copytrading_page_spec.md sections 5 and 8) ─────────

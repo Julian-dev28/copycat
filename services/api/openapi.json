@@ -578,6 +578,17 @@
             "title": "Dry Run",
             "type": "boolean"
           },
+          "effective_poll_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Poll S"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -1666,6 +1677,17 @@
         "additionalProperties": false,
         "description": "Partial Settings for PATCH /api/settings.\n\nEvery field is Optional and \"unset\" (not just None) means \"leave as\nis\" -- SettingsStore.patch() checks `model_fields_set`, not `is None`,\nfor every field except leader_overrides, where None is the documented\n\"clear this leader's override\" sentinel.\n\nRange constraints (ge/le, max_length) are intentionally NOT duplicated\nhere. contracts.models.Settings is the single source of truth for\nvalid ranges; SettingsStore.patch() re-validates the merged result\nthrough it before writing, which still 422s a bad value, just one\nlayer later, with the file-untouched guarantee coming from\nvalidate-then-write ordering in SettingsStore.patch().",
         "properties": {
+          "allocation_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Usd"
+          },
           "contract_version": {
             "anyOf": [
               {
@@ -1710,6 +1732,16 @@
             ],
             "title": "Enabled"
           },
+          "exposure_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposureMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fixed_margin_usd": {
             "anyOf": [
               {
@@ -1742,6 +1774,17 @@
               }
             ],
             "title": "Include Spot Staked"
+          },
+          "invested_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Ms"
           },
           "leader_overrides": {
             "anyOf": [
@@ -1820,6 +1863,17 @@
             ],
             "title": "Max Open Copies"
           },
+          "max_order_volume_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Order Volume Pct"
+          },
           "max_position_leverage": {
             "anyOf": [
               {
@@ -1830,6 +1884,17 @@
               }
             ],
             "title": "Max Position Leverage"
+          },
+          "max_slippage_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Slippage Pct"
           },
           "max_worse_entry_pct": {
             "anyOf": [
@@ -1906,6 +1971,27 @@
               }
             ],
             "title": "Sleeve Frac"
+          },
+          "small_account_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmallAccountMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Leverage"
           }
         },
         "title": "SettingsPatch",
@@ -3071,6 +3157,464 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WalletCopyRequest": {
+        "additionalProperties": false,
+        "description": "POST /api/wallets/{address}/copy: add the wallet to the book (if new)\nand set its allocation in one atomic settings write.",
+        "properties": {
+          "allocation_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Allocation Usd",
+            "type": "number"
+          },
+          "exposure_mode": {
+            "$ref": "#/components/schemas/ExposureMode",
+            "default": "match"
+          },
+          "margin_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarginMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_worse_entry_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Worse Entry Pct"
+          },
+          "small_account_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmallAccountMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_leverage": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Leverage"
+          }
+        },
+        "required": [
+          "allocation_usd"
+        ],
+        "title": "WalletCopyRequest",
+        "type": "object"
+      },
+      "WalletPosition": {
+        "description": "GET /api/wallets: one row per wallet the user is invested in (in the\nbook) or still winding down (an orphan with open copies, or stopping).\nThe LeaderStatus \"position\" fields plus the allocation terms.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "allocation_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Usd"
+          },
+          "equity_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Usd"
+          },
+          "exposure_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposureMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exposure_usd": {
+            "default": 0.0,
+            "title": "Exposure Usd",
+            "type": "number"
+          },
+          "fees_usd": {
+            "default": 0.0,
+            "title": "Fees Usd",
+            "type": "number"
+          },
+          "in_book": {
+            "title": "In Book",
+            "type": "boolean"
+          },
+          "invested_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Ms"
+          },
+          "last_read_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Read Ms"
+          },
+          "margin_used_usd": {
+            "default": 0.0,
+            "title": "Margin Used Usd",
+            "type": "number"
+          },
+          "open_copies": {
+            "default": 0,
+            "title": "Open Copies",
+            "type": "integer"
+          },
+          "owned_coins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owned Coins",
+            "type": "array"
+          },
+          "pnl_usd": {
+            "default": 0.0,
+            "title": "Pnl Usd",
+            "type": "number"
+          },
+          "read_ok": {
+            "default": false,
+            "title": "Read Ok",
+            "type": "boolean"
+          },
+          "realized_pnl_usd": {
+            "default": 0.0,
+            "title": "Realized Pnl Usd",
+            "type": "number"
+          },
+          "roe_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roe Pct"
+          },
+          "sizing_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SizingMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "small_account_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmallAccountMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stopping": {
+            "default": false,
+            "title": "Stopping",
+            "type": "boolean"
+          },
+          "target_leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Leverage"
+          },
+          "unrealized_pnl_usd": {
+            "default": 0.0,
+            "title": "Unrealized Pnl Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "address",
+          "in_book"
+        ],
+        "title": "WalletPosition",
+        "type": "object"
+      },
+      "WalletPreview": {
+        "description": "POST /api/wallets/{address}/preview: what investing would copy of his\nbook right now. Computed by engine.sizing.plan_allocation, the same\nfunction the engine sizes with.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "allocation_usd": {
+            "title": "Allocation Usd",
+            "type": "number"
+          },
+          "as_of_ms": {
+            "title": "As Of Ms",
+            "type": "integer"
+          },
+          "copied": {
+            "default": 0,
+            "title": "Copied",
+            "type": "integer"
+          },
+          "exposure_mode": {
+            "$ref": "#/components/schemas/ExposureMode"
+          },
+          "his_equity_usd": {
+            "title": "His Equity Usd",
+            "type": "number"
+          },
+          "his_gross_notional_usd": {
+            "title": "His Gross Notional Usd",
+            "type": "number"
+          },
+          "margin_already_used_usd": {
+            "default": 0.0,
+            "title": "Margin Already Used Usd",
+            "type": "number"
+          },
+          "min_allocation_for_full_book": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Allocation For Full Book"
+          },
+          "multi_cycle": {
+            "default": false,
+            "title": "Multi Cycle",
+            "type": "boolean"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "planned_margin_usd": {
+            "default": 0.0,
+            "title": "Planned Margin Usd",
+            "type": "number"
+          },
+          "planned_notional_usd": {
+            "default": 0.0,
+            "title": "Planned Notional Usd",
+            "type": "number"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "slices": {
+            "items": {
+              "$ref": "#/components/schemas/WalletPreviewSlice"
+            },
+            "title": "Slices",
+            "type": "array"
+          },
+          "small_account_mode": {
+            "$ref": "#/components/schemas/SmallAccountMode"
+          },
+          "target_leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Leverage"
+          }
+        },
+        "required": [
+          "address",
+          "as_of_ms",
+          "allocation_usd",
+          "exposure_mode",
+          "small_account_mode",
+          "his_equity_usd",
+          "his_gross_notional_usd"
+        ],
+        "title": "WalletPreview",
+        "type": "object"
+      },
+      "WalletPreviewSlice": {
+        "description": "One of his positions in a WalletPreview.",
+        "properties": {
+          "coin": {
+            "title": "Coin",
+            "type": "string"
+          },
+          "fill_cycles": {
+            "default": 1,
+            "title": "Fill Cycles",
+            "type": "integer"
+          },
+          "his_notional_usd": {
+            "title": "His Notional Usd",
+            "type": "number"
+          },
+          "leverage": {
+            "title": "Leverage",
+            "type": "integer"
+          },
+          "liquidity_cap_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liquidity Cap Usd"
+          },
+          "margin_usd": {
+            "title": "Margin Usd",
+            "type": "number"
+          },
+          "notional_usd": {
+            "title": "Notional Usd",
+            "type": "number"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "side": {
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "copy",
+              "trimmed",
+              "bump",
+              "skip"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "weight_pct": {
+            "title": "Weight Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "coin",
+          "side",
+          "his_notional_usd",
+          "weight_pct",
+          "leverage",
+          "notional_usd",
+          "margin_usd",
+          "status"
+        ],
+        "title": "WalletPreviewSlice",
+        "type": "object"
+      },
+      "WalletStopRequest": {
+        "additionalProperties": false,
+        "description": "POST /api/wallets/{address}/stop. close_positions true: close our copies\nof this wallet now (reduce-only, like close-all for one wallet). False: stop\nopening new copies and let the open ones follow him out.",
+        "properties": {
+          "close_positions": {
+            "default": true,
+            "title": "Close Positions",
+            "type": "boolean"
+          }
+        },
+        "title": "WalletStopRequest",
+        "type": "object"
+      },
+      "WalletStopResponse": {
+        "description": "POST /api/wallets/{address}/stop. `settings` no longer has the wallet.\n`stopping` true: a stop-and-close is pending; the engine closes the copies\non its next cycles (events: `close` reason \"stop wallet\", then `skip`\n\"wallet stopped\") and `GET /api/wallets` shows the row winding down.",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "stopping": {
+            "title": "Stopping",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "settings",
+          "stopping"
+        ],
+        "title": "WalletStopResponse",
         "type": "object"
       },
       "WhatIfRequest": {
@@ -4601,6 +5145,191 @@
         "summary": "Get Status",
         "tags": [
           "engine"
+        ]
+      }
+    },
+    "/api/wallets": {
+      "get": {
+        "description": "One row per wallet in the book (settings order), then every wallet\nwinding down (an orphan with open copies, or a stop still pending).\nPosition fields come from the engine's last cycle; if the engine\npackage is missing the book rows still come back, zeroed, read_ok\nfalse. ROE % = (realized + unrealized) / allocation_usd x 100, None for\na wallet that is not on allocation sizing. Terms: in-book wallets from\nsettings; winding-down ones from the engine's `effective` (the terms they\nlast ran with).",
+        "operationId": "list_wallets_api_wallets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WalletPosition"
+                  },
+                  "title": "Response List Wallets Api Wallets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Wallets",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/copy": {
+      "post": {
+        "description": "Invest `allocation_usd` in this wallet, or adjust an existing\ninvestment (keeps `invested_ms`, so its PnL ledger carries on). 409 at\nMAX_LEADERS, 400 for a bad address or our own account, 422 for target\nexposure without `target_leverage`. A pending stop for the wallet is\ncancelled: the newer command wins.",
+        "operationId": "copy_wallet_api_wallets__address__copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Copy Wallet",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/preview": {
+      "post": {
+        "description": "What investing would copy of his book right now, sized by the same\n`engine.sizing.plan_allocation` the engine uses. 502 when his live read\nfails, 503 when the engine package is missing.",
+        "operationId": "preview_wallet_api_wallets__address__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Wallet",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/stop": {
+      "post": {
+        "description": "Stop copying this wallet: remove it (and its override) from settings,\nthen write `data/stop/<address>.flag`. 404 when it is neither in the book\nnor an orphan we still hold copies of; 503 if that cannot be checked\nbecause the engine package is missing.",
+        "operationId": "stop_wallet_api_wallets__address__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletStopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletStopResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Wallet",
+        "tags": [
+          "wallets"
         ]
       }
     }

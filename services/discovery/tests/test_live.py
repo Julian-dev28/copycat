@@ -33,12 +33,12 @@ def test_live_small_real_run():
     )
 
     started = time.time()
-    run_id = public.start_run(settings, sim_equity_usd=100.0, top_n=5, venue=venue, window_days=7)
-    print(f"\nlive eval: run {run_id} started (top_n=5, 7d window, equity=$100, "
+    run_id = public.start_run(settings, sim_equity_usd=100.0, top_n=20, venue=venue, window_days=30)
+    print(f"\nlive eval: run {run_id} started (top_n=20, 30d window, equity=$100, "
           f"fixed_margin=$1, leverage=max)")
 
     run = None
-    deadline = time.time() + 540
+    deadline = time.time() + 3600
     while time.time() < deadline:
         run = public.get_run(run_id)
         if run is not None and run.status in ("done", "failed"):

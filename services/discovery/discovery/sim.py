@@ -44,7 +44,7 @@ from bisect import bisect_left
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from contracts.models import HL_MIN_ORDER_USD, MarginMode, Settings
+from contracts.models import HL_MIN_ORDER_USD, MarginMode, Settings, SizingMode
 
 from .candles_cache import Series
 from .positions import PositionEvent
@@ -53,6 +53,9 @@ TAKER_FEE_RATE = 0.00045          # 0.045%
 SLIPPAGE_BPS = 2.0                # on top of the next 1m open
 FALLBACK_SLIPPAGE_BPS = 5.0       # on top of his fill price when no 1m bar exists
 N_LEADERS = 1
+MARGIN_ROOM_FRAC = 0.95           # engine: room = available x lev x 0.95 (core._execute_entry)
+FIXED_CAP_SLACK = 1.02            # fixed modes: a copy may run 2% over its fixed size (rounding)
+FIXED_MODES = (SizingMode.fixed_margin, SizingMode.fixed_notional)
 
 Trace = Optional[Callable[[str], None]]
 
@@ -69,6 +72,7 @@ class _Copy:
     last_mark_px: float
     liq_px: float
     next_bar: int          # index into the coin's Series of the next unchecked bar
+    cap_margin: float = 0.0   # fixed modes: most margin this copy may ever hold
 
 
 @dataclass
@@ -81,6 +85,7 @@ class SimResult:
     sim_fees_usd: float
     flags: List[str] = field(default_factory=list)
     open_copies_at_end: int = 0
+    curve: List[tuple] = field(default_factory=list)   # [(t_ms, equity)] when curve_step_ms is set
 
 
 def _is_buy_action(kind: str, side: str) -> bool:
@@ -114,6 +119,18 @@ class _State:
         self.peak = equity
         self.trough_pct = 0.0
         self.trace = trace
+        self.curve: List[tuple] = []
+        self.curve_step = 0
+        self.next_curve_t = 0
+
+    def curve_to(self, t_ms: int) -> None:
+        """Record equity at every curve boundary <= t_ms not recorded yet,
+        before anything at t_ms is applied."""
+        if self.curve_step <= 0:
+            return
+        while self.next_curve_t <= t_ms:
+            self.curve.append((self.next_curve_t, round(self.equity(), 6)))
+            self.next_curve_t += self.curve_step
 
     def equity(self) -> float:
         return self.cash + sum(_upnl(c, c.last_mark_px) for c in self.open.values())
@@ -154,6 +171,7 @@ def _advance(state: _State, series: Dict[str, Series], to_ms: int) -> None:
             heapq.heappush(heap, (s.end[cp.next_bar], coin))
     while heap:
         end, coin = heapq.heappop(heap)
+        state.curve_to(end - 1)
         cp = state.open.get(coin)
         if cp is None:
             continue
@@ -183,6 +201,10 @@ def _exec_price(s: Optional[Series], e: PositionEvent, is_buy: bool) -> float:
     return px * (1 + FALLBACK_SLIPPAGE_BPS / 1e4) if is_buy else px * (1 - FALLBACK_SLIPPAGE_BPS / 1e4)
 
 
+def _his_gross(book: Dict[str, tuple]) -> float:
+    return sum(abs(sz) * px for sz, px in book.values())
+
+
 def simulate_wallet(
     events: List[PositionEvent],
     series: Dict[str, Series],
@@ -194,17 +216,52 @@ def simulate_wallet(
     window_end_ms: int,
     sizing: Any,
     trace: Trace = None,
+    curve_step_ms: Optional[int] = None,
+    window_start_ms: Optional[int] = None,
 ) -> SimResult:
     """events: chronological, every coin. coin_max_lev: 0/absent = unknown
-    (the coin is never opened rather than sized at a made-up 1x)."""
+    (the coin is never opened rather than sized at a made-up 1x).
+
+    curve_step_ms: also return SimResult.curve, the copier's marked equity
+    at every multiple of the step from window_start_ms (default: the first
+    event, floored to the step) to window_end_ms, plus the final point.
+
+    Entry sizing mirrors engine.core._execute_entry: raw notional from
+    engine.sizing, trimmed to margin room (available x lev x 0.95), to the
+    allocation cap (allocation mode), bumped, then skipped if still under
+    the minimum. On top of that, in the FIXED modes a copy never grows past
+    its fixed size: total copy margin <= max(fixed margin, margin posted at
+    open) x 1.02 (fixed_notional: the same on notional). Without it,
+    `add_notional`'s "scale by his fractional add" plus the $10.50 bump on
+    every tiny add grew a $1-margin copy to most of the account (0x30afce2f
+    on xyz:DRAM: $1 -> $126 margin; 0xbf732ea0: -99.96% from 2 liqs).
+    """
     st = _State(sim_equity_usd, trace)
     is_cross = settings.margin_mode == MarginMode.cross
+    fixed_mode = settings.sizing_mode in FIXED_MODES
+    allocation = settings.sizing_mode == SizingMode.allocation
+    his_book: Dict[str, tuple] = {}     # coin -> (his signed size, his last px), in-window events only
+    if curve_step_ms and curve_step_ms > 0:
+        start = window_start_ms if window_start_ms is not None else (events[0].time_ms if events else window_end_ms)
+        st.curve_step = int(curve_step_ms)
+        st.next_curve_t = (start // st.curve_step) * st.curve_step
+
+    def room_ntl(lev: int) -> float:
+        free = st.available_margin(is_cross)
+        return max(0.0, free) * lev * MARGIN_ROOM_FRAC
+
+    def alloc_room(lev: int) -> float:
+        used = sum(c.margin_usd for c in st.open.values())
+        return sizing.allocation_room_ntl(settings, used, lev)
 
     for e in events:
         _advance(st, series, e.time_ms)
+        st.curve_to(e.time_ms)
         s = series.get(e.coin)
         is_buy = _is_buy_action(e.kind, e.side)
         px = _exec_price(s, e, is_buy)
+        his_book[e.coin] = (e.end_position, e.px)
+        his_gross = _his_gross(his_book)
 
         if e.kind == "open":
             if e.coin in st.open:
@@ -220,13 +277,20 @@ def simulate_wallet(
                 st.flags.append(f"worse_entry:{e.coin}")
                 continue
             lev = sizing.exchange_leverage(settings, leader_leverage_by_coin.get(e.coin, float(coin_max)), coin_max)
-            ntl = sizing.bump(sizing.open_notional(settings, e.delta_sz * e.px, leader_equity_usd,
-                                                   st.equity(), N_LEADERS, lev), settings)
+            raw = sizing.open_notional(settings, e.delta_sz * e.px, leader_equity_usd, st.equity(), N_LEADERS,
+                                       lev, his_gross)
+            ntl = min(raw, room_ntl(lev))
+            if allocation:
+                ntl = min(ntl, alloc_room(lev))
+            ntl = sizing.bump(ntl, settings)
             if ntl < HL_MIN_ORDER_USD:
-                st.skipped_min += 1
+                if raw >= HL_MIN_ORDER_USD or sizing.bump(raw, settings) >= HL_MIN_ORDER_USD:
+                    st.flags.append(f"margin_room:{e.coin}")
+                else:
+                    st.skipped_min += 1
                 continue
             margin = ntl / lev
-            if margin > st.available_margin(is_cross):
+            if margin > st.available_margin(is_cross) + 1e-9:
                 st.flags.append(f"margin_room:{e.coin}")
                 continue
             fee = ntl * TAKER_FEE_RATE
@@ -234,8 +298,11 @@ def simulate_wallet(
             st.fees += fee
             dist = sizing.liq_distance_pct(lev, is_cross, 1.0 / (2.0 * coin_max))
             nb = bisect_left(s.t, e.time_ms) if s is not None else 0
+            fixed_margin = (settings.fixed_margin_usd if settings.sizing_mode == SizingMode.fixed_margin
+                            else settings.fixed_notional_usd / lev)
             st.open[e.coin] = _Copy(e.coin, e.side, ntl, margin, lev, px, e.time_ms, px,
-                                    _liq_px(px, e.side, dist), nb)
+                                    _liq_px(px, e.side, dist), nb,
+                                    cap_margin=max(fixed_margin, margin) * FIXED_CAP_SLACK if fixed_mode else 0.0)
             st.opens += 1
             if trace:
                 trace(f"  {e.time_ms} OPEN  {e.coin} {e.side} ntl=${ntl:.2f} margin=${margin:.2f} "
@@ -249,13 +316,30 @@ def simulate_wallet(
                 st.flags.append(f"worse_entry:{e.coin}")
                 continue
             frac = e.delta_sz / abs(e.start_position) if e.start_position else 0.0
-            add = sizing.bump(sizing.add_notional(settings, e.delta_sz * e.px, leader_equity_usd, st.equity(),
-                                                  N_LEADERS, cp.notional_usd, frac), settings)
+            if fixed_mode and frac <= 0:
+                continue    # engine: nothing to scale by
+            our_ntl_now = cp.notional_usd * px / cp.entry_px if cp.entry_px > 0 else cp.notional_usd
+            raw = sizing.add_notional(settings, e.delta_sz * e.px, leader_equity_usd, st.equity(), N_LEADERS,
+                                      our_ntl_now, frac, his_gross, cp.leverage)
+            add = min(raw, room_ntl(cp.leverage))
+            if allocation:
+                add = min(add, alloc_room(cp.leverage))
+            cap_room = None
+            if fixed_mode:
+                cap_room = max(0.0, cp.cap_margin - cp.margin_usd) * cp.leverage
+                add = min(add, cap_room)
+            add = sizing.bump(add, settings)
+            if cap_room is not None and add > cap_room + 1e-9:
+                st.flags.append(f"add_capped:{e.coin}")
+                continue
             if add < HL_MIN_ORDER_USD:
-                st.skipped_min += 1
+                if cap_room is not None and cap_room < HL_MIN_ORDER_USD and raw >= cap_room:
+                    st.flags.append(f"add_capped:{e.coin}")
+                else:
+                    st.skipped_min += 1
                 continue
             add_margin = add / cp.leverage
-            if add_margin > st.available_margin(is_cross):
+            if add_margin > st.available_margin(is_cross) + 1e-9:
                 st.flags.append(f"margin_room:{e.coin}")
                 continue
             fee = add * TAKER_FEE_RATE
@@ -265,7 +349,6 @@ def simulate_wallet(
             cp.entry_px = (cp.entry_px * cp.notional_usd + px * add) / new_ntl
             cp.notional_usd = new_ntl
             cp.margin_usd += add_margin
-            # same leverage, new average entry: the liquidation price moves with it
             dist = sizing.liq_distance_pct(cp.leverage, is_cross, 1.0 / (2.0 * int(coin_max_lev[e.coin])))
             cp.liq_px = _liq_px(cp.entry_px, cp.side, dist)
             if trace:
@@ -302,10 +385,14 @@ def simulate_wallet(
         st.mark()
 
     _advance(st, series, window_end_ms)
+    st.curve_to(window_end_ms)
     st.mark()
     final = st.equity()
+    if st.curve_step and (not st.curve or st.curve[-1][0] != window_end_ms):
+        st.curve.append((window_end_ms, round(final, 6)))
     ret = (final / sim_equity_usd - 1.0) * 100.0 if sim_equity_usd > 0 else 0.0
     if trace:
         trace(f"  end equity=${final:.2f} ret={ret:.2f}% dd={st.trough_pct:.2f}% copies={st.opens} "
               f"liqs={st.liqs} fees=${st.fees:.2f} still_open={len(st.open)}")
-    return SimResult(ret, st.trough_pct, st.liqs, st.opens, st.skipped_min, st.fees, st.flags, len(st.open))
+    return SimResult(ret, st.trough_pct, st.liqs, st.opens, st.skipped_min, st.fees, st.flags, len(st.open),
+                     st.curve)

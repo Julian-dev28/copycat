@@ -39,16 +39,17 @@ from typing import Any, Dict, List, Optional
 from contracts.models import (
     EngineEvent,
     EngineStatus,
+    Settings,
     SizingMode,
     WalletCopyRequest,
     WalletPreview,
     WalletPreviewSlice,
-    Settings,
     norm_addr,
 )
 from contracts.venue import Venue
 
-from . import core, events as events_mod, settings_io, sizing
+from . import core, settings_io, sizing
+from . import events as events_mod
 from .state import EngineState
 
 logger = logging.getLogger(__name__)
@@ -339,3 +340,113 @@ def events(limit: int = 100, since_ms: Optional[int] = None) -> List[EngineEvent
     """Newest first, at most `limit`, optionally only events with
     `ts_ms > since_ms`. See `engine.events.read_events`."""
     return events_mod.read_events(_events_path(), limit=limit, since_ms=since_ms)
+
+
+# ── Trade ticket preview ────────────────────────────────────────────────────
+
+class PreviewUnavailable(RuntimeError):
+    """The leader's account read failed; the api maps this to 502."""
+
+
+def wallet_settings(settings: Settings, address: str, req: WalletCopyRequest) -> Settings:
+    """The effective settings a wallet would run with after
+    POST /api/wallets/{address}/copy with `req` (book-wide merged with its
+    current override, then the ticket's fields)."""
+    es = settings.for_leader(address)
+    patch: Dict[str, Any] = {
+        "sizing_mode": SizingMode.allocation, "allocation_usd": req.allocation_usd,
+        "exposure_mode": req.exposure_mode,
+    }
+    for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode"):
+        v = getattr(req, k)
+        if v is not None:
+            patch[k] = v
+    return Settings.model_validate({**es.model_dump(), **patch})
+
+
+def _default_venue() -> Any:
+    from hl import HlVenue  # lazy: the api imports engine.public without services/hl loaded
+    return HlVenue()
+
+
+def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
+                   venue: Optional[Any] = None, now_ms: Optional[int] = None) -> WalletPreview:
+    """What investing `req` in `address` would copy of his book now. Read
+    only: his account, each coin's max leverage, 24h volume and book depth.
+    Sized by `sizing.plan_allocation` with the exact exchange leverage the
+    engine would request per coin, his equity computed as the engine does
+    (extras included when include_spot_staked), our existing copies of him
+    held (concentrate never drops them) and their margin counted against
+    the allocation cap, so re-posting a bigger amount previews the adjust."""
+    venue = venue or _default_venue()
+    address = norm_addr(address)
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    es = wallet_settings(settings, address, req)
+    acct = venue.account_state(address)
+    if acct is None:
+        raise PreviewUnavailable(f"account read failed for {address}")
+    his_equity = sizing.account_equity(acct)
+    if es.include_spot_staked:
+        extras = venue.extras(address)
+        if extras is None:
+            raise PreviewUnavailable(f"extras read failed for {address}")
+        his_equity += float(extras["spot_other_usd"]) + float(extras["staked_hype_usd"])
+    positions = dict(acct.get("positions") or {})
+    notes: List[str] = []
+    levs: Dict[str, int] = {}
+    coin_max: Dict[str, int] = {}
+    for c, p in sorted(positions.items()):
+        m = int(venue.max_leverage(c) or 0)
+        if m <= 0:
+            notes.append(f"{c}: max leverage unknown, the engine would wait")
+            positions.pop(c)
+            continue
+        coin_max[c] = m
+        levs[c] = sizing.exchange_leverage(es, float(p.get("lev") or 1.0), m)
+    liq: Dict[str, Optional[float]] = {}
+    for c, p in positions.items():
+        try:
+            stats = venue.market_stats(c)
+            depth = venue.depth_usd(c, float(p.get("szi") or 0.0) > 0, es.max_slippage_pct)
+        except Exception:
+            stats, depth = None, None
+        vol = (stats or {}).get("day_volume_usd") if stats else None
+        liq[c] = sizing.liquidity_cap(vol, depth, es.max_order_volume_pct)
+
+    held: List[str] = []
+    margin_used = 0.0
+    available: Optional[float] = None
+    try:
+        st = status()
+        available = st.available_margin_usd
+        for row in st.leaders:
+            if row.address == address:
+                held = list(row.owned_coins)
+                margin_used = float(row.margin_used_usd or 0.0)
+    except Exception:
+        logger.warning("preview: engine status unreadable, previewing as a fresh wallet",
+                       exc_info=True)
+
+    plan = sizing.plan_allocation(
+        positions, his_equity, es.allocation_usd, es.exposure_mode, es.target_leverage,
+        es.small_account_mode, coin_max, lev_by_coin=levs, held=held, liq_cap=liq,
+        margin_used_usd=margin_used, max_position_leverage=es.max_position_leverage)
+    if not positions:
+        notes.append("he holds no positions now: nothing opens until he does")
+    if plan["multi_cycle"]:
+        notes.append("some slices exceed the liquidity cap and fill over several cycles")
+    if available is not None and plan["planned_margin_usd"] > available:
+        notes.append(f"needs ${plan['planned_margin_usd']:,.2f} margin, "
+                     f"${available:,.2f} is available: orders would be trimmed")
+    return WalletPreview(
+        address=address, as_of_ms=now_ms, allocation_usd=es.allocation_usd,
+        exposure_mode=es.exposure_mode,
+        target_leverage=es.target_leverage if es.exposure_mode.value == "target" else None,
+        small_account_mode=es.small_account_mode, his_equity_usd=his_equity,
+        his_gross_notional_usd=sizing.gross_notional(positions),
+        slices=[WalletPreviewSlice(**r) for r in plan["slices"]],
+        planned_notional_usd=plan["planned_notional_usd"],
+        planned_margin_usd=plan["planned_margin_usd"], copied=len(plan["copied"]),
+        skipped=len(plan["skipped"]),
+        min_allocation_for_full_book=plan["min_allocation_for_full_book"],
+        multi_cycle=plan["multi_cycle"], margin_already_used_usd=margin_used, notes=notes)

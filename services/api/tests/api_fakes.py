@@ -7,13 +7,20 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
+from api.discovery_client import DiscoveryBusy, DiscoveryUnavailable
+from api.engine_client import EngineUnavailable
+from api.market_client import MarketUnavailable
+from api.schemas import CandleView
+from api.scout_client import ScoutBusy, ScoutUnavailable
+from api.thesis_client import ThesisUnavailable
+
 from contracts.models import (
     AccountRisk,
     DiscoveryRun,
     EngineEvent,
     EngineStatus,
-    LeaderFillView,
     EntryContext,
+    LeaderFillView,
     LeaderOverride,
     OpenOrderView,
     PnlTier,
@@ -26,20 +33,14 @@ from contracts.models import (
     StrategyFingerprint,
     Thesis,
     TradeExample,
-    TradeStats,
     TraderPage,
     TraderProfile,
     TraderRow,
     TraderScore,
+    TradeStats,
     WhatIfResult,
     WindowPerf,
 )
-from api.discovery_client import DiscoveryBusy, DiscoveryUnavailable
-from api.engine_client import EngineUnavailable
-from api.market_client import MarketUnavailable
-from api.schemas import CandleView
-from api.scout_client import ScoutBusy, ScoutUnavailable
-from api.thesis_client import ThesisUnavailable
 
 OUR_ADDRESS = "0x" + "1" * 40      # the fixture app's COPYCAT_ACCOUNT_ADDRESS
 
@@ -48,6 +49,14 @@ class FakeEngineClient:
     def __init__(self) -> None:
         self._status = EngineStatus(running=True, enabled=False, dry_run=True)
         self.event_log: List[EngineEvent] = []
+        self.preview_calls: List[tuple] = []
+        self.preview_result: Any = None        # a WalletPreview, or an exception to raise
+
+    def preview(self, address: str, req: Any, settings: Settings) -> Any:
+        self.preview_calls.append((address, req, settings))
+        if isinstance(self.preview_result, Exception):
+            raise self.preview_result
+        return self.preview_result
 
     def status(self) -> EngineStatus:
         return self._status
@@ -66,6 +75,9 @@ class UnavailableEngineClient:
         raise EngineUnavailable("services/engine isn't importable yet: boom")
 
     def events(self, limit: int, since_ms: Optional[int] = None) -> List[EngineEvent]:
+        raise EngineUnavailable("services/engine isn't importable yet: boom")
+
+    def preview(self, address: str, req: Any, settings: Settings) -> Any:
         raise EngineUnavailable("services/engine isn't importable yet: boom")
 
 

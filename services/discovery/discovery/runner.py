@@ -141,59 +141,98 @@ def _leader_leverage(venue: Venue, address: str, settings: Settings, coins: List
     return {c: float(now[c]["lev"]) for c in coins if c in now}
 
 
+@dataclass
+class Prepared:
+    """One wallet, ready to simulate. Shared by score_one_wallet and Scout's
+    simstage. `skip` set means do not simulate; it holds the flags that say
+    why (they go into TraderScore.flags as-is)."""
+    flags: List[str]
+    n_fills: int
+    opens_per_day: float
+    median_hold_h: Optional[float]
+    coins: List[str]
+    events: List[positions.PositionEvent] = field(default_factory=list)
+    series: Dict[str, candles_cache.Series] = field(default_factory=dict)
+    coin_max_lev: Dict[str, int] = field(default_factory=dict)
+    skip: Optional[List[str]] = None
+
+
+def prepare_wallet(conn: sqlite3.Connection, venue: Any, fills: List[Dict[str, Any]], settings: Settings,
+                   window_days: int, now_ms: int, include_hft: bool = False,
+                   fresh_s: float = config.CACHE_FRESH_S, coin_max_lev: Optional[Dict[str, int]] = None,
+                   cache_only: bool = False, stats: Optional[Dict[str, int]] = None) -> Prepared:
+    """Perp filter, poll coalescing (settings.poll_interval_s), reconstruct,
+    HFT gate, then candles only for trip spans. `coin_max_lev`: known max
+    leverage per coin (skips venue.max_leverage for those). `cache_only`:
+    never ask the venue for leverage, and a candle read that fails is not
+    flagged (the caller passes a venue that answers None on purpose)."""
+    ws = now_ms - window_days * DAY_MS
+    flags: List[str] = []
+    perp, other = positions.split_perp(fills)
+    if other:
+        flags.append("non_perp_ignored")
+    by_coin = positions.reconstruct(positions.coalesce_by_poll(perp, int(settings.poll_interval_s * 1000)))
+    p = Prepared(flags=flags, n_fills=len(fills), opens_per_day=positions.opens_per_day(by_coin, window_days),
+                 median_hold_h=positions.median_hold_hours(by_coin)[0], coins=positions.coins_traded(by_coin))
+    if p.opens_per_day > HFT_OPENS_PER_DAY:
+        flags.append("hft")
+        if not include_hft:
+            p.skip = ["hft_not_simulated"]
+            return p
+    spans = positions.trip_spans(by_coin, now_ms)
+    if not spans:
+        p.skip = ["too_few_trades"]
+        return p
+    known = dict(coin_max_lev or {})
+    for coin, sp in spans.items():
+        lev = int(known.get(coin) or 0)
+        if lev < 1 and not cache_only:
+            lev = int(venue.max_leverage(coin) or 0)
+        p.coin_max_lev[coin] = lev
+        if lev < 1:
+            continue   # the sim flags it; no candles for a coin it will never open
+        p.series[coin], ok = candles_cache.build_series(conn, venue, coin, sp, now_ms, fresh_s, stats)
+        if not ok and not cache_only:
+            flags.append(f"candles_partial:{coin}")
+    p.events = [e for e in positions.merged_timeline(by_coin) if e.time_ms >= ws]
+    return p
+
+
+def simulate_prepared(p: Prepared, venue: Any, address: str, settings: Settings, sim_equity_usd: float,
+                      leader_equity_usd: float, sizing_module: Any, now_ms: int,
+                      trace: Optional[WalletTrace] = None, **sim_kw: Any) -> "sim.SimResult":
+    """The copy-sim on a Prepared wallet. Raw SimResult, skip flags intact
+    (worse_entry / margin_room / max_open_copies / add_capped / ...)."""
+    return sim.simulate_wallet(events=p.events, series=p.series, coin_max_lev=p.coin_max_lev,
+                               leader_equity_usd=leader_equity_usd,
+                               leader_leverage_by_coin=_leader_leverage(venue, address, settings, p.coins),
+                               settings=settings, sim_equity_usd=sim_equity_usd, window_end_ms=now_ms,
+                               sizing=sizing_module, trace=trace, **sim_kw)
+
+
 def score_one_wallet(conn: sqlite3.Connection, venue: Venue, c: "leaderboard.Candidate", settings: Settings,
                      sim_equity_usd: float, opts: RunOptions, sizing_module: Any, now_ms: int,
                      stats: Optional[Dict[str, int]] = None, trace: Optional[WalletTrace] = None) -> TraderScore:
     """Never raises for a per-wallet data problem: every wallet comes back
     scored, or in the lowest band with the reason in flags."""
-    ws = now_ms - opts.window_days * DAY_MS
     es = settings.for_leader(c.address)
-    flags = list(c.flags)
-
     try:
         fills = _sync_fills_retry(conn, venue, c.address, opts, now_ms)
     except fills_cache.FillsFetchError:
-        return _flagged(c, flags + ["error:fills_read_failed"])
+        return _flagged(c, list(c.flags) + ["error:fills_read_failed"])
 
-    perp, other = positions.split_perp(fills)
-    if other:
-        flags.append("non_perp_ignored")
-    coalesced = positions.coalesce_by_poll(perp, int(es.poll_interval_s * 1000))
-    by_coin = positions.reconstruct(coalesced)
-    opd = positions.opens_per_day(by_coin, opts.window_days)
-    hold, _ = positions.median_hold_hours(by_coin)
-    coins = positions.coins_traded(by_coin)
-    n_fills = len(fills)
-
-    if opd > HFT_OPENS_PER_DAY:
-        flags.append("hft")
-        if not opts.include_hft:
-            return _flagged(c, flags + ["hft_not_simulated"], n_fills, opd, hold, coins)
-
-    events = positions.merged_timeline(by_coin)
-    spans = positions.trip_spans(by_coin, now_ms)
-    if not spans:
-        return _flagged(c, flags + ["too_few_trades"], n_fills, opd, hold, coins)
-
-    series: Dict[str, candles_cache.Series] = {}
-    max_lev: Dict[str, int] = {}
-    for coin, sp in spans.items():
-        max_lev[coin] = int(venue.max_leverage(coin) or 0)
-        if max_lev[coin] < 1:
-            continue   # sim flags it; no candles needed for a coin it will never open
-        series[coin], ok = candles_cache.build_series(conn, venue, coin, sp, now_ms, opts.fresh_s, stats)
-        if not ok:
-            flags.append(f"candles_partial:{coin}")
-
+    p = prepare_wallet(conn, venue, fills, es, opts.window_days, now_ms, opts.include_hft, opts.fresh_s,
+                       stats=stats)
+    flags = list(c.flags) + p.flags
+    if p.skip is not None:
+        return _flagged(c, flags + p.skip, p.n_fills, p.opens_per_day, p.median_hold_h, p.coins)
     try:
-        r = sim.simulate_wallet(events=[e for e in events if e.time_ms >= ws], series=series,
-                                coin_max_lev=max_lev, leader_equity_usd=c.account_value_usd,
-                                leader_leverage_by_coin=_leader_leverage(venue, c.address, es, coins),
-                                settings=es, sim_equity_usd=sim_equity_usd, window_end_ms=now_ms,
-                                sizing=sizing_module, trace=trace)
+        r = simulate_prepared(p, venue, c.address, es, sim_equity_usd, c.account_value_usd, sizing_module, now_ms,
+                              trace)
     except Exception as exc:
         logger.warning("discovery: sim failed for %s: %s", c.address, exc, exc_info=True)
-        return _flagged(c, flags + [f"error:sim:{type(exc).__name__}"], n_fills, opd, hold, coins)
+        return _flagged(c, flags + [f"error:sim:{type(exc).__name__}"], p.n_fills, p.opens_per_day,
+                        p.median_hold_h, p.coins)
 
     flags.extend(sorted({f for f in r.flags if f.startswith(("liquidated:", "max_leverage_unknown:"))}))
     sc = scoring.score_candidate(r.sim_return_pct, r.sim_max_drawdown_pct, r.sim_liquidations, r.sim_copies)
@@ -201,8 +240,8 @@ def score_one_wallet(conn: sqlite3.Connection, venue: Venue, c: "leaderboard.Can
     return TraderScore(
         address=c.address, display_name=c.display_name, account_value_usd=c.account_value_usd,
         pnl_30d_usd=c.pnl_30d_usd, roi_30d_pct=c.roi_30d_pct, pnl_all_time_usd=c.pnl_all_time_usd,
-        volume_30d_usd=c.volume_30d_usd, fills_30d=n_fills, opens_per_day=opd, median_hold_h=hold,
-        coins=coins, sim_return_pct=round(r.sim_return_pct, 4),
+        volume_30d_usd=c.volume_30d_usd, fills_30d=p.n_fills, opens_per_day=p.opens_per_day,
+        median_hold_h=p.median_hold_h, coins=p.coins, sim_return_pct=round(r.sim_return_pct, 4),
         sim_max_drawdown_pct=round(r.sim_max_drawdown_pct, 4), sim_liquidations=r.sim_liquidations,
         sim_copies=r.sim_copies, sim_skipped_min_order=r.sim_skipped_min_order,
         sim_fees_usd=round(r.sim_fees_usd, 6), score=round(sc.score, 6), flags=sorted(set(flags)),

@@ -12,7 +12,10 @@ Public surface (the only names other services import):
 | `engine.public.run_cycle(venue, now_ms=None)` | one cycle, returns a summary dict |
 | `engine.public.status() -> EngineStatus` | last cycle's snapshot, read from SQLite, no network |
 | `engine.public.events(limit, since_ms)` | `EngineEvent`s, newest first |
-| `engine.sizing.*` | pure sizing/leverage/equity math (discovery's sim imports it) |
+| `engine.public.preview_wallet(address, req, settings, venue=None)` | Trade ticket preview (`WalletPreview`), read only |
+| `engine.public.read_stops()` | pending `data/stop/<address>.flag` requests |
+| `engine.sizing.*` | pure sizing/leverage/equity math (discovery's sim imports it), incl. `plan_allocation` |
+| `engine.pacing.*` | pure HL read-weight estimate and effective poll interval |
 
 `core.py`, `state.py`, `events.py`, `settings_io.py` are internals.
 
@@ -67,6 +70,83 @@ Every rule below is pinned by a gate test in `tests/`.
 - `proportional`: his added notional / his equity x (our equity x
   `sleeve_frac` / number of leaders) x `size_multiplier`.
 - Adds in fixed modes scale OUR real current notional by his fractional add.
+
+- `allocation` (Trade page, "invest $X in this wallet", `allocation_usd`):
+  - exposure `match`: his added notional / his equity x allocation (his
+    leverage carries through).
+  - exposure `target`: his added notional / his gross notional after the
+    change x allocation x leverage, where leverage is
+    min(`target_leverage`, coin max, `max_position_leverage`), also the
+    exchange leverage. Using the capped leverage keeps each slice's margin
+    at allocation x his weight, so the wallet's margin is the allocation.
+  - Adds use the same formula on his incremental notional, at the copy's own
+    leverage. Reduces/closes are unchanged (same fraction he took off).
+  - Allocation cap: this wallet's total copy margin (our copies of him at
+    mark / leverage, plus orders sent earlier this cycle) stays <=
+    allocation x 1.02. An open/add is trimmed to fit; under $10.50 it is
+    skipped ("allocation full").
+  - Small accounts (`small_account_mode`):
+    - `concentrate` (default): at every open/add the eligible set is
+      recomputed from his whole book: the smallest slice under $10.50 is
+      dropped and the rest renormalized (x his gross / gross left), one at a
+      time, until all clear the minimum, so the whole allocation goes into
+      his biggest positions. Coins we already copy for him stay eligible
+      until he exits. A coin outside the set is skipped and ignored until he
+      goes flat on it.
+    - `bump`: a slice >= 25% of $10.50 is rounded up if it still fits the
+      allocation cap.
+    - `skip`: slices under $10.50 are dropped.
+    - Other sizing modes: `skip` disables the bump; otherwise
+      `min_order_bump` as before.
+  - `sizing.plan_allocation` runs the same steps in the same order (coin
+    name order, like a first-sight batch) and is what the Trade ticket
+    preview shows. Not in the preview: our free margin (room cap) and
+    prices moving between preview and order.
+
+**Liquidity (large accounts)**: every open/add is capped at
+min(`max_order_volume_pct` % of the coin's 24h volume, book depth within
+`max_slippage_pct` of mid) (`venue.market_stats`, `venue.depth_usd`). The rest
+is carried in kv `catch_up` and sent one capped order per cycle, at the
+copy's leverage, through the same room/allocation caps, until filled or he
+changes that position (then the diff takes over and the carry is dropped).
+A carry under $10.50 is dropped. Paused (kept) while entries are blocked or
+the mid is worse than his entry by more than `max_worse_entry_pct`. The
+unfilled part of a partially filled IOC joins the carry. The open/add event
+says "split: $X now, $Y over the next cycles". If either liquidity read fails,
+an order under $50k goes uncapped; a bigger one is skipped and stays pending.
+Every order carries `max_slippage_pct`. Exits are not capped: the IOC
+slippage band bounds each fill, and partial exits already retry.
+
+**Per-wallet PnL ledger** (SQLite `ledger`): every reduce/close of our copy
+(diff, close-all, stop-wallet, a settled ambiguous reduce) books
+(fill px - our entry) x size x side - fee into that leader's row. Fill px is
+the order's `avg_px`, else the mid. Fees only when the result reports one
+(HL order responses do not, so `fees_usd` stays 0 today). Fills before
+`invested_ms` are not counted; a new `invested_ms` (fresh investment) resets
+the row; a re-post that keeps it does not.
+
+**Wallet status**: every `LeaderStatus` row carries `open_copies`,
+`margin_used_usd` (HL `marginUsed`, else notional / leverage),
+`exposure_usd`, `unrealized_pnl_usd` (from the raw positions, the same rows
+as `EngineStatus.positions`), `realized_pnl_usd`, `fees_usd`, `stopping`. An
+orphan's `effective` shows the allocation terms it last ran with.
+
+**Stop one wallet**: `data/stop/<address>.flag` `{close_positions}` (written by
+the api, which also removes the wallet from settings). That leader is an
+orphan from the cycle the flag is seen, even if settings still list it.
+`close_positions` true: every copy of his is closed reduce-only (even in
+dry_run, like close-all), `close` events with reason "stop wallet"; a failed
+or partial close keeps the flag and retries next cycle (`stopping` true);
+once flat the flag is deleted and `skip` "wallet stopped" is logged. False:
+the flag is deleted at once; his copies keep following his exits.
+
+**Read-budget pacing** (`engine/pacing.py`): one cycle's /info weight is
+estimated as, per account read (ours + each leader), 2 per dex he is active
+on + 2 for spot, + 22 per leader with `include_spot_staked`, + 2 per dex we
+hold copies on (allMids). The worker sleeps max(`poll_interval_s`,
+weight x 60 / (1200 x 0.6)), so the engine uses at most 60% of HL's budget.
+25 main-dex leaders: 26 x 4 + 2 = 106 -> 8.83 s. Reported as
+`EngineStatus.effective_poll_s` and in the cycle log line (`poll_s`, `read_weight`).
 
 **Leverage modes**: `max` (coin max), `match` (ceil of his), `fixed`
 (`leverage`). All capped by the coin max and `max_position_leverage`.
@@ -132,10 +212,12 @@ remains (logs `halt` "close-all complete"). A failed close keeps the flag.
   leader), `copies` (real copies, `pending_cloid`), `dry_copies` (dry-run
   shadow with simulated size; cleared when `dry_run` flips), `kv`
   (`last_good_settings`, `last_status`, `day_anchor`, `halted`, `last_skips`,
-  `last_marks`, `vanish_pending`, `pending_reduces`, `last_dry_run`).
+  `last_marks`, `vanish_pending`, `pending_reduces`, `last_dry_run`, `catch_up`), `ledger`
+  (per-leader realized PnL since `invested_ms`, plus the wallet's last terms).
 - `events.jsonl`: append-only `EngineEvent` log, written as events happen (so
   a crash mid-cycle keeps them). Rotates once at 25MB.
 - `engine.lock`: flock held by the running worker.
+- `stop/<address>.flag`: stop-one-wallet requests (api writes, engine deletes).
 - `settings.json` is read every cycle; invalid or missing keeps the last good.
 
 ## Worker loop
