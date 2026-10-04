@@ -15,6 +15,7 @@ const SIZING_LABEL: Record<Settings["sizing_mode"], string> = {
   fixed_margin: "fixed margin",
   fixed_notional: "fixed notional",
   proportional: "proportional",
+  allocation: "invested $ (Trade)",
 };
 
 function leverageLabel(s: Settings): string {

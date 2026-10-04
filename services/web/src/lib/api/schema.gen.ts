@@ -187,6 +187,248 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/market/candles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Candles
+         * @description OHLCV bars in [start_ms, end_ms], oldest first, at most 5000 bars.
+         *     Bad interval, end <= start, or a range over the cap is 422.
+         */
+        get: operations["get_candles_api_market_candles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Presets
+         * @description Coin chips + hip3 count from the current `scout_rows`.
+         */
+        get: operations["get_presets_api_scout_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh */
+        post: operations["refresh_api_scout_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Status */
+        get: operations["get_status_api_scout_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Traders */
+        get: operations["list_traders_api_scout_traders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Trader */
+        get: operations["get_trader_api_scout_traders__address__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/fills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Trader Fills */
+        get: operations["get_trader_fills_api_scout_traders__address__fills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/fingerprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fingerprint
+         * @description Deterministic strategy fingerprint from fills + candles. Cached 15 min
+         *     per (address, window_days); a stale one is served while a refresh runs.
+         */
+        get: operations["get_fingerprint_api_scout_traders__address__fingerprint_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trader Orders
+         * @description Live open orders (HL weight 20, cached 30 s by discovery).
+         */
+        get: operations["get_trader_orders_api_scout_traders__address__orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/thesis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Thesis
+         * @description Latest thesis per source, "ta" first then "claude_code". Empty list
+         *     when none exist. Never computes: the "ta" one is refreshed by each
+         *     fingerprint compute.
+         */
+        get: operations["get_thesis_api_scout_traders__address__thesis_get"];
+        /**
+         * Put Thesis
+         * @description Saves a "claude_code" thesis (the copycat MCP server's write path).
+         *     `source`, `address`, `created_ms` are server-set; `fingerprint_as_of_ms`
+         *     links it to the cached 30d fingerprint when there is one.
+         */
+        put: operations["put_thesis_api_scout_traders__address__thesis_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trades
+         * @description Representative round trips WITH entry context (`TradeExample`), the
+         *     evidence behind the 30d fingerprint's claims (largest win, typical
+         *     breakout entry, ...). TradeExample, not RoundTrip, because the entry
+         *     context is the point for a thesis; the full RoundTrip list (no context)
+         *     is `TraderProfile.recent_trips`. Same 202 while the fingerprint builds.
+         */
+        get: operations["get_trades_api_scout_traders__address__trades_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/traders/{address}/what-if": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What If
+         * @description Sim of this one wallet at the CURRENT settings file merged with
+         *     `body.override`, on cached fills and candles only. One at a time per api
+         *     process: a second request while one runs is 409, never queued (a queue
+         *     of sims would just pile up threadpool workers).
+         */
+        post: operations["what_if_api_scout_traders__address__what_if_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -223,14 +465,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wallets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Wallets
+         * @description One row per wallet in the book (settings order), then every wallet
+         *     winding down (an orphan with open copies, or a stop still pending).
+         *     Position fields come from the engine's last cycle; if the engine
+         *     package is missing the book rows still come back, zeroed, read_ok
+         *     false. ROE % = (realized + unrealized) / allocation_usd x 100, None for
+         *     a wallet that is not on allocation sizing. Terms: in-book wallets from
+         *     settings; winding-down ones from the engine's `effective` (the terms they
+         *     last ran with).
+         */
+        get: operations["list_wallets_api_wallets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy Wallet
+         * @description Invest `allocation_usd` in this wallet, or adjust an existing
+         *     investment (keeps `invested_ms`, so its PnL ledger carries on). 409 at
+         *     MAX_LEADERS, 400 for a bad address or our own account, 422 for target
+         *     exposure without `target_leverage`. A pending stop for the wallet is
+         *     cancelled: the newer command wins.
+         */
+        post: operations["copy_wallet_api_wallets__address__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Wallet
+         * @description What investing would copy of his book right now, sized by the same
+         *     `engine.sizing.plan_allocation` the engine uses. 502 when his live read
+         *     fails, 503 when the engine package is missing.
+         */
+        post: operations["preview_wallet_api_wallets__address__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Wallet
+         * @description Stop copying this wallet: remove it (and its override) from settings,
+         *     then write `data/stop/<address>.flag`. 404 when it is neither in the book
+         *     nor an orphan we still hold copies of; 503 if that cannot be checked
+         *     because the engine package is missing.
+         */
+        post: operations["stop_wallet_api_wallets__address__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountRisk */
+        AccountRisk: {
+            /** Account Leverage */
+            account_leverage: number;
+            /** Long Bias Pct */
+            long_bias_pct?: number | null;
+            /** Long Notional Usd */
+            long_notional_usd: number;
+            /** Margin Usage Pct */
+            margin_usage_pct: number;
+            /** Nearest Liq Pct */
+            nearest_liq_pct?: number | null;
+            /** Perps Usd */
+            perps_usd: number;
+            /** Short Notional Usd */
+            short_notional_usd: number;
+            /** Spot Usd */
+            spot_usd: number;
+            /** Staked Usd */
+            staked_usd: number;
+            /** Unrealized Pnl Usd */
+            unrealized_pnl_usd: number;
+        };
         /** AddLeaderRequest */
         AddLeaderRequest: {
             /** Address */
             address: string;
+        };
+        /** CandleView */
+        CandleView: {
+            /** C */
+            c: number;
+            /** H */
+            h: number;
+            /** L */
+            l: number;
+            /** O */
+            o: number;
+            /** T Ms */
+            t_ms: number;
+            /** V */
+            v: number;
         };
         /**
          * CloseAllResponse
@@ -245,6 +621,20 @@ export interface components {
             /** Requested Ms */
             requested_ms: number;
             settings: components["schemas"]["Settings"];
+        };
+        /** CoinStat */
+        CoinStat: {
+            /** Coin */
+            coin: string;
+            /** Pnl Usd */
+            pnl_usd: number;
+            /**
+             * Trips
+             * @default 0
+             */
+            trips: number;
+            /** Volume Usd */
+            volume_usd: number;
         };
         /** CopyFit */
         CopyFit: {
@@ -293,6 +683,13 @@ export interface components {
             sizing_mode: components["schemas"]["SizingMode"];
             /** Unrealized Pnl Usd */
             unrealized_pnl_usd: number;
+        };
+        /** CurvePoint */
+        CurvePoint: {
+            /** T Ms */
+            t_ms: number;
+            /** Value */
+            value: number;
         };
         /** DiscoveryRun */
         DiscoveryRun: {
@@ -372,6 +769,8 @@ export interface components {
             day_pnl_usd?: number | null;
             /** Dry Run */
             dry_run: boolean;
+            /** Effective Poll S */
+            effective_poll_s?: number | null;
             /** Enabled */
             enabled: boolean;
             /** Equity Usd */
@@ -389,6 +788,33 @@ export interface components {
             /** Running */
             running: boolean;
         };
+        /**
+         * EntryContext
+         * @description Market state at one entry, from candles. All deterministic.
+         */
+        EntryContext: {
+            /** Breakout */
+            breakout?: boolean | null;
+            /** Hour Utc */
+            hour_utc: number;
+            /** Move 24H Pct */
+            move_24h_pct?: number | null;
+            /** Pullback */
+            pullback?: boolean | null;
+            /** Rsi 14 */
+            rsi_14?: number | null;
+            /** Trend Aligned */
+            trend_aligned?: boolean | null;
+        };
+        /**
+         * ExposureMode
+         * @description How an `allocation` wallet turns the invested dollars into exposure.
+         *     match:  his book at his own leverage. Copy notional = his notional / his equity x allocation_usd.
+         *     target: his book at YOUR leverage. Copy notional = his notional / his gross notional
+         *             x allocation_usd x target_leverage, i.e. allocation x L spread in his proportions.
+         * @enum {string}
+         */
+        ExposureMode: "match" | "target";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -401,15 +827,44 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** LeaderFillView */
+        LeaderFillView: {
+            /** Closed Pnl Usd */
+            closed_pnl_usd: number;
+            /** Coin */
+            coin: string;
+            /** Dir */
+            dir: string;
+            /** Fee Usd */
+            fee_usd: number;
+            /** Notional Usd */
+            notional_usd: number;
+            /** Px */
+            px: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "B" | "A";
+            /** Sz */
+            sz: number;
+            /** Time Ms */
+            time_ms: number;
+        };
         /**
          * LeaderOverride
          * @description Per-leader override. Absent field = inherit the book-wide value.
          */
         LeaderOverride: {
+            /** Allocation Usd */
+            allocation_usd?: number | null;
+            exposure_mode?: components["schemas"]["ExposureMode"] | null;
             /** Fixed Margin Usd */
             fixed_margin_usd?: number | null;
             /** Fixed Notional Usd */
             fixed_notional_usd?: number | null;
+            /** Invested Ms */
+            invested_ms?: number | null;
             /** Leverage */
             leverage?: number | null;
             leverage_mode?: components["schemas"]["LeverageMode"] | null;
@@ -419,6 +874,9 @@ export interface components {
             /** Size Multiplier */
             size_multiplier?: number | null;
             sizing_mode?: components["schemas"]["SizingMode"] | null;
+            small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
+            /** Target Leverage */
+            target_leverage?: number | null;
         };
         /** LeaderStatus */
         LeaderStatus: {
@@ -427,8 +885,28 @@ export interface components {
             effective: components["schemas"]["Settings"];
             /** Equity Usd */
             equity_usd?: number | null;
+            /**
+             * Exposure Usd
+             * @default 0
+             */
+            exposure_usd: number;
+            /**
+             * Fees Usd
+             * @default 0
+             */
+            fees_usd: number;
             /** Last Read Ms */
             last_read_ms?: number | null;
+            /**
+             * Margin Used Usd
+             * @default 0
+             */
+            margin_used_usd: number;
+            /**
+             * Open Copies
+             * @default 0
+             */
+            open_copies: number;
             /**
              * Open Positions
              * @default 0
@@ -438,6 +916,21 @@ export interface components {
             owned_coins?: string[];
             /** Read Ok */
             read_ok: boolean;
+            /**
+             * Realized Pnl Usd
+             * @default 0
+             */
+            realized_pnl_usd: number;
+            /**
+             * Stopping
+             * @default false
+             */
+            stopping: boolean;
+            /**
+             * Unrealized Pnl Usd
+             * @default 0
+             */
+            unrealized_pnl_usd: number;
         };
         /**
          * LeverageMode
@@ -449,6 +942,158 @@ export interface components {
          * @enum {string}
          */
         MarginMode: "isolated" | "cross";
+        /** OpenOrderView */
+        OpenOrderView: {
+            /** Coin */
+            coin: string;
+            /**
+             * Is Trigger
+             * @default false
+             */
+            is_trigger: boolean;
+            /** Limit Px */
+            limit_px: number;
+            /** Notional Usd */
+            notional_usd: number;
+            /** Oid */
+            oid: number;
+            /**
+             * Order Type
+             * @default Limit
+             */
+            order_type: string;
+            /** Orig Sz */
+            orig_sz: number;
+            /**
+             * Reduce Only
+             * @default false
+             */
+            reduce_only: boolean;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "B" | "A";
+            /** Sz */
+            sz: number;
+            /** Tif */
+            tif?: string | null;
+            /** Time Ms */
+            time_ms: number;
+            /** Trigger Condition */
+            trigger_condition?: string | null;
+            /** Trigger Px */
+            trigger_px?: number | null;
+        };
+        /**
+         * PnlTier
+         * @enum {string}
+         */
+        PnlTier: "losing" | "up" | "strong" | "elite";
+        /**
+         * PnlWindow
+         * @enum {string}
+         */
+        PnlWindow: "1d" | "7d" | "30d" | "all";
+        /** RiskStats */
+        RiskStats: {
+            /**
+             * Days
+             * @default 0
+             */
+            days: number;
+            /** Max Drawdown Pct */
+            max_drawdown_pct?: number | null;
+            /** Profitable Days Pct */
+            profitable_days_pct?: number | null;
+            /** Sharpe */
+            sharpe?: number | null;
+            /** Sortino */
+            sortino?: number | null;
+            window: components["schemas"]["PnlWindow"];
+        };
+        /** RoundTrip */
+        RoundTrip: {
+            /** Closed Ms */
+            closed_ms: number;
+            /** Coin */
+            coin: string;
+            /** Entry Px */
+            entry_px: number;
+            /** Exit Px */
+            exit_px: number;
+            /** Hold H */
+            hold_h: number;
+            /** Max Notional Usd */
+            max_notional_usd: number;
+            /** Net Pnl Usd */
+            net_pnl_usd: number;
+            /** Opened Ms */
+            opened_ms: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "long" | "short";
+            /** Win */
+            win: boolean;
+        };
+        /** ScoutPresets */
+        ScoutPresets: {
+            /** Coin Counts */
+            coin_counts?: {
+                [key: string]: number;
+            };
+            /** Coins */
+            coins?: string[];
+            /**
+             * Hip3 Count
+             * @default 0
+             */
+            hip3_count: number;
+            /** Refresh Id */
+            refresh_id?: string | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * ScoutSort
+         * @enum {string}
+         */
+        ScoutSort: "fit" | "sim_return" | "sim_dd" | "pnl" | "roi" | "account_value" | "sharpe" | "max_dd" | "win_rate" | "trips" | "last_active" | "volume";
+        /** ScoutStatus */
+        ScoutStatus: {
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /** Error */
+            error?: string | null;
+            /** Eta S */
+            eta_s?: number | null;
+            /** Last Ok Ms */
+            last_ok_ms?: number | null;
+            /** Next Due Ms */
+            next_due_ms?: number | null;
+            /** Refresh Id */
+            refresh_id: string | null;
+            /** Stage */
+            stage?: ("leaderboard" | "stats" | "sim") | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "running" | "failed";
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /**
          * Settings
          * @description The whole user-editable configuration. Stored at data/settings.json,
@@ -456,8 +1101,13 @@ export interface components {
          */
         Settings: {
             /**
+             * Allocation Usd
+             * @default 0
+             */
+            allocation_usd: number;
+            /**
              * Contract Version
-             * @default 3
+             * @default 5
              */
             contract_version: number;
             /**
@@ -475,6 +1125,8 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+            /** @default match */
+            exposure_mode: components["schemas"]["ExposureMode"];
             /**
              * Fixed Margin Usd
              * @default 1
@@ -490,6 +1142,8 @@ export interface components {
              * @default false
              */
             include_spot_staked: boolean;
+            /** Invested Ms */
+            invested_ms?: number | null;
             /** Leader Overrides */
             leader_overrides?: {
                 [key: string]: components["schemas"]["LeaderOverride"];
@@ -511,10 +1165,20 @@ export interface components {
              */
             max_open_copies: number;
             /**
+             * Max Order Volume Pct
+             * @default 0.5
+             */
+            max_order_volume_pct: number;
+            /**
              * Max Position Leverage
              * @default 50
              */
             max_position_leverage: number;
+            /**
+             * Max Slippage Pct
+             * @default 1
+             */
+            max_slippage_pct: number;
             /**
              * Max Worse Entry Pct
              * @default 10
@@ -547,6 +1211,13 @@ export interface components {
              * @default 1
              */
             sleeve_frac: number;
+            /** @default concentrate */
+            small_account_mode: components["schemas"]["SmallAccountMode"];
+            /**
+             * Target Leverage
+             * @default 5
+             */
+            target_leverage: number;
         };
         /**
          * SettingsPatch
@@ -565,6 +1236,8 @@ export interface components {
          *     validate-then-write ordering in SettingsStore.patch().
          */
         SettingsPatch: {
+            /** Allocation Usd */
+            allocation_usd?: number | null;
             /** Contract Version */
             contract_version?: number | null;
             /** Daily Loss Limit Usd */
@@ -573,12 +1246,15 @@ export interface components {
             dry_run?: boolean | null;
             /** Enabled */
             enabled?: boolean | null;
+            exposure_mode?: components["schemas"]["ExposureMode"] | null;
             /** Fixed Margin Usd */
             fixed_margin_usd?: number | null;
             /** Fixed Notional Usd */
             fixed_notional_usd?: number | null;
             /** Include Spot Staked */
             include_spot_staked?: boolean | null;
+            /** Invested Ms */
+            invested_ms?: number | null;
             /** Leader Overrides */
             leader_overrides?: {
                 [key: string]: components["schemas"]["LeaderOverride"] | null;
@@ -591,8 +1267,12 @@ export interface components {
             margin_mode?: components["schemas"]["MarginMode"] | null;
             /** Max Open Copies */
             max_open_copies?: number | null;
+            /** Max Order Volume Pct */
+            max_order_volume_pct?: number | null;
             /** Max Position Leverage */
             max_position_leverage?: number | null;
+            /** Max Slippage Pct */
+            max_slippage_pct?: number | null;
             /** Max Worse Entry Pct */
             max_worse_entry_pct?: number | null;
             /** Min Order Bump */
@@ -606,12 +1286,308 @@ export interface components {
             sizing_mode?: components["schemas"]["SizingMode"] | null;
             /** Sleeve Frac */
             sleeve_frac?: number | null;
+            small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
+            /** Target Leverage */
+            target_leverage?: number | null;
         };
+        /**
+         * SizeTier
+         * @enum {string}
+         */
+        SizeTier: "S" | "M" | "L" | "XL" | "XXL";
         /**
          * SizingMode
          * @enum {string}
          */
-        SizingMode: "fixed_margin" | "fixed_notional" | "proportional";
+        SizingMode: "fixed_margin" | "fixed_notional" | "proportional" | "allocation";
+        /**
+         * SmallAccountMode
+         * @description What to do when a copy slice is under HL's $10.50 minimum (small allocations).
+         *     concentrate: copy only the positions that clear the minimum and spread the whole
+         *                  allocation across those, in the leader's proportions (his biggest bets).
+         *     bump:        round a small slice up to the minimum while it fits the allocation cap.
+         *     skip:        drop slices under the minimum.
+         * @enum {string}
+         */
+        SmallAccountMode: "concentrate" | "bump" | "skip";
+        /** StrategyFingerprint */
+        StrategyFingerprint: {
+            /** Address */
+            address: string;
+            /** As Of Ms */
+            as_of_ms: number;
+            /** Avg Adds Per Trip */
+            avg_adds_per_trip?: number | null;
+            /** Avg Leverage */
+            avg_leverage?: number | null;
+            /** Avg Loss Usd */
+            avg_loss_usd?: number | null;
+            /** Avg Rsi Long Entry */
+            avg_rsi_long_entry?: number | null;
+            /** Avg Rsi Short Entry */
+            avg_rsi_short_entry?: number | null;
+            /** Avg Win Usd */
+            avg_win_usd?: number | null;
+            /** Breakout Pct */
+            breakout_pct?: number | null;
+            /** Caveats */
+            caveats?: string[];
+            /** Examples */
+            examples?: components["schemas"]["TradeExample"][];
+            /** Hour Hist Utc */
+            hour_hist_utc?: number[];
+            /** Long Pct */
+            long_pct?: number | null;
+            /** Loser Hold Vs Winner */
+            loser_hold_vs_winner?: number | null;
+            /** Max Leverage */
+            max_leverage?: number | null;
+            /** Median Hold H */
+            median_hold_h?: number | null;
+            /** P90 Hold H */
+            p90_hold_h?: number | null;
+            /** Payoff Ratio */
+            payoff_ratio?: number | null;
+            /** Pnl From Top Coin Pct */
+            pnl_from_top_coin_pct?: number | null;
+            /** Pullback Pct */
+            pullback_pct?: number | null;
+            /** Scales In Pct */
+            scales_in_pct?: number | null;
+            /** Scales Out Pct */
+            scales_out_pct?: number | null;
+            style?: components["schemas"]["TradingStyle"] | null;
+            /** Summary */
+            summary: string;
+            /** Tags */
+            tags?: string[];
+            /** Top Coins */
+            top_coins?: components["schemas"]["CoinStat"][];
+            /** Trend Aligned Pct */
+            trend_aligned_pct?: number | null;
+            /** Trips Analyzed */
+            trips_analyzed: number;
+            /** Weekday Hist */
+            weekday_hist?: number[];
+            /** Win Rate Pct */
+            win_rate_pct?: number | null;
+            /** Window Days */
+            window_days: number;
+            /** Worst Trip Pct Of Equity */
+            worst_trip_pct_of_equity?: number | null;
+        };
+        /**
+         * Thesis
+         * @description A written strategy thesis for one trader. `ta` ones are regenerated
+         *     from the fingerprint; `claude_code` ones are saved through the MCP
+         *     server and kept until replaced.
+         */
+        Thesis: {
+            /** Address */
+            address: string;
+            /** Author */
+            author?: string | null;
+            /** Created Ms */
+            created_ms: number;
+            /** Fingerprint As Of Ms */
+            fingerprint_as_of_ms?: number | null;
+            /** Markdown */
+            markdown: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "ta" | "claude_code";
+            /** Title */
+            title: string;
+        };
+        /**
+         * ThesisWrite
+         * @description PUT /api/scout/traders/{address}/thesis. The server sets `source`
+         *     ("claude_code", always), `address` and `created_ms`; a body carrying
+         *     any of them is a 422 (extra="forbid"), so a client can never write a
+         *     "ta" thesis.
+         */
+        ThesisWrite: {
+            /** Author */
+            author?: string | null;
+            /** Markdown */
+            markdown: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * TradeExample
+         * @description One representative round trip shown as evidence for a fingerprint claim.
+         */
+        TradeExample: {
+            /** Adds */
+            adds: number;
+            /** Closed Ms */
+            closed_ms: number;
+            /** Coin */
+            coin: string;
+            context: components["schemas"]["EntryContext"];
+            /** Hold H */
+            hold_h: number;
+            /** Max Leverage */
+            max_leverage?: number | null;
+            /** Net Pnl Usd */
+            net_pnl_usd: number;
+            /** Opened Ms */
+            opened_ms: number;
+            /** Return Pct */
+            return_pct: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "long" | "short";
+            /** Why Shown */
+            why_shown: string;
+        };
+        /** TradeStats */
+        TradeStats: {
+            /** Avg Hold H */
+            avg_hold_h?: number | null;
+            /** Long Trips */
+            long_trips: number;
+            /** Median Hold H */
+            median_hold_h?: number | null;
+            /**
+             * Opens Per Day
+             * @default 0
+             */
+            opens_per_day: number;
+            /** Short Trips */
+            short_trips: number;
+            /** Trips */
+            trips: number;
+            /** Win Rate Pct */
+            win_rate_pct?: number | null;
+            window: components["schemas"]["PnlWindow"];
+            /** Wins */
+            wins: number;
+        };
+        /** TraderPage */
+        TraderPage: {
+            /** As Of Ms */
+            as_of_ms: number;
+            /** Cohort Size */
+            cohort_size: number;
+            /** Refresh Id */
+            refresh_id: string;
+            /** Rows */
+            rows: components["schemas"]["TraderRow"][];
+            /** Settings Hash */
+            settings_hash: string;
+            /**
+             * Stale Settings
+             * @default false
+             */
+            stale_settings: boolean;
+            /** Total */
+            total: number;
+        };
+        /** TraderPositionView */
+        TraderPositionView: {
+            /** Coin */
+            coin: string;
+            /** Entry Px */
+            entry_px: number;
+            /** Funding Since Open Usd */
+            funding_since_open_usd: number;
+            /** Is Cross */
+            is_cross: boolean;
+            /** Leverage */
+            leverage: number;
+            /** Liq Distance Pct */
+            liq_distance_pct?: number | null;
+            /** Liquidation Px */
+            liquidation_px?: number | null;
+            /** Margin Usd */
+            margin_usd: number;
+            /** Mark Px */
+            mark_px: number;
+            /** Notional Usd */
+            notional_usd: number;
+            /** Roe Pct */
+            roe_pct: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "long" | "short";
+            /** Size */
+            size: number;
+            /** Unrealized Pnl Usd */
+            unrealized_pnl_usd: number;
+        };
+        /** TraderProfile */
+        TraderProfile: {
+            account: components["schemas"]["AccountRisk"];
+            /** Coins */
+            coins: components["schemas"]["CoinStat"][];
+            /** Daily Pnl */
+            daily_pnl: components["schemas"]["CurvePoint"][];
+            /** Longest Win Streak Days */
+            longest_win_streak_days: number;
+            /** Pnl Curve */
+            pnl_curve: {
+                [key: string]: components["schemas"]["CurvePoint"][];
+            };
+            /** Positions */
+            positions: components["schemas"]["TraderPositionView"][];
+            /** Positions As Of Ms */
+            positions_as_of_ms: number;
+            /** Recent Fills */
+            recent_fills?: components["schemas"]["LeaderFillView"][];
+            /** Recent Trips */
+            recent_trips?: components["schemas"]["RoundTrip"][];
+            /** Risk */
+            risk: components["schemas"]["RiskStats"][];
+            row: components["schemas"]["TraderRow"];
+            /** Sim Curve */
+            sim_curve: components["schemas"]["CurvePoint"][];
+            /** Trades */
+            trades: components["schemas"]["TradeStats"][];
+            /** Value Curve */
+            value_curve: {
+                [key: string]: components["schemas"]["CurvePoint"][];
+            };
+        };
+        /** TraderRow */
+        TraderRow: {
+            /** Account Value Usd */
+            account_value_usd: number;
+            /** Address */
+            address: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Flags */
+            flags?: string[];
+            /**
+             * In Book
+             * @default false
+             */
+            in_book: boolean;
+            /** Last Fill Ms */
+            last_fill_ms?: number | null;
+            /** Perf */
+            perf: components["schemas"]["WindowPerf"][];
+            /** Pnl Spark 30D */
+            pnl_spark_30d?: components["schemas"]["CurvePoint"][];
+            pnl_tier: components["schemas"]["PnlTier"];
+            risk_30d: components["schemas"]["RiskStats"];
+            score: components["schemas"]["TraderScore"];
+            /** Sim Spark 30D */
+            sim_spark_30d?: components["schemas"]["CurvePoint"][];
+            size_tier: components["schemas"]["SizeTier"];
+            style?: components["schemas"]["TradingStyle"] | null;
+            /** Top Coins */
+            top_coins?: components["schemas"]["CoinStat"][];
+            trades_30d: components["schemas"]["TradeStats"];
+        };
         /**
          * TraderScore
          * @description One ranked candidate. Ranked by what COPYING him would have earned at
@@ -680,6 +1656,239 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WalletCopyRequest
+         * @description POST /api/wallets/{address}/copy: add the wallet to the book (if new)
+         *     and set its allocation in one atomic settings write.
+         */
+        WalletCopyRequest: {
+            /** Allocation Usd */
+            allocation_usd: number;
+            /** @default match */
+            exposure_mode: components["schemas"]["ExposureMode"];
+            margin_mode?: components["schemas"]["MarginMode"] | null;
+            /** Max Worse Entry Pct */
+            max_worse_entry_pct?: number | null;
+            small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
+            /** Target Leverage */
+            target_leverage?: number | null;
+        };
+        /**
+         * WalletPosition
+         * @description GET /api/wallets: one row per wallet the user is invested in (in the
+         *     book) or still winding down (an orphan with open copies, or stopping).
+         *     The LeaderStatus "position" fields plus the allocation terms.
+         */
+        WalletPosition: {
+            /** Address */
+            address: string;
+            /** Allocation Usd */
+            allocation_usd?: number | null;
+            /** Equity Usd */
+            equity_usd?: number | null;
+            exposure_mode?: components["schemas"]["ExposureMode"] | null;
+            /**
+             * Exposure Usd
+             * @default 0
+             */
+            exposure_usd: number;
+            /**
+             * Fees Usd
+             * @default 0
+             */
+            fees_usd: number;
+            /** In Book */
+            in_book: boolean;
+            /** Invested Ms */
+            invested_ms?: number | null;
+            /** Last Read Ms */
+            last_read_ms?: number | null;
+            /**
+             * Margin Used Usd
+             * @default 0
+             */
+            margin_used_usd: number;
+            /**
+             * Open Copies
+             * @default 0
+             */
+            open_copies: number;
+            /** Owned Coins */
+            owned_coins?: string[];
+            /**
+             * Pnl Usd
+             * @default 0
+             */
+            pnl_usd: number;
+            /**
+             * Read Ok
+             * @default false
+             */
+            read_ok: boolean;
+            /**
+             * Realized Pnl Usd
+             * @default 0
+             */
+            realized_pnl_usd: number;
+            /** Roe Pct */
+            roe_pct?: number | null;
+            sizing_mode?: components["schemas"]["SizingMode"] | null;
+            small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
+            /**
+             * Stopping
+             * @default false
+             */
+            stopping: boolean;
+            /** Target Leverage */
+            target_leverage?: number | null;
+            /**
+             * Unrealized Pnl Usd
+             * @default 0
+             */
+            unrealized_pnl_usd: number;
+        };
+        /**
+         * WalletPreview
+         * @description POST /api/wallets/{address}/preview: what investing would copy of his
+         *     book right now. Computed by engine.sizing.plan_allocation, the same
+         *     function the engine sizes with.
+         */
+        WalletPreview: {
+            /** Address */
+            address: string;
+            /** Allocation Usd */
+            allocation_usd: number;
+            /** As Of Ms */
+            as_of_ms: number;
+            /**
+             * Copied
+             * @default 0
+             */
+            copied: number;
+            exposure_mode: components["schemas"]["ExposureMode"];
+            /** His Equity Usd */
+            his_equity_usd: number;
+            /** His Gross Notional Usd */
+            his_gross_notional_usd: number;
+            /**
+             * Margin Already Used Usd
+             * @default 0
+             */
+            margin_already_used_usd: number;
+            /** Min Allocation For Full Book */
+            min_allocation_for_full_book?: number | null;
+            /**
+             * Multi Cycle
+             * @default false
+             */
+            multi_cycle: boolean;
+            /** Notes */
+            notes?: string[];
+            /**
+             * Planned Margin Usd
+             * @default 0
+             */
+            planned_margin_usd: number;
+            /**
+             * Planned Notional Usd
+             * @default 0
+             */
+            planned_notional_usd: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Slices */
+            slices?: components["schemas"]["WalletPreviewSlice"][];
+            small_account_mode: components["schemas"]["SmallAccountMode"];
+            /** Target Leverage */
+            target_leverage?: number | null;
+        };
+        /**
+         * WalletPreviewSlice
+         * @description One of his positions in a WalletPreview.
+         */
+        WalletPreviewSlice: {
+            /** Coin */
+            coin: string;
+            /**
+             * Fill Cycles
+             * @default 1
+             */
+            fill_cycles: number;
+            /** His Notional Usd */
+            his_notional_usd: number;
+            /** Leverage */
+            leverage: number;
+            /** Liquidity Cap Usd */
+            liquidity_cap_usd?: number | null;
+            /** Margin Usd */
+            margin_usd: number;
+            /** Notional Usd */
+            notional_usd: number;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "long" | "short";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "copy" | "trimmed" | "bump" | "skip";
+            /** Weight Pct */
+            weight_pct: number;
+        };
+        /**
+         * WalletStopRequest
+         * @description POST /api/wallets/{address}/stop. close_positions true: close our copies
+         *     of this wallet now (reduce-only, like close-all for one wallet). False: stop
+         *     opening new copies and let the open ones follow him out.
+         */
+        WalletStopRequest: {
+            /**
+             * Close Positions
+             * @default true
+             */
+            close_positions: boolean;
+        };
+        /**
+         * WalletStopResponse
+         * @description POST /api/wallets/{address}/stop. `settings` no longer has the wallet.
+         *     `stopping` true: a stop-and-close is pending; the engine closes the copies
+         *     on its next cycles (events: `close` reason "stop wallet", then `skip`
+         *     "wallet stopped") and `GET /api/wallets` shows the row winding down.
+         */
+        WalletStopResponse: {
+            settings: components["schemas"]["Settings"];
+            /** Stopping */
+            stopping: boolean;
+        };
+        /** WhatIfRequest */
+        WhatIfRequest: {
+            override: components["schemas"]["LeaderOverride"];
+            /** Sim Equity Usd */
+            sim_equity_usd: number;
+        };
+        /** WhatIfResult */
+        WhatIfResult: {
+            score: components["schemas"]["TraderScore"];
+            /** Sim Curve */
+            sim_curve: components["schemas"]["CurvePoint"][];
+        };
+        /** WindowPerf */
+        WindowPerf: {
+            /** Pnl Usd */
+            pnl_usd: number;
+            /** Roi Pct */
+            roi_pct: number;
+            /** Volume Usd */
+            volume_usd: number;
+            window: components["schemas"]["PnlWindow"];
         };
     };
     responses: never;
@@ -950,6 +2159,635 @@ export interface operations {
             };
         };
     };
+    get_candles_api_market_candles_get: {
+        parameters: {
+            query: {
+                coin: string;
+                interval: "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "8h" | "12h" | "1d";
+                start_ms: number;
+                end_ms: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandleView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.public.candles isn't available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_presets_api_scout_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutPresets"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_api_scout_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description a refresh is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_status_api_scout_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_traders_api_scout_traders_get: {
+        parameters: {
+            query?: {
+                window?: components["schemas"]["PnlWindow"];
+                preset?: string;
+                coin?: string[];
+                min_av?: number | null;
+                max_av?: number | null;
+                min_pnl?: number | null;
+                max_pnl?: number | null;
+                style?: components["schemas"]["TradingStyle"][];
+                min_fit?: number | null;
+                max_fit?: number | null;
+                max_dd?: number | null;
+                min_trips?: number | null;
+                active_within_h?: number | null;
+                hide_flagged?: boolean;
+                q?: string | null;
+                sort?: components["schemas"]["ScoutSort"];
+                order?: "asc" | "desc";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraderPage"];
+                };
+            };
+            /** @description ETag matched */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trader_api_scout_traders__address__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraderProfile"];
+                };
+            };
+            /** @description profile is being built; poll again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description not a 0x address, or no data for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trader_fills_api_scout_traders__address__fills_get: {
+        parameters: {
+            query?: {
+                before_ms?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderFillView"][];
+                };
+            };
+            /** @description not a 0x address, or no data for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_fingerprint_api_scout_traders__address__fingerprint_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyFingerprint"];
+                };
+            };
+            /** @description fingerprint is being computed; poll again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description not a 0x address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description fingerprint queue full; retry later */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description the fingerprint compute failed (next GET retries) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description discovery.thesis isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trader_orders_api_scout_traders__address__orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenOrderView"][];
+                };
+            };
+            /** @description not a 0x address, or no data for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_thesis_api_scout_traders__address__thesis_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Thesis"][];
+                };
+            };
+            /** @description not a 0x address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.thesis isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_thesis_api_scout_traders__address__thesis_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThesisWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Thesis"];
+                };
+            };
+            /** @description not a 0x address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.thesis isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trades_api_scout_traders__address__trades_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeExample"][];
+                };
+            };
+            /** @description fingerprint is being computed; poll again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description not a 0x address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description fingerprint queue full; retry later */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description the fingerprint compute failed (next GET retries) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description discovery.thesis isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    what_if_api_scout_traders__address__what_if_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatIfRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhatIfResult"];
+                };
+            };
+            /** @description not a 0x address, or no data for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description a what-if is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_settings_api_settings_get: {
         parameters: {
             query?: never;
@@ -1052,6 +2890,131 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EngineStatus"];
+                };
+            };
+        };
+    };
+    list_wallets_api_wallets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletPosition"][];
+                };
+            };
+        };
+    };
+    copy_wallet_api_wallets__address__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletCopyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_wallet_api_wallets__address__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletCopyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_wallet_api_wallets__address__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletStopRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletStopResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

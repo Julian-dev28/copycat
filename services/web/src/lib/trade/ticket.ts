@@ -86,6 +86,8 @@ export interface TicketPreview {
   liq: LiqEstimate;
   liquidityCapped: boolean;
   maxCycles: number;
+  /** Engine notes (api preview only), e.g. "his equity read is stale". */
+  notes?: string[];
   source: "local" | "api";
 }
 

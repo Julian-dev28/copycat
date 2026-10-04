@@ -80,7 +80,7 @@ export function MarketsPanel({
       </div>
 
       <div className="max-h-[22rem] min-h-0 flex-1 overflow-y-auto md:max-h-[34rem] xl:max-h-none">
-        <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_4rem_3.75rem_2.25rem] gap-2 border-b border-border bg-surface px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+        <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_2rem] gap-2 border-b border-border bg-surface px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted">
           <span>Wallet</span>
           <span className="text-right" title="Equity index: 100 thirty days ago, deposits and withdrawals removed">Index</span>
           <button
@@ -111,7 +111,17 @@ export function MarketsPanel({
         ) : null}
         <ul aria-label={`${TABS.find((t) => t.id === tab)?.label} list`}>
           {shown.map((m) => (
-            <MarketRow key={m.address} m={m} selected={m.address === selected} change={change} onSelect={onSelect} />
+            <MarketRow
+              key={m.address}
+              m={m}
+              selected={m.address === selected}
+              change={change}
+              onSelect={(a) => {
+                // Pin the tab the user picked from, so copying a wallet doesn't flip the list to "My wallets".
+                if (tabChoice === null) setTab(tab);
+                onSelect(a);
+              }}
+            />
           ))}
         </ul>
         {items.length > shown.length ? (

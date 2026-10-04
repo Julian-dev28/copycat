@@ -31,7 +31,7 @@ export function localPreview(inp: TicketInput): TicketPreview {
   if (inp.smallMode === "concentrate") {
     sized = concentrate(raw, total, MIN);
     sized.forEach((s, i) => {
-      if (s <= 0 && raw[i] > 0) reasons[i] = "below $10 min: amount moved to his bigger bets";
+      if (s <= 0 && raw[i] > 0) reasons[i] = "under $10 min: moved to his bigger bets";
     });
   } else {
     sized = raw.map((r) => (r >= MIN ? r : 0));
@@ -45,7 +45,7 @@ export function localPreview(inp: TicketInput): TicketPreview {
           sized[i] = MIN;
           bumped[i] = true;
           margin += m;
-        } else reasons[i] = "below $10 min, no room left to round up";
+        } else reasons[i] = "under $10 min, no room to round up";
       }
     } else {
       raw.forEach((r, i) => {

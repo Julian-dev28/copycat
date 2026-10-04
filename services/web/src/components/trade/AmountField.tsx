@@ -13,6 +13,7 @@ export function AmountField({
   value,
   onChange,
   maxUsd,
+  freeUsd,
   equityUsd,
   error,
   warn,
@@ -20,6 +21,8 @@ export function AmountField({
   value: string;
   onChange: (v: string) => void;
   maxUsd: number | null;
+  /** Free margin right now (the label); maxUsd also counts this wallet's own margin. */
+  freeUsd: number | null | undefined;
   equityUsd: number | null | undefined;
   error: string | null;
   warn: string | null;
@@ -31,7 +34,7 @@ export function AmountField({
       <label htmlFor="invest" className="flex items-baseline justify-between text-xs font-medium text-muted">
         <span className="text-sm text-foreground">Invest</span>
         <span className="font-num">
-          Free {formatUsd(maxUsd, (maxUsd ?? 0) >= 100_000)} · Equity {formatUsd(equityUsd, (equityUsd ?? 0) >= 100_000)}
+          Free {formatUsd(freeUsd, (freeUsd ?? 0) >= 100_000)} · Equity {formatUsd(equityUsd, (equityUsd ?? 0) >= 100_000)}
         </span>
       </label>
       <div
@@ -50,7 +53,7 @@ export function AmountField({
           onChange={(e) => onChange(e.target.value)}
           aria-describedby="invest-help"
           aria-invalid={Boolean(error && value)}
-          className="font-num min-w-0 flex-1 bg-transparent text-2xl font-semibold tabular-nums outline-none placeholder:text-muted/60"
+          className="font-num min-w-0 flex-1 bg-transparent text-2xl font-semibold tabular-nums outline-none focus-visible:outline-none placeholder:text-muted/60"
         />
         {echo ? <span className="font-num text-sm text-muted">{echo}</span> : null}
         <span className="text-xs font-medium text-muted">USD</span>

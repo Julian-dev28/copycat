@@ -68,22 +68,28 @@ export interface WalletStopRequest {
   close_positions: boolean;
 }
 
-/** One row of GET /api/wallets: our "position" in one wallet. */
+/** One row of GET /api/wallets (contract WalletPosition): our "position" in one wallet. */
 export interface WalletPosition {
   address: string;
-  allocation_usd: number;
-  exposure_mode: ExposureMode;
-  target_leverage?: number | null;
-  invested_ms?: number | null;
+  /** False: stopped, copies winding down. Older apis omit it (treated as true). */
+  in_book?: boolean;
+  read_ok: boolean;
+  equity_usd?: number | null;
   open_copies: number;
   margin_used_usd: number;
   exposure_usd: number;
   unrealized_pnl_usd: number;
   realized_pnl_usd: number;
   fees_usd: number;
+  pnl_usd?: number;
   roe_pct?: number | null;
   stopping: boolean;
-  read_ok: boolean;
-  equity_usd?: number | null;
+  owned_coins?: string[];
+  last_read_ms?: number | null;
+  sizing_mode?: string | null;
+  allocation_usd?: number | null;
+  exposure_mode?: ExposureMode | null;
+  target_leverage?: number | null;
   small_account_mode?: SmallAccountMode | null;
+  invested_ms?: number | null;
 }

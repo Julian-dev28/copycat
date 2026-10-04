@@ -104,3 +104,17 @@ describe("api preview normalization", () => {
     expect(normalizeApiPreview("nope").copies).toEqual([]);
   });
 });
+
+import { isNavActive, NAV_LINKS } from "./nav";
+
+describe("nav", () => {
+  it("Trade · Scout · Portfolio · Settings, no Discover", () => {
+    expect(NAV_LINKS.map((l) => l.label)).toEqual(["Trade", "Scout", "Portfolio", "Settings"]);
+  });
+  it("home is active only on /, others on sub-pages too", () => {
+    expect(isNavActive("/", "/")).toBe(true);
+    expect(isNavActive("/", "/scout")).toBe(false);
+    expect(isNavActive("/scout", "/scout/0xabc")).toBe(true);
+    expect(isNavActive("/settings", "/settingsx")).toBe(false);
+  });
+});

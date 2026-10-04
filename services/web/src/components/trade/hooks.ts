@@ -86,6 +86,12 @@ export function useStopWallet() {
   });
 }
 
+export function usePatchTradeSettings() {
+  const { source } = useTradeMode();
+  const done = useInvalidateBook();
+  return useMutation({ mutationFn: (patch: Partial<TradeSettings>) => source.patch(patch), onSuccess: done });
+}
+
 /** `value`, but only after it stopped changing for `ms`. setState runs in the timer, not the effect body. */
 export function useDebounced<T>(value: T, ms = 300): T {
   const [out, setOut] = useState(value);

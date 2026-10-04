@@ -61,7 +61,7 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-border">
-          {["Coin", "Lev", "Notional", "Entry", "Mark", "uPnL (ROE)", "To liq", "Your copy"].map((h) => (
+          {["Coin", "Your copy", "Lev", "Notional", "Entry", "Mark", "uPnL (ROE)", "To liq"].map((h) => (
             <th key={h} scope="col" className={clsx(TH, h === "Your copy" && "text-accent")}>{h}</th>
           ))}
         </tr>
@@ -77,6 +77,13 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
                   <span className={clsx("text-[11px] font-semibold uppercase", p.side === "long" ? "text-success" : "text-danger")}>{p.side}</span>
                 </span>
               </td>
+              <td className={TD}>
+                {!c ? <span className="text-muted">enter an amount</span> : c.status === "skipped" ? (
+                  <span className="text-warning" title={c.reason ?? undefined}>skipped</span>
+                ) : (
+                  <span>{formatUsd(c.notionalUsd, c.notionalUsd >= 100_000)} <span className="text-[11px] text-muted">{c.leverage}x</span></span>
+                )}
+              </td>
               <td className={TD}>{p.leverage}x <span className="text-[11px] text-muted">{p.is_cross ? "cross" : "iso"}</span></td>
               <td className={TD}>{formatUsd(p.notional_usd, true)}</td>
               <td className={TD}>{formatPrice(p.entry_px)}</td>
@@ -85,13 +92,7 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
                 {formatSignedUsd(p.unrealized_pnl_usd)} <span className="text-[11px]">({formatSignedPct(p.roe_pct)})</span>
               </td>
               <td className={TD}>{formatPct(p.liq_distance_pct)}</td>
-              <td className={TD}>
-                {!c ? <span className="text-muted">enter an amount</span> : c.status === "skipped" ? (
-                  <span className="text-warning" title={c.reason ?? undefined}>skipped</span>
-                ) : (
-                  <span>{formatUsd(c.notionalUsd)} <span className="text-[11px] text-muted">{c.leverage}x</span></span>
-                )}
-              </td>
+
             </tr>
           );
         })}

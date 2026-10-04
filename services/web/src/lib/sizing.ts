@@ -73,6 +73,9 @@ export function previewNotionalUsd(sizing: SizingInputs, leverage: number, propo
       const allocationUsd = clamp(sizing.sleeveFrac, 0, 1) * Math.max(0, ourEquityUsd);
       return Math.max(0, exposureRatio * allocationUsd * sizing.sizeMultiplier);
     }
+    case "allocation":
+      // Sized per wallet from its allocation (lib/trade/preview.ts), not from the book-wide recipe.
+      return 0;
   }
 }
 

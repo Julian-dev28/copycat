@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Gauge, Moon, Radar, Settings as SettingsIcon, Sun, Telescope } from "lucide-react";
+import { BarChart3, KeyRound, Moon, Settings as SettingsIcon, Sun, Telescope, Wallet } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,15 +8,15 @@ import { useSyncExternalStore, type CSSProperties } from "react";
 import { clsx } from "clsx";
 import { useAuth } from "@/context/AuthContext";
 import { CatLogo } from "@/components/CatLogo";
+import { isNavActive, NAV_LINKS } from "@/lib/trade/nav";
 
-const LINKS = [
-  { href: "/scout", label: "Scout", icon: Telescope },
-  { href: "/copy", label: "Copy", icon: Copy },
-  { href: "/positions", label: "Positions", icon: Gauge },
-  { href: "/discover", label: "Discover", icon: Radar },
-];
+const ICONS = { "/": BarChart3, "/scout": Telescope, "/portfolio": Wallet, "/settings": SettingsIcon } as const;
 
 const noopSubscribe = () => () => {};
+const demoQuery = () => {
+  const p = new URLSearchParams(window.location.search);
+  return p.get("demo") === "1" ? `?demo=1${p.get("acct") ? `&acct=${p.get("acct")}` : ""}` : "";
+};
 
 export function TopNav() {
   const pathname = usePathname();
@@ -24,13 +24,15 @@ export function TopNav() {
   const { openDrawer, hasToken } = useAuth();
   // false during SSR/hydration, true on the client: the theme icon needs it.
   const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  // Keep demo mode across the nav (read at render; client navigation re-renders the nav).
+  const demo = useSyncExternalStore(noopSubscribe, demoQuery, () => "");
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4">
+      <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-2 px-4">
         <div className="flex min-w-0 items-center gap-3 sm:gap-6">
           <Link
-            href="/copy"
+            href={`/${demo}`}
             aria-label="copycat home"
             className="flex items-center gap-1.5 text-base font-bold tracking-tight"
             // Eyes use the accent's own foreground: near-black on the dark theme's #ff7a1a (7.7:1),
@@ -38,18 +40,19 @@ export function TopNav() {
             style={{ "--cat-eye": "var(--accent-foreground)" } as CSSProperties}
           >
             <CatLogo size={22} className="text-accent" />
-            <span>
+            <span className="hidden min-[420px]:inline">
               <span className="text-accent">copy</span>
               <span>cat</span>
             </span>
           </Link>
           <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Primary">
-            {LINKS.map(({ href, label, icon: Icon }) => {
-              const active = pathname?.startsWith(href);
+            {NAV_LINKS.map(({ href, label }) => {
+              const Icon = ICONS[href];
+              const active = isNavActive(href, pathname);
               return (
                 <Link
                   key={href}
-                  href={href}
+                  href={`${href}${demo}`}
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
                   className={clsx(
@@ -58,16 +61,14 @@ export function TopNav() {
                   )}
                 >
                   <Icon size={15} aria-hidden="true" />
-                  <span className={active ? "" : "hidden sm:inline"}>{label}</span>
+                  <span className={active ? "" : "hidden md:inline"}>{label}</span>
                 </Link>
               );
             })}
           </nav>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
-          {!hasToken ? (
-            <span className="hidden text-xs text-warning sm:inline">no API token set</span>
-          ) : null}
+          {!hasToken && !demo ? <span className="hidden text-xs text-warning lg:inline">no API token set</span> : null}
           <button
             type="button"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -79,10 +80,11 @@ export function TopNav() {
           <button
             type="button"
             onClick={openDrawer}
-            aria-label="Open settings"
+            aria-label="API token"
+            title="API token"
             className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-foreground"
           >
-            <SettingsIcon size={17} />
+            <KeyRound size={17} />
           </button>
         </div>
       </div>

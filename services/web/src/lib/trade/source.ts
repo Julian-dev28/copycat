@@ -21,6 +21,8 @@ export interface TradeSource {
   copy(address: string, body: WalletCopyRequest): Promise<TradeSettings>;
   stop(address: string, body: WalletStopRequest): Promise<TradeSettings>;
   preview(address: string, body: WalletCopyRequest): Promise<TicketPreview>;
+  /** Book-wide setting change (only_new_positions from the ticket). */
+  patch(patch: Partial<TradeSettings>): Promise<TradeSettings>;
 }
 
 const enc = (a: string) => encodeURIComponent(normAddr(a));
@@ -42,6 +44,7 @@ export const liveTrade: TradeSource = {
   copy: (a, body) => apiFetch<TradeSettings>(`/api/wallets/${enc(a)}/copy`, post(body)),
   stop: (a, body) => apiFetch<TradeSettings>(`/api/wallets/${enc(a)}/stop`, post(body)),
   preview: async (a, body) => normalizeApiPreview(await apiFetch<unknown>(`/api/wallets/${enc(a)}/preview`, post(body))),
+  patch: (patch) => apiFetch<TradeSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(patch) }),
 };
 
 // ── demo ─────────────────────────────────────────────────────────────────────
@@ -113,6 +116,11 @@ export function demoTrade(acct: DemoAccount): TradeSource {
         }, 2_500);
       }
       return later(structuredClone(b.settings), 300);
+    },
+    patch: (patch) => {
+      const b = book(acct);
+      b.settings = { ...b.settings, ...patch };
+      return later(structuredClone(b.settings), 150);
     },
     preview: (address, body) => {
       const s = book(acct).settings;

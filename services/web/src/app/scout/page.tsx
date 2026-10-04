@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
@@ -146,7 +147,10 @@ function ScoutBoard() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Scout</h1>
-          <p className="text-sm text-muted">Traders ranked by what copying them would have earned you, at your settings.</p>
+          <p className="text-sm text-muted">
+            Traders ranked by what copying them would have earned you, at your settings.{" "}
+            <Link href="/discover" className="font-medium text-accent hover:underline">Run a custom sim</Link>
+          </p>
         </div>
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
       </div>

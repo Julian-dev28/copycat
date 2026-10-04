@@ -28,8 +28,8 @@ import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
-export const CONTRACT_VERSION = 3;
-export const MAX_LEADERS = 10;
+export const CONTRACT_VERSION = 5;
+export const MAX_LEADERS = 25;
 export const HL_MIN_ORDER_USD = 10.5;
 export const MAX_LEVERAGE_CAP = 50;
 
@@ -40,10 +40,16 @@ export type Side = "long" | "short";
 
 export type LeaderOverride = Schemas["LeaderOverride"];
 
-export type Settings = Omit<Schemas["Settings"], "leaders" | "leader_overrides"> & {
-  leaders: string[];
-  leader_overrides: Record<string, LeaderOverride>;
-};
+/** v4/v5 fields (Trade allocation, small accounts, liquidity caps): optional so a v3 api still type-checks. */
+type V5SettingsKeys =
+  | "allocation_usd" | "exposure_mode" | "target_leverage" | "invested_ms"
+  | "small_account_mode" | "max_order_volume_pct" | "max_slippage_pct";
+
+export type Settings = Omit<Schemas["Settings"], "leaders" | "leader_overrides" | V5SettingsKeys> &
+  Partial<Pick<Schemas["Settings"], V5SettingsKeys>> & {
+    leaders: string[];
+    leader_overrides: Record<string, LeaderOverride>;
+  };
 
 /** PATCH body: see module doc point 3 for why this isn't just Partial<Schemas["SettingsPatch"]>. */
 export type SettingsPatch = Partial<Omit<Settings, "leader_overrides">> & {
