@@ -81,19 +81,19 @@ UNIVERSE_COLUMNS = ("address", "display_name", "account_value", "pnl_1d", "pnl_7
                     "roi_1d", "roi_7d", "roi_30d", "roi_all", "vlm_1d", "vlm_7d", "vlm_30d", "vlm_all",
                     "is_vault", "source", "seen_ms")
 
-_ready: Dict[int, bool] = {}
-_ready_lock = threading.Lock()
+_schema_lock = threading.Lock()
 
 
 def connect(path: Optional[Path] = None) -> sqlite3.Connection:
     """Per-thread connection from discovery.db.connect (WAL, discovery's own
-    schema) plus Scout's tables, created once per connection."""
+    schema) plus Scout's tables. Whether they exist is asked of the file each
+    time (one indexed sqlite_master lookup): caching it by connection id was a
+    bug, ids are reused after a connection is collected."""
     conn = discovery_db.connect(path or C.db_path())
-    with _ready_lock:
-        if not _ready.get(id(conn)):
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_requests'").fetchone() is None:
+        with _schema_lock:
             conn.executescript(SCHEMA)
             conn.commit()
-            _ready[id(conn)] = True
     return conn
 
 

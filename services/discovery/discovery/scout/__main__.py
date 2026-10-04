@@ -72,7 +72,8 @@ def main(argv=None) -> int:
     a = p.parse_args(sys.argv[1:] if argv is None else argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    from . import public, refresh as R
+    from . import public
+    from . import refresh as R
     if a.cmd == "serve":
         print(f"scout serve: progress in {public.C.progress_log_path()} "
               f"(tail -f {public.C.progress_log_path()})")

@@ -4,7 +4,7 @@ import { useId, useState, type FocusEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { clsx } from "clsx";
 import { AlertTriangle, Info } from "lucide-react";
-import { capLines, fitGrade, fitSegments, blendedFit, type FitGrade } from "@/lib/scout/copyFit";
+import { capLines, fitGrade, fitSegments, blendedFit, topParts, type FitGrade } from "@/lib/scout/copyFit";
 import type { CopyFit } from "@/lib/scout/types";
 
 const GRADE_TEXT: Record<FitGrade, string> = { strong: "strong", fair: "fair", weak: "weak", none: "not scored" };
@@ -94,10 +94,13 @@ const POP_W = 296;
 export function CopyFitMeter({
   fit,
   size = "sm",
+  showParts = true,
   className,
 }: {
   fit: CopyFit | null | undefined;
   size?: "sm" | "lg";
+  /** The "top 3 parts" line under the bar (cards); off in the dense table. */
+  showParts?: boolean;
   className?: string;
 }) {
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
@@ -159,16 +162,23 @@ export function CopyFitMeter({
           <span className="font-num text-xs text-muted">/100</span>
           <span
             className={clsx(
-              "ml-auto inline-flex items-center gap-1 text-[11px] font-medium",
+              "ml-auto inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium",
               grade === "strong" ? "text-accent" : "text-muted",
             )}
           >
             {fit.caps.some((c) => c !== "fills_truncated") ? <AlertTriangle size={11} className="text-warning" aria-hidden="true" /> : null}
-            Copy Fit · {GRADE_TEXT[grade]}
+            {showParts ? "Copy Fit · " : ""}
+            {GRADE_TEXT[grade]}
             <Info size={11} className="opacity-60 group-hover:opacity-100" aria-hidden="true" />
           </span>
         </span>
         <FitBar fit={fit} height={big ? 10 : 6} />
+        {showParts ? <span className="truncate text-[11px] text-muted">
+          {topParts(fit)
+            .filter((p) => p.points > 0)
+            .map((p) => `${p.label} +${p.points.toFixed(0)}`)
+            .join(" · ") || "no part scored above zero"}
+        </span> : null}
       </button>
       {pos
         ? createPortal(

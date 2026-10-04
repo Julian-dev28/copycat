@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { clsx } from "clsx";
-import { ArrowDown, ArrowUp, BookMarked } from "lucide-react";
+import { ArrowDown, ArrowUp, BookMarked, ChevronRight } from "lucide-react";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { CopyFitMeter } from "./CopyFitMeter";
 import { Sparkline } from "./Sparkline";
@@ -91,20 +91,33 @@ export function TraderTable({
             const perf = windowPerf(row, window);
             const inBook = row.in_book || book.inBook(row.address);
             const s = row.score;
+            const href = scoutHref(`/scout/${row.address}`, demo);
             return (
               <tr key={row.address} className="border-b border-border/70 last:border-b-0 hover:bg-surface-2/50">
                 <td className="font-num px-3 py-2.5 text-right text-xs text-muted">{i + 1}</td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <Link href={scoutHref(`/scout/${row.address}`, demo)} className="max-w-[9rem] truncate font-medium hover:text-accent">
-                      {row.display_name ?? "Trader file"}
-                    </Link>
-                    {inBook ? <BookMarked size={12} className="text-accent" aria-label="In your book" /> : null}
+                <td className="whitespace-nowrap px-3 py-2.5">
+                  {row.display_name ? (
+                    <div className="flex items-center gap-1.5">
+                      <Link href={href} className="max-w-[10rem] truncate font-medium hover:text-accent">
+                        {row.display_name}
+                      </Link>
+                      {inBook ? <BookMarked size={12} className="text-accent" aria-label="In your book" /> : null}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-1">
+                    <AddressChip address={row.address} strong={!row.display_name} />
+                    {!row.display_name ? (
+                      <>
+                        <Link href={href} aria-label="Open trader file" title="Open trader file" className="rounded p-1 text-muted hover:bg-surface-2 hover:text-accent">
+                          <ChevronRight size={13} aria-hidden="true" />
+                        </Link>
+                        {inBook ? <BookMarked size={12} className="text-accent" aria-label="In your book" /> : null}
+                      </>
+                    ) : null}
                   </div>
-                  <AddressChip address={row.address} />
                 </td>
-                <td className="w-40 px-3 py-2.5">
-                  <CopyFitMeter fit={s.copy_fit} />
+                <td className="w-44 min-w-44 px-3 py-2.5">
+                  <CopyFitMeter fit={s.copy_fit} showParts={false} />
                 </td>
                 <td className={clsx("font-num px-3 py-2.5 text-right font-medium", TONE_TEXT[toneOf(s.sim_return_pct)])}>
                   {formatSignedPct(s.sim_return_pct)}
@@ -119,12 +132,12 @@ export function TraderTable({
                 <td className="px-3 py-2.5">
                   <StyleTag style={row.style} />
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="min-w-40 px-3 py-2.5">
                   <CoinBadges coins={row.top_coins} max={3} />
                 </td>
                 <td className="font-num whitespace-nowrap px-3 py-2.5 text-right text-xs text-muted">{formatAgo(row.last_fill_ms, nowMs)}</td>
                 <td className="px-3 py-2.5">
-                  <Sparkline points={row.pnl_spark_30d} width={96} height={28} className="w-24" />
+                  <Sparkline points={row.pnl_spark_30d} sim={row.sim_spark_30d} width={96} height={28} className="w-24" />
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   <AddToBookButton address={row.address} book={book} inBook={inBook} />

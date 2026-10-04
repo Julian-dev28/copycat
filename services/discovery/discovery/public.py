@@ -165,3 +165,6 @@ def heartbeat_ms(run_id: str) -> Optional[int]:
 def latest() -> Optional[DiscoveryRun]:
     run_id = db.latest_run_id(_conn())
     return get_run(run_id) if run_id else None
+
+# Thin candle reads for the api (GET /api/market/candles); see candles_public.py.
+from .candles_public import candles  # noqa: E402,F401

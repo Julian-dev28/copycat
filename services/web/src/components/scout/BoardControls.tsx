@@ -235,7 +235,7 @@ export function FilterPanel({ state, update, onClear }: { state: BoardState; upd
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <NumberField id="f-min-av" label="Account value min" leading="$" placeholder="10k" value={state.minAv} onCommit={(v) => update({ minAv: v })} />
+        <NumberField id="f-min-av" label="Account value min" leading="$" placeholder="e.g. 10k" value={state.minAv} onCommit={(v) => update({ minAv: v })} />
         <NumberField id="f-max-av" label="Account value max" leading="$" placeholder="any" value={state.maxAv} onCommit={(v) => update({ maxAv: v })} />
         <NumberField id="f-min-pnl" label={`PnL ${WINDOW_LABEL[state.window]} min`} leading="$" placeholder="any" value={state.minPnl} onCommit={(v) => update({ minPnl: v })} />
         <NumberField id="f-max-pnl" label={`PnL ${WINDOW_LABEL[state.window]} max`} leading="$" placeholder="any" value={state.maxPnl} onCommit={(v) => update({ maxPnl: v })} />

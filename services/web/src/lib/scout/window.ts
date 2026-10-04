@@ -3,7 +3,7 @@
  * window" decision lives here so the board, the trader file and the tests
  * agree. Pure functions.
  */
-import { formatSignedPct, formatSignedUsd, formatUsd } from "@/lib/format";
+import { formatSignedPct, formatUsd } from "@/lib/format";
 import type { CurvePoint, PnlWindow, RiskStats, TradeStats, TraderProfile, TraderRow, WindowPerf } from "./types";
 
 export const WINDOW_MS: Record<PnlWindow, number | null> = {
@@ -37,7 +37,10 @@ export function pnlFigure(row: Pick<TraderRow, "perf">, w: PnlWindow, unit: "usd
 /** +$1.2M / -$3.4K: signed and compact, for dense cards. */
 export function formatSignedUsdCompact(v: number | null | undefined): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  if (Math.abs(v) < 10_000) return formatSignedUsd(Math.round(v));
+  if (Math.abs(v) < 10_000) {
+    const r = Math.round(v);
+    return `${r > 0 ? "+" : r < 0 ? "-" : ""}$${Math.abs(r).toLocaleString("en-US")}`;
+  }
   return `${v > 0 ? "+" : v < 0 ? "-" : ""}${formatUsd(Math.abs(v), true)}`;
 }
 

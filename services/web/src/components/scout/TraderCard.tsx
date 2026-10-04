@@ -5,7 +5,7 @@ import { clsx } from "clsx";
 import { BookMarked } from "lucide-react";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { CopyFitMeter } from "./CopyFitMeter";
-import { Sparkline } from "./Sparkline";
+import { SparkLegend, Sparkline } from "./Sparkline";
 import { AddToBookButton, CoinBadges, scoutHref, StyleTag } from "./bits";
 import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatSignedPct, formatUsd } from "@/lib/format";
@@ -49,7 +49,8 @@ export function TraderCard({
       <header className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="font-num mt-0.5 w-6 flex-shrink-0 text-right text-xs text-muted">{rank}</span>
-          <div className="min-w-0">
+          {/* fixed height whether or not he has a display name, so every card's rows line up across the grid */}
+          <div className="flex min-h-10 min-w-0 flex-col justify-center">
             {row.display_name ? <div className="truncate text-sm font-semibold text-foreground">{row.display_name}</div> : null}
             <AddressChip address={row.address} strong={!row.display_name} className="relative z-10" />
           </div>
@@ -84,7 +85,10 @@ export function TraderCard({
         </div>
       </dl>
 
-      <Sparkline points={row.pnl_spark_30d} className="w-full" height={44} />
+      <div className="flex flex-col gap-1">
+        <Sparkline points={row.pnl_spark_30d} sim={row.sim_spark_30d} className="w-full" height={44} />
+        <SparkLegend hasSim={row.sim_spark_30d.length >= 2} />
+      </div>
 
       <CopyFitMeter fit={s.copy_fit} className="relative z-10" />
 

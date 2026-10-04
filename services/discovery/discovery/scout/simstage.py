@@ -45,7 +45,7 @@ SKIP_PREFIXES = ("worse_entry:", "margin_room:", "max_open_copies:", "max_levera
 
 
 def default_sizing() -> Any:
-    from engine import sizing as engine_sizing   # lazy, as in discovery.runner
+    from engine import sizing as engine_sizing  # lazy, as in discovery.runner
     return engine_sizing
 
 

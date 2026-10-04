@@ -3,13 +3,14 @@ fake with portfolio/extras/open_orders on top of discovery_fakes.FakeVenue,
 and builders for HL-shaped portfolio, leaderboard and fills payloads."""
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional, Sequence
 
 from discovery_fakes import FakeVenue
 
 DAY = 86_400_000
 HOUR = 3_600_000
-NOW = 1_790_000_000_000 - (1_790_000_000_000 % DAY) + 12 * HOUR   # a fixed UTC noon
+NOW = (int(time.time() * 1000) // DAY) * DAY - 12 * HOUR   # yesterday, UTC noon: always in the past
 
 
 def addr(i: int) -> str:

@@ -59,7 +59,7 @@ def rsi(closes: Sequence[float], period: int = C.RSI_PERIOD) -> Optional[float]:
     losses = [max(-d, 0.0) for d in deltas]
     ag = sum(gains[:period]) / period
     al = sum(losses[:period]) / period
-    for g, lo in zip(gains[period:], losses[period:]):
+    for g, lo in zip(gains[period:], losses[period:], strict=True):
         ag = (ag * (period - 1) + g) / period
         al = (al * (period - 1) + lo) / period
     if al == 0:

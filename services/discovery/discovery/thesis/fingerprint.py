@@ -180,7 +180,8 @@ def select_examples(views: Sequence[TripView], tags: Sequence[str], session_star
     """Fixed rules, in order, skipping a trip already shown, up to
     MAX_EXAMPLES: largest win, largest loss, the typical trip for each tag
     that has a trip predicate (in tag order), the typical trip overall,
-    highest leverage, longest hold, most adds."""
+    highest leverage, longest hold, most adds, best and worst return on
+    notional, then the most recent trips until full."""
     chosen: List[Tuple[TripView, str]] = []
     seen = set()
 
@@ -214,6 +215,10 @@ def select_examples(views: Sequence[TripView], tags: Sequence[str], session_star
     adders = [v for v in views if v.trip.adds > 0]
     if adders:
         add(min(adders, key=lambda v: (-v.trip.adds, *order(v))), "most adds")
+    add(min(views, key=lambda v: (-v.trip.return_pct, *order(v))), "best return on notional")
+    add(min(views, key=lambda v: (v.trip.return_pct, *order(v))), "worst return on notional")
+    for v in sorted(views, key=lambda v: (-v.trip.closed_ms, v.trip.coin)):   # fill with the newest
+        add(v, "recent trip")
 
     return [TradeExample(
         coin=v.trip.coin, side=v.trip.side, opened_ms=v.trip.opened_ms, closed_ms=v.trip.closed_ms,
@@ -231,7 +236,7 @@ def build_fingerprint(address: str, fills: Sequence[Dict[str, Any]],
     """Everything deterministic. `fills` should already be the window's
     fills; trips opened before now - window_days are dropped anyway.
     `bars_by_coin[coin]` None (or absent) means no candles for that coin."""
-    from .template import render_summary   # template imports this module's helpers
+    from .template import render_summary  # template imports this module's helpers
 
     ws = now_ms - window_days * C.DAY_MS
     window_fills = [f for f in fills if ws <= int(f["time_ms"]) <= now_ms]

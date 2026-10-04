@@ -28,6 +28,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const noSubscribe = () => () => {};
+const isDemoUrl = () => new URLSearchParams(window.location.search).get("demo") === "1";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   // undefined on the server and during hydration, then the stored value.
   const token = useSyncExternalStore<string | null | undefined>(
@@ -36,7 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [unauthorized, setUnauthorized] = useState(false);
   // null = the user hasn't opened or closed it yet: open it when there is no token.
   const [drawerChoice, setDrawerChoice] = useState<boolean | null>(null);
-  const drawerOpen = drawerChoice ?? token === null;
+  // `?demo=1` pages (Scout's fixture board) need no token, so don't pop the drawer over them.
+  // Read at render time; the snapshot is recomputed on every render, so client navigation is picked up.
+  const demo = useSyncExternalStore(noSubscribe, isDemoUrl, () => false);
+  const drawerOpen = drawerChoice ?? (token === null && !demo);
 
   useEffect(() => {
     return onUnauthorized(() => {

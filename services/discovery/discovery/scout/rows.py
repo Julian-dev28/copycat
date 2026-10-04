@@ -12,13 +12,28 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence
 
-from contracts.models import (AccountRisk, CoinStat, CopyFit, CurvePoint, LeaderFillView, PnlWindow, RiskStats,
-                              RoundTrip, TradeStats, TraderPositionView, TraderProfile, TraderRow, TraderScore,
-                              TradingStyle, WindowPerf)
+from contracts.models import (
+    AccountRisk,
+    CoinStat,
+    CopyFit,
+    CurvePoint,
+    LeaderFillView,
+    PnlWindow,
+    RiskStats,
+    RoundTrip,
+    TraderPositionView,
+    TraderProfile,
+    TraderRow,
+    TraderScore,
+    TradeStats,
+    TradingStyle,
+    WindowPerf,
+)
 
 from .. import db as discovery_db
 from . import config as C
-from . import copy_fit, metrics as M, store
+from . import copy_fit, store
+from . import metrics as M
 
 HIDE_FLAGS = ("liquidated", "hft", "vault", "inactive")
 _WIN = (("1d", PnlWindow.day), ("7d", PnlWindow.week), ("30d", PnlWindow.month), ("all", PnlWindow.all_time))
@@ -176,9 +191,9 @@ def fill_view(f: Dict[str, Any]) -> LeaderFillView:
 def recent_fills(conn: sqlite3.Connection, address: str, before_ms: Optional[int], limit: int) -> List[LeaderFillView]:
     """Newest first, strictly before before_ms (None = now), from the fills cache."""
     hi = (before_ms - 1) if before_ms is not None else 2**62
-    rows = conn.execute("SELECT * FROM fills WHERE wallet = ? AND time_ms <= ? ORDER BY time_ms DESC LIMIT ?",
-                        (address, hi, int(limit))).fetchall()
-    return [fill_view(dict(r)) for r in rows]
+    # through discovery.db's accessor, never its table name (the fills table is that module's to change)
+    rows = discovery_db.get_cached_fills(conn, address, 0, hi)
+    return [fill_view(r) for r in rows[-int(limit):][::-1]]
 
 
 def _profile_sim(conn: sqlite3.Connection, address: str, ptr: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

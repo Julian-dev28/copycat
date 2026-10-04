@@ -25,8 +25,19 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from contracts.models import (LeaderFillView, LeaderOverride, ScoutPresets, ScoutStatus, Settings, TraderPage, TraderProfile,
-                              TraderRow, TraderScore, WhatIfResult, norm_addr)
+from contracts.models import (
+    LeaderFillView,
+    LeaderOverride,
+    ScoutPresets,
+    ScoutStatus,
+    Settings,
+    TraderPage,
+    TraderProfile,
+    TraderRow,
+    TraderScore,
+    WhatIfResult,
+    norm_addr,
+)
 
 from . import config as C
 from . import query as Q

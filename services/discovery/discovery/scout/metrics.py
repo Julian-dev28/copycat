@@ -26,8 +26,19 @@ import statistics
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from contracts.models import (AccountRisk, CoinStat, CurvePoint, PnlTier, PnlWindow, RiskStats,
-                              RoundTrip, SizeTier, TradeStats, TraderPositionView, TradingStyle)
+from contracts.models import (
+    AccountRisk,
+    CoinStat,
+    CurvePoint,
+    PnlTier,
+    PnlWindow,
+    RiskStats,
+    RoundTrip,
+    SizeTier,
+    TraderPositionView,
+    TradeStats,
+    TradingStyle,
+)
 
 from .. import positions
 from . import config as C
@@ -58,7 +69,7 @@ def parse_portfolio(raw: Optional[Sequence[Any]]) -> Dict[str, Dict[str, Any]]:
             continue
         name, body = pair
 
-        def series(key: str) -> List[Point]:
+        def series(key: str, body: Dict[str, Any] = body) -> List[Point]:
             pts = []
             for p in body.get(key) or []:
                 if isinstance(p, (list, tuple)) and len(p) == 2:
@@ -105,7 +116,7 @@ def daily_returns(pnl: Sequence[Point], av: Sequence[Point]) -> DailyReturns:
     p = day_closes(pnl)
     a = day_closes(av)
     out = DailyReturns([], [], [])
-    for (t0, p0), (t1, p1) in zip(p, p[1:]):
+    for (t0, p0), (t1, p1) in zip(p, p[1:], strict=False):
         av0 = _value_at(a, t0)
         if av0 is None or av0 < C.MIN_AV_FOR_RETURN:
             continue
@@ -173,7 +184,7 @@ def daily_pnl(port: Dict[str, Dict[str, Any]], now_ms: int, days: int = C.CALEND
     per_day: Dict[int, float] = {}
     for name in ("allTime", "month", "week"):          # later (denser) windows overwrite
         closes = day_closes((port.get(name) or {}).get("pnl") or [])
-        for (t0, p0), (t1, p1) in zip(closes, closes[1:]):
+        for (t0, p0), (t1, p1) in zip(closes, closes[1:], strict=False):
             if t1 - t0 == C.DAY_MS:
                 per_day[t1] = p1 - p0
             elif name == "allTime" and t1 not in per_day:

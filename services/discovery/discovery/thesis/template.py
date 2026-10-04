@@ -36,7 +36,7 @@ _LESSONS = {
     "scales out": "Take profit in pieces: {scales_out_pct:.0f}% of trips close in two or more exits.",
     "runs winners": "Let winners run: the average win is {payoff_ratio:.1f}x the average loss.",
     "cuts losers fast": "Cut losers early: losing trips are held {loser_hold_vs_winner:.2f}x as long as "
-                        "winners.",
+                        "winners (median vs median).",
     "holds losers": "Warning, not a lesson: losers are held {loser_hold_vs_winner:.1f}x as long as "
                     "winners. Do not copy that habit.",
     "high win rate": "A high hit rate ({win_rate_pct:.0f}%) carries the edge; check the payoff before "
@@ -169,8 +169,12 @@ def _holds(fp: StrategyFingerprint) -> List[str]:
     s = f"Median hold is {hours(fp.median_hold_h)}"
     if fp.p90_hold_h is not None:
         s += f" (90% of trips close within {hours(fp.p90_hold_h)})"
-    if fp.loser_hold_vs_winner is not None:
-        s += f"; losers are held {fp.loser_hold_vs_winner:.2f}x as long as winners"
+    r = fp.loser_hold_vs_winner
+    if r is not None:
+        if r < 0.05:
+            s += "; losers are closed almost at once, at under 5% of a winner's hold"
+        else:
+            s += f"; losers are held {r:.2f}x as long as winners"
     return [s + "."]
 
 
@@ -180,8 +184,11 @@ def _sizing(fp: StrategyFingerprint) -> List[str]:
         if fp.scales_in_pct == 0 and fp.scales_out_pct == 0:
             out.append("Goes in and out in one piece: no adds, single exits.")
         else:
-            out.append(f"Adds to {pct(fp.scales_in_pct)} of trips ({fp.avg_adds_per_trip or 0:.1f} adds on "
-                       f"average) and scales out of {pct(fp.scales_out_pct)}.")
+            ins = (f"Adds to {pct(fp.scales_in_pct)} of trips ({fp.avg_adds_per_trip or 0:.1f} adds on average)"
+                   if fp.scales_in_pct > 0 else "Never adds to a trip")
+            outs = (f"scales out of {pct(fp.scales_out_pct)}" if fp.scales_out_pct > 0
+                    else "exits each in one piece")
+            out.append(f"{ins} and {outs}.")
     if fp.avg_leverage is not None and fp.max_leverage is not None:
         s = (f"Runs about {fp.avg_leverage:.1f}x effective leverage on average, peaking at "
              f"{fp.max_leverage:.1f}x")

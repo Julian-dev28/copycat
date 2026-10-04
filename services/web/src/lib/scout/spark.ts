@@ -106,3 +106,56 @@ export function niceTicks(lo: number, hi: number, count = 4): number[] {
   }
   return out;
 }
+
+export interface DualSparkline {
+  width: number;
+  height: number;
+  /** His PnL line and its area to the zero line. */
+  his: { path: string; area: string; change: number };
+  /** Your copy-sim equity line; null when the sim has fewer than 2 points. */
+  sim: { path: string; change: number } | null;
+  zeroY: number;
+}
+
+function rebase(points: CurvePoint[]): CurvePoint[] {
+  const sorted = [...points].sort((a, b) => a.t_ms - b.t_ms);
+  const base = sorted[0]?.value ?? 0;
+  return sorted.map((p) => ({ t_ms: p.t_ms, value: p.value - base }));
+}
+
+/** Divide by the series' largest absolute value, so it spans at most [-1, 1]. Flat series stay at 0. */
+function unitScale(points: CurvePoint[]): CurvePoint[] {
+  const m = points.reduce((a, p) => Math.max(a, Math.abs(p.value)), 0);
+  return m > 0 ? points.map((p) => ({ t_ms: p.t_ms, value: p.value / m })) : points;
+}
+
+/**
+ * Board sparkline, spec 4.1: his 30d PnL and your copy-sim equity, both
+ * rebased to 0 at the window start. His PnL is in his dollars (often six
+ * figures) and the sim is in yours ($1k), so on one dollar axis the sim would
+ * be a flat line. Each series is scaled by its own largest move instead: the
+ * glyph compares shape and direction (did your copy track him?), never size.
+ * The zero line is shared. Null when his series has fewer than 2 points.
+ */
+export function buildDualSparkline(his: CurvePoint[], sim: CurvePoint[], width: number, height: number, pad = 2): DualSparkline | null {
+  if (his.length < 2) return null;
+  const hisR = rebase(his);
+  const simR = sim.length >= 2 ? rebase(sim) : [];
+  const hisU = unitScale(hisR);
+  const simU = unitScale(simR);
+  const x = linearScale(timeExtent([hisU, simU]), [pad, width - pad]);
+  const [lo, hi] = valueExtent([hisU, simU]);
+  const y = linearScale([lo, hi], [height - pad, pad]);
+  const zeroY = y(0);
+  const path = linePath(hisU, x, y);
+  const first = hisU[0];
+  const last = hisU[hisU.length - 1];
+  const area = `${path} L${r2(x(last.t_ms))} ${r2(zeroY)} L${r2(x(first.t_ms))} ${r2(zeroY)} Z`;
+  return {
+    width,
+    height,
+    zeroY,
+    his: { path, area, change: hisR[hisR.length - 1].value },
+    sim: simU.length ? { path: linePath(simU, x, y), change: simR[simR.length - 1].value } : null,
+  };
+}

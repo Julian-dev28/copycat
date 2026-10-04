@@ -4,9 +4,10 @@ import { Copy, Gauge, Moon, Radar, Settings as SettingsIcon, Sun, Telescope } fr
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 import { clsx } from "clsx";
 import { useAuth } from "@/context/AuthContext";
+import { CatLogo } from "@/components/CatLogo";
 
 const LINKS = [
   { href: "/scout", label: "Scout", icon: Telescope },
@@ -28,9 +29,19 @@ export function TopNav() {
     <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4">
         <div className="flex min-w-0 items-center gap-3 sm:gap-6">
-          <Link href="/copy" className="flex items-center gap-1.5 text-base font-bold tracking-tight">
-            <span className="text-accent">copy</span>
-            <span>cat</span>
+          <Link
+            href="/copy"
+            aria-label="copycat home"
+            className="flex items-center gap-1.5 text-base font-bold tracking-tight"
+            // Eyes use the accent's own foreground: near-black on the dark theme's #ff7a1a (7.7:1),
+            // near-white on the light theme's #b04a08 (6.2:1). Near-black on #b04a08 is only ~3:1.
+            style={{ "--cat-eye": "var(--accent-foreground)" } as CSSProperties}
+          >
+            <CatLogo size={22} className="text-accent" />
+            <span>
+              <span className="text-accent">copy</span>
+              <span>cat</span>
+            </span>
           </Link>
           <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Primary">
             {LINKS.map(({ href, label, icon: Icon }) => {
