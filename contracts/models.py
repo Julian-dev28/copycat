@@ -12,7 +12,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CONTRACT_VERSION = 5   # v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
+CONTRACT_VERSION = 6   # v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
+# v5: v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
 # v4: v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
 # v3: Scout models (docs/research/copytrading_page_spec.md section 6)
 # v2: Venue cloid/order_status/ambiguous, partial-fill semantics
@@ -645,3 +646,137 @@ class WalletPreview(BaseModel):
     multi_cycle: bool = False                  # some slice fills over more than one cycle
     margin_already_used_usd: float = 0.0       # our existing copies of him (re-invest / adjust)
     notes: List[str] = Field(default_factory=list)
+
+
+# ── Trading accounts (v6): create / connect wallets, agent keys, multi-account ──
+# Self-hosted: keys live on this machine only. services/vault owns them.
+#   created          : copycat generated the main wallet; its key is encrypted with the
+#                      user's passphrase (scrypt + AES-GCM), unlocked only to sign
+#                      agent approvals and transfers. Never used to trade.
+#   connected_signed : the user's browser wallet signed an approveAgent for an agent key
+#                      generated in the browser. copycat never sees the main key.
+#   connected_key    : the user pasted a main address + an already-approved API wallet key.
+# In every kind, trading is signed by the AGENT key only (can trade, cannot withdraw).
+
+class AccountKind(str, Enum):
+    created = "created"
+    connected_signed = "connected_signed"
+    connected_key = "connected_key"
+
+
+class AgentStatus(str, Enum):
+    active = "active"
+    expiring = "expiring"        # <= 30 days left
+    expired = "expired"
+    missing = "missing"          # no agent stored, or HL no longer lists it
+    unknown = "unknown"          # the HL read failed
+
+
+class TradingAccount(BaseModel):
+    """One trading account. Never carries a secret."""
+    id: str
+    label: str = Field(min_length=1, max_length=60)
+    kind: AccountKind
+    address: str                              # the main account (holds the money)
+    agent_address: Optional[str] = None
+    agent_name: Optional[str] = None
+    agent_valid_until_ms: Optional[int] = None
+    agent_status: AgentStatus = AgentStatus.unknown
+    active: bool = False                      # the engine trades this one
+    created_ms: int
+    has_main_key: bool = False                # true only for `created`; key encrypted at rest
+
+
+class AccountBalances(BaseModel):
+    perps_usd: float
+    spot_usd: float
+    staked_usd: float
+    copytrade_usd: float                      # margin in copycat-managed copies
+    total_usd: float
+    withdrawable_usd: float
+
+
+class CreateAccountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=60)
+    passphrase: str = Field(min_length=12, max_length=256)
+
+
+class CreateAccountResponse(BaseModel):
+    account: TradingAccount
+    private_key: str          # shown ONCE for backup; never stored in plaintext, never returned again
+    backup_warning: str
+
+
+class ImportApiKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=60)
+    main_address: str
+    agent_private_key: str
+
+
+class AgentApprovalPrepareRequest(BaseModel):
+    """Step 1 of sign-with-wallet. The browser generated the agent keypair; it sends only
+    the agent ADDRESS here and gets back the exact EIP-712 typed data to sign."""
+    model_config = ConfigDict(extra="forbid")
+    main_address: str
+    agent_address: str
+    agent_name: str = Field("copycat", max_length=16)
+
+
+class AgentApprovalPrepareResponse(BaseModel):
+    typed_data: Dict[str, Any]                # pass to eth_signTypedData_v4 as-is
+    action: Dict[str, Any]                    # the HL approveAgent action the signature covers
+    nonce: int
+
+
+class AgentApprovalSubmitRequest(BaseModel):
+    """Step 2: the signed approval plus the agent private key (generated in the browser)."""
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=60)
+    main_address: str
+    agent_private_key: str
+    action: Dict[str, Any]
+    nonce: int
+    signature: str                            # 0x r||s||v from eth_signTypedData_v4
+
+
+class RefreshAgentRequest(BaseModel):
+    """For `created` accounts: passphrase unlocks the main key to sign a new approveAgent.
+    For connected accounts the web runs prepare/submit again instead."""
+    model_config = ConfigDict(extra="forbid")
+    passphrase: Optional[str] = None
+
+
+class TransferRequest(BaseModel):
+    """usdSend between copycat-created accounts (the source's main key signs)."""
+    model_config = ConfigDict(extra="forbid")
+    from_account_id: str
+    to_address: str
+    amount_usd: float = Field(gt=0)
+    passphrase: str
+
+
+class AccountSummary(BaseModel):
+    """The Account page header + overview. Metrics reuse the Scout computations."""
+    account: TradingAccount
+    balances: AccountBalances
+    unrealized_pnl_usd: float
+    account_leverage: float
+    margin_usage_pct: float
+    all_time_pnl_usd: Optional[float] = None
+    volume_usd: Optional[float] = None
+    longest_win_streak_days: Optional[int] = None
+    style: Optional[TradingStyle] = None
+    avg_hold_h: Optional[float] = None
+    median_hold_h: Optional[float] = None
+    pnl_tier: Optional[PnlTier] = None
+    size_tier: Optional[SizeTier] = None
+    risk_30d: Optional[RiskStats] = None
+    trades_30d: Optional[TradeStats] = None
+    long_notional_usd: float = 0.0
+    short_notional_usd: float = 0.0
+    pnl_curve: Dict[PnlWindow, List[CurvePoint]] = Field(default_factory=dict)
+    value_curve: Dict[PnlWindow, List[CurvePoint]] = Field(default_factory=dict)
+    daily_pnl: List[CurvePoint] = Field(default_factory=list)
+    as_of_ms: int

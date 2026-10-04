@@ -1506,7 +1506,7 @@
             "type": "number"
           },
           "contract_version": {
-            "default": 5,
+            "default": 6,
             "title": "Contract Version",
             "type": "integer"
           },
