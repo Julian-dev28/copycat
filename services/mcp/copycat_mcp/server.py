@@ -63,6 +63,7 @@ Address = Annotated[str, Field(description="Trader wallet, 0x + 40 hex chars.")]
 
 READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 WAIT_POLL_S = 5.0
+MAX_WAIT_S = 120.0     # hard ceiling on any wait_s (tests lower it)
 WaitS = Annotated[int, Field(ge=0, le=120, description="If copycat is still building this, wait up "
                                                        "to this many seconds (polling) before "
                                                        "returning. 0 = return 'building' at once.")]
@@ -113,7 +114,7 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
 
     async def _get_waiting_raw(path: str, wait_s: int) -> Any:
         """Like call_waiting but lets ApiError/RouteMissing through to the caller."""
-        deadline = time.monotonic() + max(0, wait_s)
+        deadline = time.monotonic() + min(max(0, wait_s), MAX_WAIT_S)
         while True:
             res = await api.request("GET", path)
             if not isinstance(res, Accepted) or time.monotonic() + WAIT_POLL_S > deadline:
@@ -124,7 +125,7 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         """GET that rides out 202 "building" for up to wait_s seconds. A fresh
         trader's profile or fingerprint takes ~10-60 s; polling here saves the
         model a retry loop."""
-        deadline = time.monotonic() + max(0, wait_s)
+        deadline = time.monotonic() + min(max(0, wait_s), MAX_WAIT_S)
         while True:
             res = await call("GET", path, params=params)
             if not isinstance(res, Accepted) or time.monotonic() + WAIT_POLL_S > deadline:

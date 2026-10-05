@@ -374,7 +374,7 @@ def test_preview_copy_validates_before_calling():
 
 def test_fingerprint_waits_out_202_then_returns(monkeypatch):
     import copycat_mcp.server as srv
-    monkeypatch.setattr(srv, "WAIT_POLL_S", 0.01)
+    monkeypatch.setattr(srv, "MAX_WAIT_S", 5.0)          # this test needs 3 polls
     answers = iter([httpx.Response(202, json={"state": "running"}),
                     httpx.Response(202, json={"state": "running"}),
                     httpx.Response(200, json={"trips_analyzed": 8})])
