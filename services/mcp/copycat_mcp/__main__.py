@@ -13,6 +13,9 @@ def main() -> None:
     # The trading key has no business in this process. Drop it before
     # anything else is imported or spawned.
     scrub_agent_key()
+    # httpx logs every request at INFO; that is noise in Claude Code's MCP log.
+    import logging
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     config = McpConfig.from_env()
     token_src = "COPYCAT_API_TOKEN" if config.env_token else str(config.token_file)
     print(f"copycat-mcp: api {config.api_url}, token from {token_src}", file=sys.stderr)

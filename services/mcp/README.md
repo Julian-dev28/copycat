@@ -40,10 +40,23 @@ the server never holds the trading key.
 | `list_theses` | GET .../thesis | read |
 | `save_thesis` | PUT .../thesis | text only |
 | `copycat_settings` | GET /api/settings | read |
-| `add_leader` | POST /api/leaders | adds to the copy list only |
+| `engine_status` | GET /api/status | read |
+| `my_wallets` | GET /api/wallets | read |
+| `preview_copy` | POST /api/wallets/{a}/preview | read (computes a plan, places nothing) |
+| `add_leader` | POST /api/leaders | adds to the copy list only (global settings) |
+
+`trader_profile`, `trader_fingerprint` and `trader_trades` take `wait_s`
+(default 45, max 120): when copycat answers 202 "building" they poll every 5 s
+until the data is ready, so the model needs no retry loop.
+
+Everything a tool returns is treated as data. The server instructions tell the
+model that trader names and saved theses come from third parties and must never
+be followed as instructions (prompt injection through the leaderboard).
 
 Deliberately absent: anything that changes `enabled`, `dry_run`, leverage or
-sizing, removes leaders, halts, or closes positions. Those decide whether real
+sizing, removes leaders, invests in or stops a wallet (`/api/wallets/{a}/copy`,
+`/stop`), touches accounts or keys (`/api/accounts/*`), halts, or closes
+positions. Those decide whether real
 money moves, and an agent should never be able to flip them. A gate test pins
 the exact tool list.
 
@@ -53,4 +66,6 @@ deterministically by `prompts.missing_sections()` when saving.
 ## Tests
 
 `.venv/bin/python -m pytest services/mcp/tests`: request mapping per tool,
-auth header, 401/503 messages, the tool allowlist, prompt sections. No network.
+auth header, 401/503 messages, the tool allowlist and the forbidden routes,
+waiting out 202, prompt sections. No network. A real stdio session against a
+running copycat (all 13 tools) was checked on 2026-10-05.
