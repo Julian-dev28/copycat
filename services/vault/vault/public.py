@@ -11,7 +11,13 @@ services/vault/README.md for the storage layout and the threat model.
   list_accounts(refresh_status=True) / get_account(id)
   set_active(id) / rename(id, label) / remove(id)
   refresh_agent(id, passphrase=None) -> TradingAccount
-  transfer(from_id, to_address, amount_usd, passphrase) -> {ok, from_address, to_address, amount_usd}
+  transfer(from_id, to_address, amount_usd, passphrase, max_usd) -> {ok, from_address, to_address, amount_usd}
+  prepare_user_action(id, kind, amount_usd, max_usd, to_perp, destination, confirm_destination, unified)
+      -> {typed_data, action, nonce}                      (browser path: usdClassTransfer / usdSend / withdraw3)
+  submit_user_action(id, kind, action, nonce, signature, max_usd, confirm_destination, unified) -> UserActionResult
+  run_user_action(id, kind, amount_usd, max_usd, passphrase, to_perp, destination, confirm_destination, unified)
+      -> UserActionResult                                 (passphrase path, created accounts)
+  audit_log(limit) -> recent vault/audit.jsonl lines (no secrets)
   exists() / is_authoritative() / active_address() / active_credentials()   (hl.env, engine)
 
 Errors are vault.errors.VaultError subclasses; each carries `http_status` and a
@@ -22,6 +28,8 @@ from __future__ import annotations
 from contracts.models import TradingAccount
 
 from . import errors
+from .audit import read as audit_log
+from .funding import prepare_user_action, run_user_action, submit_user_action
 from .manage import (
     active_address,
     active_credentials,
@@ -58,5 +66,6 @@ def import_env(main_address: str, agent_private_key: str) -> TradingAccount:
 __all__ = [
     "create_account", "import_api_key", "import_env", "prepare_agent_approval", "submit_agent_approval",
     "list_accounts", "get_account", "set_active", "rename", "remove", "refresh_agent", "transfer",
+    "prepare_user_action", "submit_user_action", "run_user_action", "audit_log",
     "exists", "is_authoritative", "active_address", "active_credentials", "errors", "ENV_LABEL",
 ]

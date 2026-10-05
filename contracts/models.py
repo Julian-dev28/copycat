@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 7   # v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
+CONTRACT_VERSION = 8   # v8: account funding (FundingInfo, user-signed usdClassTransfer/usdSend/withdraw3)
+# v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
 # v6: v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
 # v5: v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
 # v4: v4: Trade page (allocation sizing, ExposureMode, wallet copy/stop, per-leader PnL)
@@ -802,3 +803,91 @@ class AccountSummary(BaseModel):
     value_curve: Dict[PnlWindow, List[CurvePoint]] = Field(default_factory=dict)
     daily_pnl: List[CurvePoint] = Field(default_factory=list)
     as_of_ms: int
+
+
+# ── Account funding (v8): deposit facts + the three user-signed money actions ──
+# Deposit: the web sends native USDC on Arbitrum to Hyperliquid's bridge FROM the
+# account's own address (the bridge credits the sender). Moves, sends and
+# withdrawals are user-signed HL actions: the MAIN key signs (browser wallet for
+# connected accounts, the vault with the passphrase for created ones). The agent
+# key can never move funds.
+
+class UserActionKind(str, Enum):
+    usd_class_transfer = "usd_class_transfer"   # spot <-> perps (toPerp)
+    usd_send = "usd_send"                       # perps USDC to another HL address (another vault account)
+    withdraw = "withdraw"                       # withdraw3: to Arbitrum through the bridge, fee withdraw_fee_usd
+
+
+class FundingLimits(BaseModel):
+    """Live maxima per action (USD), read from Hyperliquid at request time."""
+    abstraction: Optional[str] = None           # HL userAbstraction ("unifiedAccount", "default", ...)
+    unified: bool = False                       # spot and perps share one USDC balance: no move needed
+    perps_withdrawable_usd: float = 0.0         # usdSend / withdraw3 / perps -> spot
+    spot_usdc_free_usd: float = 0.0             # spot -> perps
+
+
+class FundingInfo(BaseModel):
+    network: Literal["mainnet", "testnet"]
+    chain_id: int                               # Arbitrum One 42161 / Arbitrum Sepolia 421614
+    chain_name: str
+    usdc_address: str                           # native USDC on that chain
+    bridge_address: str                         # Hyperliquid bridge: credits the SENDER
+    explorer_url: str
+    min_deposit_usd: float                      # below it a deposit is lost
+    withdraw_fee_usd: float
+    account_address: str
+    account_kind: AccountKind
+    signer: Literal["browser", "passphrase"]    # who signs moves/sends/withdrawals for this account
+    limits: Optional[FundingLimits] = None      # null when the live read failed
+    source_url: str                             # where the addresses and minimum were verified
+    notes: List[str] = Field(default_factory=list)
+
+
+class UserActionPrepareRequest(BaseModel):
+    """Browser path, step 1: the api builds the exact action + EIP-712 typed data."""
+    model_config = ConfigDict(extra="forbid")
+    kind: UserActionKind
+    amount_usd: float = Field(gt=0)
+    to_perp: Optional[bool] = None              # usd_class_transfer only (required there)
+    destination: Optional[str] = None           # usd_send (required) / withdraw (default: own address)
+    confirm_destination: Optional[str] = None   # withdraw to another address: must equal destination
+
+
+class UserActionPrepareResponse(BaseModel):
+    typed_data: Dict[str, Any]                  # pass to eth_signTypedData_v4 as-is
+    action: Dict[str, Any]
+    nonce: int
+
+
+class UserActionSubmitRequest(BaseModel):
+    """Browser path, step 2: the signed action. The api re-checks every guard,
+    recovers the signer (must be the account's address) and posts it."""
+    model_config = ConfigDict(extra="forbid")
+    kind: UserActionKind
+    action: Dict[str, Any]
+    nonce: int
+    signature: str                              # 0x r||s||v
+    confirm_destination: Optional[str] = None
+
+
+class UserActionRunRequest(BaseModel):
+    """Passphrase path (created accounts): the vault signs with the main key."""
+    model_config = ConfigDict(extra="forbid")
+    kind: UserActionKind
+    amount_usd: float = Field(gt=0)
+    to_perp: Optional[bool] = None
+    destination: Optional[str] = None
+    confirm_destination: Optional[str] = None
+    passphrase: str
+
+
+class UserActionResult(BaseModel):
+    ok: bool
+    kind: UserActionKind
+    account_address: str
+    amount_usd: float
+    to_perp: Optional[bool] = None
+    destination: Optional[str] = None
+    fee_usd: Optional[float] = None             # withdraw only
+    nonce: int
+    message: str

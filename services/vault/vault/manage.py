@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import logging
-from decimal import ROUND_DOWN, Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from eth_account import Account
 
 from contracts.models import AccountKind, TradingAccount
 
-from . import agents, fsio, hlops, store
-from .approval import approve_with_main_key, norm_address, now_ms, require_ok
-from .errors import InvalidRequest, NeedsBrowserSignIn, VaultCorrupt, WrongPassphrase
+from . import agents, fsio, store
+from .approval import approve_with_main_key, now_ms
+from .errors import NeedsBrowserSignIn, VaultCorrupt, WrongPassphrase
 
 logger = logging.getLogger(__name__)
 
@@ -105,31 +104,15 @@ def refresh_agent(account_id: str, passphrase: Optional[str] = None) -> TradingA
     return approve_with_main_key(acct, _unlock_main(acct, passphrase))
 
 
-def _amount_str(amount_usd: float) -> str:
-    d = Decimal(str(amount_usd)).quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
-    if d <= 0:
-        raise InvalidRequest("amount_usd must be > 0")
-    return format(d.normalize(), "f")
-
-
-def transfer(from_id: str, to_address: str, amount_usd: float, passphrase: str) -> Dict[str, Any]:
-    """usdSend (perps USDC) from a created account to another account in this vault."""
-    src = get_account(from_id)
-    if src.kind != AccountKind.created or not src.has_main_key:
-        raise InvalidRequest("transfers can only be sent from a wallet copycat created (it holds that key)")
-    dest = norm_address(to_address, "to_address")
-    if dest == src.address:
-        raise InvalidRequest("to_address is the source account")
-    if store.find_by_address(store.load(), dest) is None:
-        raise InvalidRequest("to_address must be another account in this copycat")
-    amount = _amount_str(amount_usd)
-    key = _unlock_main(src, passphrase)
-    t = now_ms()
-    action, sig = hlops.sign_usd_send(key, dest, amount, t)
-    del key
-    require_ok(hlops.post_signed_action(action, t, sig), src.address)
-    logger.info("[vault] usdSend %s USDC %s -> %s", amount, src.address, dest)
-    return {"ok": True, "from_address": src.address, "to_address": dest, "amount_usd": float(amount)}
+def transfer(from_id: str, to_address: str, amount_usd: float, passphrase: str,
+             max_usd: Optional[float] = None) -> Dict[str, Any]:
+    """usdSend (perps USDC) from a created account to another account in this vault.
+    Same guards and audit line as run_user_action(kind=usd_send); `max_usd` is the
+    live perps withdrawable the caller read (None: refused, the balance is unknown)."""
+    from .funding import run_user_action
+    out = run_user_action(from_id, "usd_send", amount_usd, max_usd, passphrase, destination=to_address)
+    return {"ok": True, "from_address": out["account_address"], "to_address": out["destination"],
+            "amount_usd": out["amount_usd"]}
 
 
 def active_address() -> Optional[str]:

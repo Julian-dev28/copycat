@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from contracts.models import AccountSummary, RefreshAgentRequest, TradingAccount, TransferRequest
 
 from .. import account_history as H
-from .. import account_summary
+from .. import account_summary, funding
 from ..account_schemas import AccountHistory, LabelPatch, TransferResult
 from ..accounts_backend import AccountsBackend
 from ..attempt_limit import AttemptLimiter
@@ -41,8 +41,13 @@ def list_accounts(backend: AccountsBackend = Depends(get_accounts_backend)) -> L
 def transfer(body: TransferRequest, backend: AccountsBackend = Depends(get_accounts_backend),
              limiter: AttemptLimiter = Depends(get_attempt_limiter)) -> TransferResult:
     limiter.check("transfer")
-    out = vault_call(backend.vault().transfer, body.from_account_id, body.to_address, body.amount_usd,
-                     body.passphrase)
+    vault = backend.vault()
+    src = vault_call(vault.get_account, body.from_account_id)
+    lim = funding.limits(backend.account_state(src.address), backend.spot_balances(src.address))
+    if lim is None:
+        raise HTTPException(502, "could not read this account's balances from Hyperliquid; try again")
+    out = vault_call(vault.transfer, body.from_account_id, body.to_address, body.amount_usd,
+                     body.passphrase, max_usd=lim.perps_withdrawable_usd)
     return TransferResult(**out)
 
 

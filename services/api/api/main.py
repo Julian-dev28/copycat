@@ -28,6 +28,7 @@ from .market_client import RealMarketClient
 from .routes import accounts as accounts_routes
 from .routes import (
     accounts_common,
+    accounts_funding,
     accounts_onboard,
     discovery,
     engine,
@@ -99,6 +100,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(wallets.router)
     app.include_router(accounts_onboard.router)   # before accounts: fixed paths win over /{id}
     app.include_router(accounts_routes.router)
+    app.include_router(accounts_funding.router)
 
     return app
 

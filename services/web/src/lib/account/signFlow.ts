@@ -92,7 +92,13 @@ function apiFail(err: unknown, what: string): WalletFlowError {
   return new WalletFlowError("api", tooOld ? `api too old: ${text}` : text);
 }
 
-async function ensureChain(provider: Eip1193Provider, target: number, dispatch: (e: SignEvent) => void): Promise<void> {
+/** Switch the wallet to `target` (adding Arbitrum if it answers 4902). Shared by every wallet flow. */
+export async function ensureChain(
+  provider: Eip1193Provider,
+  target: number,
+  dispatch: (e: { type: "switching"; targetChain: number }) => void,
+  purpose = "sign this approval",
+): Promise<void> {
   const current = Number.parseInt(String(await provider.request({ method: "eth_chainId" })), 16);
   if (current === target) return;
   dispatch({ type: "switching", targetChain: target });
@@ -109,7 +115,7 @@ async function ensureChain(provider: Eip1193Provider, target: number, dispatch: 
     }
   }
   const after = Number.parseInt(String(await provider.request({ method: "eth_chainId" })), 16);
-  if (after !== target) throw new WalletFlowError("chain", `Switch your wallet to ${chainName(target)} to sign this approval.`);
+  if (after !== target) throw new WalletFlowError("chain", `Switch your wallet to ${chainName(target)} to ${purpose}.`);
 }
 
 /** Runs the whole flow, reporting each transition through `dispatch`. Never throws. */

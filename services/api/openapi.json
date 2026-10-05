@@ -1152,6 +1152,131 @@
         "title": "ExposureMode",
         "type": "string"
       },
+      "FundingInfo": {
+        "properties": {
+          "account_address": {
+            "title": "Account Address",
+            "type": "string"
+          },
+          "account_kind": {
+            "$ref": "#/components/schemas/AccountKind"
+          },
+          "bridge_address": {
+            "title": "Bridge Address",
+            "type": "string"
+          },
+          "chain_id": {
+            "title": "Chain Id",
+            "type": "integer"
+          },
+          "chain_name": {
+            "title": "Chain Name",
+            "type": "string"
+          },
+          "explorer_url": {
+            "title": "Explorer Url",
+            "type": "string"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundingLimits"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_deposit_usd": {
+            "title": "Min Deposit Usd",
+            "type": "number"
+          },
+          "network": {
+            "enum": [
+              "mainnet",
+              "testnet"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "signer": {
+            "enum": [
+              "browser",
+              "passphrase"
+            ],
+            "title": "Signer",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "usdc_address": {
+            "title": "Usdc Address",
+            "type": "string"
+          },
+          "withdraw_fee_usd": {
+            "title": "Withdraw Fee Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "network",
+          "chain_id",
+          "chain_name",
+          "usdc_address",
+          "bridge_address",
+          "explorer_url",
+          "min_deposit_usd",
+          "withdraw_fee_usd",
+          "account_address",
+          "account_kind",
+          "signer",
+          "source_url"
+        ],
+        "title": "FundingInfo",
+        "type": "object"
+      },
+      "FundingLimits": {
+        "description": "Live maxima per action (USD), read from Hyperliquid at request time.",
+        "properties": {
+          "abstraction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abstraction"
+          },
+          "perps_withdrawable_usd": {
+            "default": 0.0,
+            "title": "Perps Withdrawable Usd",
+            "type": "number"
+          },
+          "spot_usdc_free_usd": {
+            "default": 0.0,
+            "title": "Spot Usdc Free Usd",
+            "type": "number"
+          },
+          "unified": {
+            "default": false,
+            "title": "Unified",
+            "type": "boolean"
+          }
+        },
+        "title": "FundingLimits",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2024,7 +2149,7 @@
             "type": "number"
           },
           "contract_version": {
-            "default": 7,
+            "default": 8,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -3778,6 +3903,262 @@
         "title": "TransferResult",
         "type": "object"
       },
+      "UserActionKind": {
+        "enum": [
+          "usd_class_transfer",
+          "usd_send",
+          "withdraw"
+        ],
+        "title": "UserActionKind",
+        "type": "string"
+      },
+      "UserActionPrepareRequest": {
+        "additionalProperties": false,
+        "description": "Browser path, step 1: the api builds the exact action + EIP-712 typed data.",
+        "properties": {
+          "amount_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "confirm_destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Destination"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/UserActionKind"
+          },
+          "to_perp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Perp"
+          }
+        },
+        "required": [
+          "kind",
+          "amount_usd"
+        ],
+        "title": "UserActionPrepareRequest",
+        "type": "object"
+      },
+      "UserActionPrepareResponse": {
+        "properties": {
+          "action": {
+            "additionalProperties": true,
+            "title": "Action",
+            "type": "object"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "integer"
+          },
+          "typed_data": {
+            "additionalProperties": true,
+            "title": "Typed Data",
+            "type": "object"
+          }
+        },
+        "required": [
+          "typed_data",
+          "action",
+          "nonce"
+        ],
+        "title": "UserActionPrepareResponse",
+        "type": "object"
+      },
+      "UserActionResult": {
+        "properties": {
+          "account_address": {
+            "title": "Account Address",
+            "type": "string"
+          },
+          "amount_usd": {
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "fee_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Usd"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/UserActionKind"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "to_perp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Perp"
+          }
+        },
+        "required": [
+          "ok",
+          "kind",
+          "account_address",
+          "amount_usd",
+          "nonce",
+          "message"
+        ],
+        "title": "UserActionResult",
+        "type": "object"
+      },
+      "UserActionRunRequest": {
+        "additionalProperties": false,
+        "description": "Passphrase path (created accounts): the vault signs with the main key.",
+        "properties": {
+          "amount_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "confirm_destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Destination"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/UserActionKind"
+          },
+          "passphrase": {
+            "title": "Passphrase",
+            "type": "string"
+          },
+          "to_perp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Perp"
+          }
+        },
+        "required": [
+          "kind",
+          "amount_usd",
+          "passphrase"
+        ],
+        "title": "UserActionRunRequest",
+        "type": "object"
+      },
+      "UserActionSubmitRequest": {
+        "additionalProperties": false,
+        "description": "Browser path, step 2: the signed action. The api re-checks every guard,\nrecovers the signer (must be the account's address) and posts it.",
+        "properties": {
+          "action": {
+            "additionalProperties": true,
+            "title": "Action",
+            "type": "object"
+          },
+          "confirm_destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Destination"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/UserActionKind"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "integer"
+          },
+          "signature": {
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "action",
+          "nonce",
+          "signature"
+        ],
+        "title": "UserActionSubmitRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -4775,6 +5156,162 @@
         ]
       }
     },
+    "/api/accounts/{account_id}/action": {
+      "post": {
+        "operationId": "action_run_api_accounts__account_id__action_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserActionRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Run",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/action/prepare": {
+      "post": {
+        "operationId": "action_prepare_api_accounts__account_id__action_prepare_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserActionPrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserActionPrepareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Prepare",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/action/submit": {
+      "post": {
+        "operationId": "action_submit_api_accounts__account_id__action_submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserActionSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Submit",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/accounts/{account_id}/activate": {
       "post": {
         "operationId": "activate_api_accounts__account_id__activate_post",
@@ -4822,6 +5359,48 @@
           }
         },
         "summary": "Activate",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/funding-info": {
+      "get": {
+        "operationId": "funding_info_api_accounts__account_id__funding_info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundingInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Funding Info",
         "tags": [
           "accounts"
         ]

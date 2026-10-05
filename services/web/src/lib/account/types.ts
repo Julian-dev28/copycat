@@ -138,3 +138,75 @@ export interface BalanceRow {
   hold: number;
   usd_value: number | null;
 }
+
+// ── Funding (contract v8) ─────────────────────────────────────────────────────
+
+export type UserActionKind = "usd_class_transfer" | "usd_send" | "withdraw";
+
+/** Live maxima, read from Hyperliquid by GET .../funding-info. */
+export interface FundingLimits {
+  abstraction?: string | null;
+  /** Spot and perps share one USDC balance: no spot/perps move needed. */
+  unified: boolean;
+  /** usdSend / withdraw3 / perps -> spot */
+  perps_withdrawable_usd: number;
+  /** spot -> perps */
+  spot_usdc_free_usd: number;
+}
+
+/** GET /api/accounts/{id}/funding-info */
+export interface FundingInfo {
+  network: "mainnet" | "testnet";
+  chain_id: number;
+  chain_name: string;
+  usdc_address: string;
+  bridge_address: string;
+  explorer_url: string;
+  min_deposit_usd: number;
+  withdraw_fee_usd: number;
+  account_address: string;
+  account_kind: AccountKind;
+  signer: "browser" | "passphrase";
+  limits?: FundingLimits | null;
+  source_url: string;
+  notes: string[];
+}
+
+export interface UserActionPrepareRequest {
+  kind: UserActionKind;
+  amount_usd: number;
+  to_perp?: boolean | null;
+  destination?: string | null;
+  confirm_destination?: string | null;
+}
+
+export interface UserActionPrepareResponse {
+  typed_data: Record<string, unknown>;
+  action: Record<string, unknown>;
+  nonce: number;
+}
+
+export interface UserActionSubmitRequest {
+  kind: UserActionKind;
+  action: Record<string, unknown>;
+  nonce: number;
+  signature: string;
+  confirm_destination?: string | null;
+}
+
+export interface UserActionRunRequest extends UserActionPrepareRequest {
+  /** SECRET */
+  passphrase: string;
+}
+
+export interface UserActionResult {
+  ok: boolean;
+  kind: UserActionKind;
+  account_address: string;
+  amount_usd: number;
+  to_perp?: boolean | null;
+  destination?: string | null;
+  fee_usd?: number | null;
+  nonce: number;
+  message: string;
+}

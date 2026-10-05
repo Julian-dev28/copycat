@@ -60,6 +60,11 @@ class AccountsBackend:
         from hl import history  # type: ignore[import-not-found]
         return history.spot_balances(address)
 
+    def funding_facts(self) -> Dict[str, Any]:
+        """Bridge, USDC, minimum deposit, withdraw fee for this network (static, no read)."""
+        from hl import accounts  # type: ignore[import-not-found]
+        return accounts.funding_info()
+
     # ── other services ──────────────────────────────────────────────────────
     def engine_status(self, address: str) -> Optional[EngineStatus]:
         """That account's own last engine snapshot (engine-<address>.db)."""

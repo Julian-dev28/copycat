@@ -79,13 +79,13 @@ def test_transfer_requires_passphrase_created_source_and_a_vault_destination(fak
     src, _, _ = public.create_account("Src", PASS)
     dst, _ = _connected(fake_hl, 0x10)
     with pytest.raises(WrongPassphrase):
-        public.transfer(src.id, dst.address, 5.0, "wrong passphrase!!")
+        public.transfer(src.id, dst.address, 5.0, "wrong passphrase!!", max_usd=100)
     with pytest.raises(InvalidRequest, match="another account"):
-        public.transfer(src.id, "0x" + "99" * 20, 5.0, PASS)
+        public.transfer(src.id, "0x" + "99" * 20, 5.0, PASS, max_usd=100)
     with pytest.raises(InvalidRequest, match="created"):
-        public.transfer(dst.id, src.address, 5.0, PASS)
+        public.transfer(dst.id, src.address, 5.0, PASS, max_usd=100)
     n = len(fake_hl.posts)
-    out = public.transfer(src.id, dst.address, 12.3456789, PASS)
+    out = public.transfer(src.id, dst.address, 12.3456789, PASS, max_usd=100)
     assert out == {"ok": True, "from_address": src.address, "to_address": dst.address, "amount_usd": 12.345678}
     post = fake_hl.posts[n]
     assert post["action"]["type"] == "usdSend" and post["action"]["amount"] == "12.345678"

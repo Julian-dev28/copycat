@@ -4,6 +4,280 @@
  */
 
 export interface paths {
+    "/api/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Accounts */
+        get: operations["list_accounts_api_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/approve/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Prepare */
+        post: operations["approve_prepare_api_accounts_approve_prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/approve/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Submit */
+        post: operations["approve_submit_api_accounts_approve_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create */
+        post: operations["create_api_accounts_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/import-env": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Env Status */
+        get: operations["import_env_status_api_accounts_import_env_get"];
+        put?: never;
+        /** Import Env */
+        post: operations["import_env_api_accounts_import_env_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/import-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Key */
+        post: operations["import_key_api_accounts_import_key_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer */
+        post: operations["transfer_api_accounts_transfer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove */
+        delete: operations["remove_api_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename */
+        patch: operations["rename_api_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Action Run */
+        post: operations["action_run_api_accounts__account_id__action_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/action/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Action Prepare */
+        post: operations["action_prepare_api_accounts__account_id__action_prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/action/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Action Submit */
+        post: operations["action_submit_api_accounts__account_id__action_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate */
+        post: operations["activate_api_accounts__account_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/funding-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Funding Info */
+        get: operations["funding_info_api_accounts__account_id__funding_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_accounts__account_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/refresh-agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Agent */
+        post: operations["refresh_agent_api_accounts__account_id__refresh_agent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_accounts__account_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/discovery/runs": {
         parameters: {
             query?: never;
@@ -503,11 +777,14 @@ export interface paths {
         put?: never;
         /**
          * Copy Wallet
-         * @description Invest `allocation_usd` in this wallet, or adjust an existing
-         *     investment (keeps `invested_ms`, so its PnL ledger carries on). 409 at
-         *     MAX_LEADERS, 400 for a bad address or our own account, 422 for target
-         *     exposure without `target_leverage`. A pending stop for the wallet is
-         *     cancelled: the newer command wins.
+         * @description Copy this wallet. `settings_source` global: it runs on the Settings
+         *     tab (its override is cleared to bookkeeping only). custom: invest
+         *     `allocation_usd` with its own terms, or adjust them. `invested_ms` is set
+         *     when the wallet is added and kept on a re-post, so its PnL ledger carries
+         *     on. 409 at MAX_LEADERS, 400 for a bad address or our own account, 422
+         *     for custom without `allocation_usd` or target exposure without
+         *     `target_leverage`. A pending stop for the wallet is cancelled: the newer
+         *     command wins.
          */
         post: operations["copy_wallet_api_wallets__address__copy_post"];
         delete?: never;
@@ -565,6 +842,38 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountBalances */
+        AccountBalances: {
+            /** Copytrade Usd */
+            copytrade_usd: number;
+            /** Perps Usd */
+            perps_usd: number;
+            /** Spot Usd */
+            spot_usd: number;
+            /** Staked Usd */
+            staked_usd: number;
+            /** Total Usd */
+            total_usd: number;
+            /** Withdrawable Usd */
+            withdrawable_usd: number;
+        };
+        /** AccountHistory */
+        AccountHistory: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "fills" | "orders" | "transfers" | "balances";
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * AccountKind
+         * @enum {string}
+         */
+        AccountKind: "created" | "connected_signed" | "connected_key";
         /** AccountRisk */
         AccountRisk: {
             /** Account Leverage */
@@ -588,11 +897,116 @@ export interface components {
             /** Unrealized Pnl Usd */
             unrealized_pnl_usd: number;
         };
+        /**
+         * AccountSummary
+         * @description The Account page header + overview. Metrics reuse the Scout computations.
+         */
+        AccountSummary: {
+            account: components["schemas"]["TradingAccount"];
+            /** Account Leverage */
+            account_leverage: number;
+            /** All Time Pnl Usd */
+            all_time_pnl_usd?: number | null;
+            /** As Of Ms */
+            as_of_ms: number;
+            /** Avg Hold H */
+            avg_hold_h?: number | null;
+            balances: components["schemas"]["AccountBalances"];
+            /** Daily Pnl */
+            daily_pnl?: components["schemas"]["CurvePoint"][];
+            /**
+             * Long Notional Usd
+             * @default 0
+             */
+            long_notional_usd: number;
+            /** Longest Win Streak Days */
+            longest_win_streak_days?: number | null;
+            /** Margin Usage Pct */
+            margin_usage_pct: number;
+            /** Median Hold H */
+            median_hold_h?: number | null;
+            /** Pnl Curve */
+            pnl_curve?: {
+                [key: string]: components["schemas"]["CurvePoint"][];
+            };
+            pnl_tier?: components["schemas"]["PnlTier"] | null;
+            risk_30d?: components["schemas"]["RiskStats"] | null;
+            /**
+             * Short Notional Usd
+             * @default 0
+             */
+            short_notional_usd: number;
+            size_tier?: components["schemas"]["SizeTier"] | null;
+            style?: components["schemas"]["TradingStyle"] | null;
+            trades_30d?: components["schemas"]["TradeStats"] | null;
+            /** Unrealized Pnl Usd */
+            unrealized_pnl_usd: number;
+            /** Value Curve */
+            value_curve?: {
+                [key: string]: components["schemas"]["CurvePoint"][];
+            };
+            /** Volume Usd */
+            volume_usd?: number | null;
+        };
         /** AddLeaderRequest */
         AddLeaderRequest: {
             /** Address */
             address: string;
         };
+        /**
+         * AgentApprovalPrepareRequest
+         * @description Step 1 of sign-with-wallet. The browser generated the agent keypair; it sends only
+         *     the agent ADDRESS here and gets back the exact EIP-712 typed data to sign.
+         */
+        AgentApprovalPrepareRequest: {
+            /** Agent Address */
+            agent_address: string;
+            /**
+             * Agent Name
+             * @default copycat
+             */
+            agent_name: string;
+            /** Main Address */
+            main_address: string;
+        };
+        /** AgentApprovalPrepareResponse */
+        AgentApprovalPrepareResponse: {
+            /** Action */
+            action: {
+                [key: string]: unknown;
+            };
+            /** Nonce */
+            nonce: number;
+            /** Typed Data */
+            typed_data: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AgentApprovalSubmitRequest
+         * @description Step 2: the signed approval plus the agent private key (generated in the browser).
+         */
+        AgentApprovalSubmitRequest: {
+            /** Action */
+            action: {
+                [key: string]: unknown;
+            };
+            /** Agent Private Key */
+            agent_private_key: string;
+            /** Label */
+            label: string;
+            /** Main Address */
+            main_address: string;
+            /** Nonce */
+            nonce: number;
+            /** Signature */
+            signature: string;
+        };
+        /**
+         * AgentStatus
+         * @enum {string}
+         */
+        AgentStatus: "active" | "expiring" | "expired" | "missing" | "unknown";
         /** CandleView */
         CandleView: {
             /** C */
@@ -683,6 +1097,21 @@ export interface components {
             sizing_mode: components["schemas"]["SizingMode"];
             /** Unrealized Pnl Usd */
             unrealized_pnl_usd: number;
+        };
+        /** CreateAccountRequest */
+        CreateAccountRequest: {
+            /** Label */
+            label: string;
+            /** Passphrase */
+            passphrase: string;
+        };
+        /** CreateAccountResponse */
+        CreateAccountResponse: {
+            account: components["schemas"]["TradingAccount"];
+            /** Backup Warning */
+            backup_warning: string;
+            /** Private Key */
+            private_key: string;
         };
         /** CurvePoint */
         CurvePoint: {
@@ -815,6 +1244,64 @@ export interface components {
          * @enum {string}
          */
         ExposureMode: "match" | "target";
+        /** FundingInfo */
+        FundingInfo: {
+            /** Account Address */
+            account_address: string;
+            account_kind: components["schemas"]["AccountKind"];
+            /** Bridge Address */
+            bridge_address: string;
+            /** Chain Id */
+            chain_id: number;
+            /** Chain Name */
+            chain_name: string;
+            /** Explorer Url */
+            explorer_url: string;
+            limits?: components["schemas"]["FundingLimits"] | null;
+            /** Min Deposit Usd */
+            min_deposit_usd: number;
+            /**
+             * Network
+             * @enum {string}
+             */
+            network: "mainnet" | "testnet";
+            /** Notes */
+            notes?: string[];
+            /**
+             * Signer
+             * @enum {string}
+             */
+            signer: "browser" | "passphrase";
+            /** Source Url */
+            source_url: string;
+            /** Usdc Address */
+            usdc_address: string;
+            /** Withdraw Fee Usd */
+            withdraw_fee_usd: number;
+        };
+        /**
+         * FundingLimits
+         * @description Live maxima per action (USD), read from Hyperliquid at request time.
+         */
+        FundingLimits: {
+            /** Abstraction */
+            abstraction?: string | null;
+            /**
+             * Perps Withdrawable Usd
+             * @default 0
+             */
+            perps_withdrawable_usd: number;
+            /**
+             * Spot Usdc Free Usd
+             * @default 0
+             */
+            spot_usdc_free_usd: number;
+            /**
+             * Unified
+             * @default false
+             */
+            unified: boolean;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -826,6 +1313,32 @@ export interface components {
             ok: boolean;
             /** Version */
             version: string;
+        };
+        /** ImportApiKeyRequest */
+        ImportApiKeyRequest: {
+            /** Agent Private Key */
+            agent_private_key: string;
+            /** Label */
+            label: string;
+            /** Main Address */
+            main_address: string;
+        };
+        /**
+         * ImportEnvStatus
+         * @description GET /api/accounts/import-env: whether the one-click migration applies.
+         */
+        ImportEnvStatus: {
+            /** Address */
+            address?: string | null;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** LabelPatch */
+        LabelPatch: {
+            /** Label */
+            label: string;
         };
         /** LeaderFillView */
         LeaderFillView: {
@@ -871,6 +1384,8 @@ export interface components {
             margin_mode?: components["schemas"]["MarginMode"] | null;
             /** Max Worse Entry Pct */
             max_worse_entry_pct?: number | null;
+            /** Only New Positions */
+            only_new_positions?: boolean | null;
             /** Size Multiplier */
             size_multiplier?: number | null;
             sizing_mode?: components["schemas"]["SizingMode"] | null;
@@ -995,6 +1510,15 @@ export interface components {
          * @enum {string}
          */
         PnlWindow: "1d" | "7d" | "30d" | "all";
+        /**
+         * RefreshAgentRequest
+         * @description For `created` accounts: passphrase unlocks the main key to sign a new approveAgent.
+         *     For connected accounts the web runs prepare/submit again instead.
+         */
+        RefreshAgentRequest: {
+            /** Passphrase */
+            passphrase?: string | null;
+        };
         /** RiskStats */
         RiskStats: {
             /**
@@ -1107,7 +1631,7 @@ export interface components {
             allocation_usd: number;
             /**
              * Contract Version
-             * @default 5
+             * @default 8
              */
             contract_version: number;
             /**
@@ -1640,10 +2164,156 @@ export interface components {
             volume_30d_usd: number;
         };
         /**
+         * TradingAccount
+         * @description One trading account. Never carries a secret.
+         */
+        TradingAccount: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /** Address */
+            address: string;
+            /** Agent Address */
+            agent_address?: string | null;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** @default unknown */
+            agent_status: components["schemas"]["AgentStatus"];
+            /** Agent Valid Until Ms */
+            agent_valid_until_ms?: number | null;
+            /** Created Ms */
+            created_ms: number;
+            /**
+             * Has Main Key
+             * @default false
+             */
+            has_main_key: boolean;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["AccountKind"];
+            /** Label */
+            label: string;
+        };
+        /**
          * TradingStyle
          * @enum {string}
          */
         TradingStyle: "algo" | "scalp" | "intraday" | "swing" | "position";
+        /**
+         * TransferRequest
+         * @description usdSend between copycat-created accounts (the source's main key signs).
+         */
+        TransferRequest: {
+            /** Amount Usd */
+            amount_usd: number;
+            /** From Account Id */
+            from_account_id: string;
+            /** Passphrase */
+            passphrase: string;
+            /** To Address */
+            to_address: string;
+        };
+        /** TransferResult */
+        TransferResult: {
+            /** Amount Usd */
+            amount_usd: number;
+            /** From Address */
+            from_address: string;
+            /** Ok */
+            ok: boolean;
+            /** To Address */
+            to_address: string;
+        };
+        /**
+         * UserActionKind
+         * @enum {string}
+         */
+        UserActionKind: "usd_class_transfer" | "usd_send" | "withdraw";
+        /**
+         * UserActionPrepareRequest
+         * @description Browser path, step 1: the api builds the exact action + EIP-712 typed data.
+         */
+        UserActionPrepareRequest: {
+            /** Amount Usd */
+            amount_usd: number;
+            /** Confirm Destination */
+            confirm_destination?: string | null;
+            /** Destination */
+            destination?: string | null;
+            kind: components["schemas"]["UserActionKind"];
+            /** To Perp */
+            to_perp?: boolean | null;
+        };
+        /** UserActionPrepareResponse */
+        UserActionPrepareResponse: {
+            /** Action */
+            action: {
+                [key: string]: unknown;
+            };
+            /** Nonce */
+            nonce: number;
+            /** Typed Data */
+            typed_data: {
+                [key: string]: unknown;
+            };
+        };
+        /** UserActionResult */
+        UserActionResult: {
+            /** Account Address */
+            account_address: string;
+            /** Amount Usd */
+            amount_usd: number;
+            /** Destination */
+            destination?: string | null;
+            /** Fee Usd */
+            fee_usd?: number | null;
+            kind: components["schemas"]["UserActionKind"];
+            /** Message */
+            message: string;
+            /** Nonce */
+            nonce: number;
+            /** Ok */
+            ok: boolean;
+            /** To Perp */
+            to_perp?: boolean | null;
+        };
+        /**
+         * UserActionRunRequest
+         * @description Passphrase path (created accounts): the vault signs with the main key.
+         */
+        UserActionRunRequest: {
+            /** Amount Usd */
+            amount_usd: number;
+            /** Confirm Destination */
+            confirm_destination?: string | null;
+            /** Destination */
+            destination?: string | null;
+            kind: components["schemas"]["UserActionKind"];
+            /** Passphrase */
+            passphrase: string;
+            /** To Perp */
+            to_perp?: boolean | null;
+        };
+        /**
+         * UserActionSubmitRequest
+         * @description Browser path, step 2: the signed action. The api re-checks every guard,
+         *     recovers the signer (must be the account's address) and posts it.
+         */
+        UserActionSubmitRequest: {
+            /** Action */
+            action: {
+                [key: string]: unknown;
+            };
+            /** Confirm Destination */
+            confirm_destination?: string | null;
+            kind: components["schemas"]["UserActionKind"];
+            /** Nonce */
+            nonce: number;
+            /** Signature */
+            signature: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1664,12 +2334,23 @@ export interface components {
          */
         WalletCopyRequest: {
             /** Allocation Usd */
-            allocation_usd: number;
+            allocation_usd?: number | null;
             /** @default match */
             exposure_mode: components["schemas"]["ExposureMode"];
+            /** Leverage */
+            leverage?: number | null;
+            leverage_mode?: components["schemas"]["LeverageMode"] | null;
             margin_mode?: components["schemas"]["MarginMode"] | null;
             /** Max Worse Entry Pct */
             max_worse_entry_pct?: number | null;
+            /** Only New Positions */
+            only_new_positions?: boolean | null;
+            /**
+             * Settings Source
+             * @default custom
+             * @enum {string}
+             */
+            settings_source: "global" | "custom";
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /** Target Leverage */
             target_leverage?: number | null;
@@ -1733,6 +2414,12 @@ export interface components {
             realized_pnl_usd: number;
             /** Roe Pct */
             roe_pct?: number | null;
+            /**
+             * Settings Source
+             * @default custom
+             * @enum {string}
+             */
+            settings_source: "global" | "custom";
             sizing_mode?: components["schemas"]["SizingMode"] | null;
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /**
@@ -1899,6 +2586,567 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_accounts_api_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"][];
+                };
+            };
+        };
+    };
+    approve_prepare_api_accounts_approve_prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentApprovalPrepareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentApprovalPrepareResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_submit_api_accounts_approve_submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentApprovalSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_accounts_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_env_status_api_accounts_import_env_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportEnvStatus"];
+                };
+            };
+        };
+    };
+    import_env_api_accounts_import_env_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"][];
+                };
+            };
+        };
+    };
+    import_key_api_accounts_import_key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportApiKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transfer_api_accounts_transfer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_api_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_api_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    action_run_api_accounts__account_id__action_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserActionRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    action_prepare_api_accounts__account_id__action_prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserActionPrepareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserActionPrepareResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    action_submit_api_accounts__account_id__action_submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserActionSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_api_accounts__account_id__activate_post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    funding_info_api_accounts__account_id__funding_info_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FundingInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_accounts__account_id__history_get: {
+        parameters: {
+            query: {
+                kind: "fills" | "orders" | "transfers" | "balances";
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_agent_api_accounts__account_id__refresh_agent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_accounts__account_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     start_run_api_discovery_runs_post: {
         parameters: {
             query?: never;

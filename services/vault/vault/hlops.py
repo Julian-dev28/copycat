@@ -45,6 +45,28 @@ def sign_usd_send(main_key: str, destination: str, amount: str,
     return _acc().sign_usd_send(main_key, destination, amount, time_ms)
 
 
+def user_action(kind: str, amount: str, nonce: int, to_perp: Optional[bool] = None,
+                destination: Optional[str] = None, chain_id: Optional[str] = None) -> Dict[str, Any]:
+    return _acc().user_action(kind, amount, nonce, to_perp=to_perp, destination=destination, chain_id=chain_id)
+
+
+def user_action_typed_data(kind: str, action: Dict[str, Any]) -> Dict[str, Any]:
+    return _acc().user_action_typed_data(kind, action)
+
+
+def user_action_keys(kind: str) -> set:
+    return _acc().user_action_keys(kind)
+
+
+def action_type(kind: str) -> str:
+    return _acc().action_type(kind)
+
+
+def sign_user_action(main_key: str, kind: str, amount: str, nonce: int, to_perp: Optional[bool] = None,
+                     destination: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    return _acc().sign_user_action(main_key, kind, amount, nonce, to_perp=to_perp, destination=destination)
+
+
 def post_signed_action(action: Dict[str, Any], nonce: int, signature: Dict[str, Any]) -> Dict[str, Any]:
     return _acc().post_signed_action(action, nonce, signature)
 
