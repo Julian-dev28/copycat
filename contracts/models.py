@@ -53,6 +53,13 @@ class ExposureMode(str, Enum):
     target = "target"
 
 
+class TradeDirection(str, Enum):
+    """copy: mirror his positions. counter: take the opposite side of every position he opens
+    (he goes long, we go short), same size rules; reduces and closes follow his, inverted."""
+    copy = "copy"
+    counter = "counter"
+
+
 class SmallAccountMode(str, Enum):
     """What to do when a copy slice is under HL's $10.50 minimum (small allocations).
     concentrate: copy only the positions that clear the minimum and spread the whole
@@ -87,6 +94,11 @@ class LeaderOverride(BaseModel):
     invested_ms: Optional[int] = None          # when this wallet was first invested in (set by the api)
     small_account_mode: Optional[SmallAccountMode] = None
     only_new_positions: Optional[bool] = None
+    # v8
+    trade_direction: Optional[TradeDirection] = None
+    coin_allowlist: Optional[List[str]] = None   # if set and non-empty: only these coins ("BTC", "xyz:TSLA")
+    coin_blocklist: Optional[List[str]] = None   # never these coins
+    paused: Optional[bool] = None                # no new opens/adds; exits still mirrored
 
 
 class Settings(BaseModel):
@@ -120,6 +132,11 @@ class Settings(BaseModel):
     target_leverage: int = Field(5, ge=1, le=MAX_LEVERAGE_CAP)
     invested_ms: Optional[int] = None
     small_account_mode: SmallAccountMode = SmallAccountMode.concentrate
+    # v8: book-wide defaults; a wallet's override replaces them (lists are replaced, not merged)
+    trade_direction: TradeDirection = TradeDirection.copy
+    coin_allowlist: List[str] = Field(default_factory=list)
+    coin_blocklist: List[str] = Field(default_factory=list)
+    paused: bool = False
     # Large accounts: one order is capped at this % of the coin's 24h volume and at the book
     # depth within the slippage cap; the rest fills over the next cycles.
     max_order_volume_pct: float = Field(0.5, gt=0, le=100)
@@ -585,6 +602,10 @@ class WalletCopyRequest(BaseModel):
     leverage_mode: Optional[LeverageMode] = None
     leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
     only_new_positions: Optional[bool] = None
+    # v8 (custom only)
+    trade_direction: Optional[TradeDirection] = None
+    coin_allowlist: Optional[List[str]] = None
+    coin_blocklist: Optional[List[str]] = None
 
     @model_validator(mode="after")
     def _custom_needs_allocation(self) -> "WalletCopyRequest":
@@ -631,6 +652,28 @@ class WalletPosition(BaseModel):
     target_leverage: Optional[int] = None
     small_account_mode: Optional[SmallAccountMode] = None
     invested_ms: Optional[int] = None
+    # v8
+    status: Literal["running", "paused", "stopping", "stopped", "archived"] = "running"
+    trade_direction: TradeDirection = TradeDirection.copy
+    coin_allowlist: List[str] = Field(default_factory=list)
+    coin_blocklist: List[str] = Field(default_factory=list)
+    style: Optional[TradingStyle] = None         # his style from Scout, if known (algo -> warn)
+    archived_ms: Optional[int] = None
+
+
+class WalletProjection(BaseModel):
+    """GET /api/wallets/{a}/projection: his last 30d replayed onto `allocation_usd`
+    at the given terms (inverted for counter). From cached data, no orders."""
+    address: str
+    allocation_usd: float
+    trade_direction: TradeDirection
+    curve: List[CurvePoint]
+    return_pct: float
+    max_drawdown_pct: float
+    liquidations: int
+    copies: int
+    skipped: int
+    note: Optional[str] = None
 
 
 class WalletPreviewSlice(BaseModel):

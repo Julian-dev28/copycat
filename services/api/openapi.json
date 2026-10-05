@@ -1458,6 +1458,34 @@
             ],
             "title": "Allocation Usd"
           },
+          "coin_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Allowlist"
+          },
+          "coin_blocklist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Blocklist"
+          },
           "exposure_mode": {
             "anyOf": [
               {
@@ -1560,6 +1588,17 @@
             ],
             "title": "Only New Positions"
           },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          },
           "size_multiplier": {
             "anyOf": [
               {
@@ -1605,6 +1644,16 @@
               }
             ],
             "title": "Target Leverage"
+          },
+          "trade_direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradeDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "LeaderOverride",
@@ -2148,6 +2197,20 @@
             "title": "Allocation Usd",
             "type": "number"
           },
+          "coin_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coin Allowlist",
+            "type": "array"
+          },
+          "coin_blocklist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coin Blocklist",
+            "type": "array"
+          },
           "contract_version": {
             "default": 8,
             "title": "Contract Version",
@@ -2276,6 +2339,11 @@
             "title": "Only New Positions",
             "type": "boolean"
           },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
           "poll_interval_s": {
             "default": 5.0,
             "maximum": 300.0,
@@ -2311,6 +2379,10 @@
             "minimum": 1.0,
             "title": "Target Leverage",
             "type": "integer"
+          },
+          "trade_direction": {
+            "$ref": "#/components/schemas/TradeDirection",
+            "default": "copy"
           }
         },
         "title": "Settings",
@@ -3073,6 +3145,15 @@
         ],
         "title": "ThesisWrite",
         "type": "object"
+      },
+      "TradeDirection": {
+        "description": "copy: mirror his positions. counter: take the opposite side of every position he opens\n(he goes long, we go short), same size rules; reduces and closes follow his, inverted.",
+        "enum": [
+          "copy",
+          "counter"
+        ],
+        "title": "TradeDirection",
+        "type": "string"
       },
       "TradeExample": {
         "description": "One representative round trip shown as evidence for a fingerprint claim.",
@@ -4215,6 +4296,34 @@
             ],
             "title": "Allocation Usd"
           },
+          "coin_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Allowlist"
+          },
+          "coin_blocklist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Blocklist"
+          },
           "exposure_mode": {
             "$ref": "#/components/schemas/ExposureMode",
             "default": "match"
@@ -4307,6 +4416,16 @@
               }
             ],
             "title": "Target Leverage"
+          },
+          "trade_direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradeDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "WalletCopyRequest",
@@ -4329,6 +4448,31 @@
               }
             ],
             "title": "Allocation Usd"
+          },
+          "archived_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived Ms"
+          },
+          "coin_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coin Allowlist",
+            "type": "array"
+          },
+          "coin_blocklist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coin Blocklist",
+            "type": "array"
           },
           "equity_usd": {
             "anyOf": [
@@ -4459,10 +4603,32 @@
               }
             ]
           },
+          "status": {
+            "default": "running",
+            "enum": [
+              "running",
+              "paused",
+              "stopping",
+              "stopped",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "stopping": {
             "default": false,
             "title": "Stopping",
             "type": "boolean"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradingStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "target_leverage": {
             "anyOf": [
@@ -4474,6 +4640,10 @@
               }
             ],
             "title": "Target Leverage"
+          },
+          "trade_direction": {
+            "$ref": "#/components/schemas/TradeDirection",
+            "default": "copy"
           },
           "unrealized_pnl_usd": {
             "default": 0.0,
