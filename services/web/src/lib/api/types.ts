@@ -43,7 +43,9 @@ export type LeaderOverride = Schemas["LeaderOverride"];
 /** v4/v5 fields (Trade allocation, small accounts, liquidity caps): optional so a v3 api still type-checks. */
 type V5SettingsKeys =
   | "allocation_usd" | "exposure_mode" | "target_leverage" | "invested_ms"
-  | "small_account_mode" | "max_order_volume_pct" | "max_slippage_pct";
+  | "small_account_mode" | "max_order_volume_pct" | "max_slippage_pct"
+  // v8: copy/counter, coin lists, pause (a pre-v8 api omits them)
+  | "trade_direction" | "coin_allowlist" | "coin_blocklist" | "paused";
 
 export type Settings = Omit<Schemas["Settings"], "leaders" | "leader_overrides" | V5SettingsKeys> &
   Partial<Pick<Schemas["Settings"], V5SettingsKeys>> & {

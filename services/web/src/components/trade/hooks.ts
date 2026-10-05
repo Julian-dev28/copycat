@@ -1,13 +1,14 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useScoutMode } from "@/hooks/useScout";
 import { apiProblem } from "@/lib/trade/apiState";
 import { demoAccount, type DemoAccount } from "@/lib/trade/fixtures";
 import { demoTrade, liveTrade, type TradeSource } from "@/lib/trade/source";
-import type { TradeSettings, WalletCopyRequest, WalletStopRequest } from "@/lib/trade/types";
+import type { ProjectionQuery, TradeSettings, WalletCopyRequest, WalletStopRequest } from "@/lib/trade/types";
+import { EVENTS_PAGE, nextBefore } from "@/lib/trade/walletEvents";
 
 const demoSources = new Map<DemoAccount, TradeSource>();
 
@@ -31,6 +32,8 @@ function keys(demo: boolean, acct: DemoAccount) {
     status: demo ? [...d, "status"] : ["status"],
     wallets: demo ? [...d, "wallets"] : ["trade", "wallets"],
     preview: demo ? [...d, "preview"] : ["trade", "preview"],
+    events: demo ? [...d, "events"] : ["trade", "events"],
+    projection: demo ? [...d, "projection"] : ["trade", "projection"],
   };
 }
 
@@ -61,11 +64,56 @@ function useInvalidateBook() {
   const { demo, acct } = useTradeMode();
   const qc = useQueryClient();
   const k = keys(demo, acct);
-  return (settings: TradeSettings) => {
-    qc.setQueryData(k.settings, settings);
+  return (result: unknown) => {
+    // Most wallet routes answer the new Settings; archive answers the WalletPosition.
+    if (result && typeof result === "object" && "leaders" in result) qc.setQueryData(k.settings, result as TradeSettings);
+    else qc.invalidateQueries({ queryKey: k.settings });
     qc.invalidateQueries({ queryKey: k.status });
     qc.invalidateQueries({ queryKey: k.wallets });
+    qc.invalidateQueries({ queryKey: k.events });
   };
+}
+
+export type LifecycleAction = "pause" | "resume" | "archive";
+
+/** Pause / Resume / Archive one wallet (v8). */
+export function useWalletLifecycle() {
+  const { source } = useTradeMode();
+  const done = useInvalidateBook();
+  return useMutation({
+    mutationFn: ({ address, action }: { address: string; action: LifecycleAction }) => source[action](address),
+    onSuccess: done,
+  });
+}
+
+/** One wallet's log, newest first, paged by before_ms. Polls the first page in demo; live adds SSE on top. */
+export function useWalletEvents(address: string | null, active: boolean) {
+  const { demo, acct, source, enabled } = useTradeMode();
+  return useInfiniteQuery({
+    queryKey: [...keys(demo, acct).events, address],
+    queryFn: ({ pageParam }) => source.events(address!, { limit: EVENTS_PAGE, beforeMs: pageParam }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => nextBefore(last.events, EVENTS_PAGE),
+    enabled: enabled && active && Boolean(address),
+    refetchInterval: demo && active ? 4_000 : false,
+    retry: noRetryWhenTooOld,
+  });
+}
+
+/** The 30-day backtest for a ticket; polls every 3s while the api says it is building (202). */
+export function useWalletProjection(address: string | null, q: ProjectionQuery | null) {
+  const { demo, acct, source, enabled } = useTradeMode();
+  const key = q ? JSON.stringify(q) : null;
+  const debounced = useDebounced(key, 400);
+  return useQuery({
+    queryKey: [...keys(demo, acct).projection, address, debounced],
+    queryFn: () => source.projection(address!, JSON.parse(debounced!) as ProjectionQuery),
+    enabled: enabled && Boolean(address && debounced),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    refetchInterval: (query) => (query.state.data?.kind === "building" ? 3_000 : false),
+    retry: noRetryWhenTooOld,
+  });
 }
 
 export function useCopyWallet() {

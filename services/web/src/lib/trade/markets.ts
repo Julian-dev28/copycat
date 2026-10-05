@@ -1,10 +1,11 @@
 /**
  * The Markets column and the "Your wallets" table as data. Pure, unit-tested.
  */
-import { isValidAddress, normAddr } from "@/lib/address";
+import { normAddr } from "@/lib/address";
 import { HIDE_FLAGS } from "@/lib/scout/query";
 import type { TraderRow } from "@/lib/scout/types";
 import { rowQuote, type MarketQuote } from "./equityIndex";
+import { extractAddress } from "./pasteAddress";
 import type { TradeSettings, TradeStatus, WalletPosition } from "./types";
 
 export type MarketTab = "mine" | "top" | "all";
@@ -42,12 +43,13 @@ export function buildMarkets(rows: TraderRow[], leaders: string[], tab: MarketTa
 
   const needle = q.trim().toLowerCase();
   if (!needle) return list;
-  const hits = list.filter((m) => m.address.includes(needle) || (m.name ?? "").toLowerCase().includes(needle));
-  if (isValidAddress(needle) && !hits.some((m) => m.address === normAddr(needle))) {
-    const a = normAddr(needle);
-    return [item(a, byAddr.get(a) ?? null, book), ...hits];
+  // A pasted address (or explorer link) opens that wallet even when Scout doesn't track it.
+  const pasted = extractAddress(q);
+  if (pasted) {
+    const hit = list.find((m) => m.address === pasted);
+    return [hit ?? item(pasted, byAddr.get(pasted) ?? null, book)];
   }
-  return hits;
+  return list.filter((m) => m.address.includes(needle) || (m.name ?? "").toLowerCase().includes(needle));
 }
 
 export type WalletState = "active" | "dry_run" | "paused" | "stopping" | "no_read";

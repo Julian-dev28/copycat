@@ -18,6 +18,7 @@ from contracts.models import (
     Settings,
     SizingMode,
     SmallAccountMode,
+    TradeDirection,
     TradingStyle,
 )
 
@@ -67,6 +68,11 @@ class SettingsPatch(BaseModel):
     small_account_mode: Optional[SmallAccountMode] = None
     max_order_volume_pct: Optional[float] = None
     max_slippage_pct: Optional[float] = None
+    # v8 book-wide defaults (a wallet override replaces them)
+    trade_direction: Optional[TradeDirection] = None
+    coin_allowlist: Optional[List[str]] = None
+    coin_blocklist: Optional[List[str]] = None
+    paused: Optional[bool] = None
     # address -> override. None clears that leader's override; a value
     # REPLACES whatever override that leader had, wholesale (not merged
     # field by field with the old override).

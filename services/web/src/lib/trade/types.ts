@@ -15,6 +15,10 @@ export type MarginMode = "isolated" | "cross";
 export type LeverageMode = "max" | "match" | "fixed";
 /** v7: copy a wallet with the Settings tab as-is, or with its own terms. */
 export type SettingsSource = "global" | "custom";
+/** v8: copy mirrors his sides; counter takes the opposite side of every position he opens. */
+export type TradeDirection = "copy" | "counter";
+/** v8: a wallet's lifecycle. paused = no new opens/adds, exits still mirrored. */
+export type WalletStatus = "running" | "paused" | "stopping" | "stopped" | "archived";
 
 export const SMALL_ACCOUNT_MODES: SmallAccountMode[] = ["concentrate", "bump", "skip"];
 
@@ -26,6 +30,11 @@ export interface AllocationFields {
   invested_ms?: number | null;
   small_account_mode?: SmallAccountMode | null;
   only_new_positions?: boolean | null;
+  /** v8 */
+  trade_direction?: TradeDirection | null;
+  coin_allowlist?: string[] | null;
+  coin_blocklist?: string[] | null;
+  paused?: boolean | null;
 }
 
 export type TradeOverride = Omit<LeaderOverride, "sizing_mode"> & AllocationFields & {
@@ -42,6 +51,11 @@ export type TradeSettings = Omit<Settings, "leader_overrides" | "sizing_mode"> &
   small_account_mode?: SmallAccountMode;
   max_order_volume_pct?: number;
   max_slippage_pct?: number;
+  /** v8 book-wide defaults (older apis omit them). */
+  trade_direction?: TradeDirection;
+  coin_allowlist?: string[];
+  coin_blocklist?: string[];
+  paused?: boolean;
 };
 
 /** LeaderStatus with the v4 per-wallet position fields. */
@@ -74,6 +88,10 @@ export interface WalletCopyRequest {
   leverage_mode?: LeverageMode;
   leverage?: number;
   only_new_positions?: boolean;
+  /** v8, custom only. Never sent to a pre-v8 api (extra="forbid"). */
+  trade_direction?: TradeDirection;
+  coin_allowlist?: string[];
+  coin_blocklist?: string[];
 }
 
 /** POST /api/wallets/{address}/stop. */
@@ -107,4 +125,35 @@ export interface WalletPosition {
   invested_ms?: number | null;
   /** v7: which terms this wallet copies with. Older apis omit it. */
   settings_source?: SettingsSource | null;
+  /** v8. Older apis omit these; lib/trade/lifecycle.ts derives the status. */
+  status?: WalletStatus | null;
+  trade_direction?: TradeDirection | null;
+  coin_allowlist?: string[] | null;
+  coin_blocklist?: string[] | null;
+  style?: TradingStyleName | null;
+  archived_ms?: number | null;
+}
+
+export type TradingStyleName = "algo" | "scalp" | "intraday" | "swing" | "position";
+
+/** GET /api/wallets/{a}/projection (contract WalletProjection). */
+export interface WalletProjection {
+  address: string;
+  allocation_usd: number;
+  trade_direction: TradeDirection;
+  curve: { t_ms: number; value: number }[];
+  return_pct: number;
+  max_drawdown_pct: number;
+  liquidations: number;
+  copies: number;
+  skipped: number;
+  note?: string | null;
+}
+
+/** Query for the projection route. */
+export interface ProjectionQuery {
+  allocation_usd: number;
+  trade_direction: TradeDirection;
+  exposure_mode: ExposureMode;
+  target_leverage?: number;
 }

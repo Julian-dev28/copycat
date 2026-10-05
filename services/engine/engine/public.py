@@ -22,6 +22,8 @@ Paths all come from `$COPYCAT_DATA_DIR` (default `./data`):
 Also `preview_wallet(address, request, settings, venue=None) -> WalletPreview`
 for the Trade ticket (POST /api/wallets/{address}/preview): read-only HL
 reads, sized by the same `engine.sizing.plan_allocation` the engine uses.
+Contract v8: `leader_events(address, limit, before_ms)` (one wallet's history),
+`wallet_ledgers()` and `archive_wallet(address)` (the per-wallet ledger).
 """
 from __future__ import annotations
 
@@ -388,6 +390,57 @@ def events(limit: int = 100, since_ms: Optional[int] = None) -> List[EngineEvent
     return events_mod.read_events(_events_path(), limit=limit, since_ms=since_ms)
 
 
+def leader_events(address: str, limit: int = 50,
+                  before_ms: Optional[int] = None) -> List[EngineEvent]:
+    """One wallet's events (actions + skips with reasons), newest first,
+    `ts_ms < before_ms` when given. Reads events.jsonl from the tail with a
+    capped scan (`engine.events.read_leader_events`)."""
+    return events_mod.read_leader_events(_events_path(), norm_addr(address), limit=limit,
+                                         before_ms=before_ms)
+
+
+# ── wallet ledger: archive (contract v8) ────────────────────────────────────
+
+class ArchiveRefused(ValueError):
+    """The wallet still has copies on the active account; the api maps it to 409."""
+
+
+def wallet_ledgers(address: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Every per-wallet ledger row of an account's db (default: the active
+    account): leader -> {invested_ms, realized_pnl_usd, fees_usd, terms,
+    updated_ms, archived_ms}. No venue, no network. {} when there is no
+    account or no db yet."""
+    try:
+        path = _db_path(norm_addr(address) if address else None)
+    except Exception:
+        return {}
+    if not path.exists():
+        return {}
+    with EngineState(path) as state:
+        return state.all_ledgers()
+
+
+def archive_wallet(address: str, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """Mark a stopped wallet archived in the active account's ledger. Refuses
+    (ArchiveRefused) while any copy row of it, real or dry-run shadow, still
+    exists: the engine keeps reading an archived wallet only while it holds
+    copies, so archiving one would never stop its exits, but the rule keeps
+    "archived" meaning "nothing left". The api checks the book and stop
+    flags. Returns the ledger row."""
+    addr = norm_addr(address)
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    our = account_mod.resolve_our_address()
+    if not our:
+        raise ArchiveRefused("no active account")
+    with EngineState(account_mod.db_path(our)) as state:
+        held = sorted({c.coin for c in state.all_copies() if c.leader == addr}
+                      | {c.coin for c in state.all_dry_copies() if c.leader == addr})
+        if held:
+            raise ArchiveRefused(f"{addr} still has copies: {', '.join(held)}")
+        state.archive_ledger(addr, now_ms)
+        return state.get_ledger(addr) or {}
+
+
 # ── Trade ticket preview ────────────────────────────────────────────────────
 
 class PreviewUnavailable(RuntimeError):
@@ -409,11 +462,40 @@ def wallet_settings(settings: Settings, address: str, req: WalletCopyRequest) ->
         "exposure_mode": req.exposure_mode,
     }
     for k in ("target_leverage", "margin_mode", "max_worse_entry_pct", "small_account_mode",
-              "leverage_mode", "leverage", "only_new_positions"):
+              "leverage_mode", "leverage", "only_new_positions", "trade_direction",
+              "coin_allowlist", "coin_blocklist"):
         v = getattr(req, k)
         if v is not None:
             patch[k] = v
     return Settings.model_validate({**es.model_dump(), **patch})
+
+
+def _apply_v8_to_plan(plan: Dict[str, Any], es: Settings, notes: List[str]) -> None:
+    """Contract v8 on a preview plan, the way the engine applies it: sized on
+    his whole book first (a filtered coin's slice is left unspent, never
+    handed to the other coins), then a coin outside the allow/block lists is
+    skipped "filtered: <coin>", every side flips for counter, and a paused
+    wallet copies nothing until resumed."""
+    counter = es.trade_direction.value == "counter"
+    changed = False
+    for r in plan["slices"]:
+        if counter:
+            r["side"] = "short" if r["side"] == "long" else "long"
+        if r["status"] != "skip" and not sizing.coin_allowed(es, r["coin"]):
+            r.update(status="skip", notional_usd=0.0, margin_usd=0.0, fill_cycles=1,
+                     reason=f"filtered: {r['coin']}")
+            changed = True
+    if counter:
+        notes.append("counter: every copy takes the opposite side of his position")
+    if es.paused:
+        notes.append("paused: nothing opens until the wallet is resumed")
+    if changed:
+        live = [r for r in plan["slices"] if r["status"] != "skip"]
+        plan.update(planned_notional_usd=round(sum(r["notional_usd"] for r in live), 6),
+                    planned_margin_usd=round(sum(r["margin_usd"] for r in live), 6),
+                    copied=[r["coin"] for r in live],
+                    skipped=[r["coin"] for r in plan["slices"] if r["status"] == "skip"],
+                    multi_cycle=any(int(r.get("fill_cycles") or 1) > 1 for r in live))
 
 
 def _default_venue() -> Any:
@@ -459,7 +541,9 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
     for c, p in positions.items():
         try:
             stats = venue.market_stats(c)
-            depth = venue.depth_usd(c, float(p.get("szi") or 0.0) > 0, es.max_slippage_pct)
+            # our order side: his side, inverted for counter (v8)
+            depth = venue.depth_usd(c, sizing.our_is_long(float(p.get("szi") or 0.0),
+                                                          es.trade_direction), es.max_slippage_pct)
         except Exception:
             stats, depth = None, None
         vol = (stats or {}).get("day_volume_usd") if stats else None
@@ -508,6 +592,7 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
         plan.update(planned_notional_usd=0.0, planned_margin_usd=0.0, copied=[],
                     skipped=[r["coin"] for r in plan["slices"]], multi_cycle=False)
         notes.append("only_new_positions: only positions he opens from now on are copied")
+    _apply_v8_to_plan(plan, es, notes)
     if not positions:
         notes.append("he holds no positions now: nothing opens until he does")
     if plan["multi_cycle"]:

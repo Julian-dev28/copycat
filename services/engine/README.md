@@ -14,6 +14,8 @@ Public surface (the only names other services import):
 | `engine.public.events(limit, since_ms)` | `EngineEvent`s, newest first |
 | `engine.public.preview_wallet(address, req, settings, venue=None)` | Trade ticket preview (`WalletPreview`), read only |
 | `engine.public.read_stops()` | pending `data/stop/<address>.flag` requests |
+| `engine.public.leader_events(address, limit, before_ms)` | one wallet's events, newest first (tail read, 8MB cap) |
+| `engine.public.wallet_ledgers()` / `archive_wallet(address)` | per-wallet ledger rows; mark a stopped wallet archived (`ArchiveRefused` while it has copies) |
 | `engine.sizing.*` | pure sizing/leverage/equity math (discovery's sim imports it), incl. `plan_allocation` |
 | `engine.pacing.*` | pure HL read-weight estimate and effective poll interval |
 
@@ -160,6 +162,55 @@ weight x 60 / (1200 x 0.6)), so the engine uses at most 60% of HL's budget.
 **Per-leader overrides**: `leader_overrides[address]` replaces any of sizing
 mode, multiplier, fixed amounts, leverage mode/value, margin mode and
 `max_worse_entry_pct` for that leader only (`Settings.for_leader`).
+
+**Trade direction (contract v8, `trade_direction`)**: `copy` mirrors his side;
+`counter` takes the opposite side of every position he opens (he goes long, we
+go short).
+- Sizes are identical in both directions: every sizing formula uses |size| x
+  price (his notional, his gross notional, our current notional), so only the
+  order side flips.
+- Opens and adds take OUR side; reduces and closes follow his size changes on
+  our position (reduce-only, side read from our real size). A flip is a close,
+  then a fresh open on the opposite of his NEW side.
+- `max_worse_entry_pct` checks OUR side against HIS entry: a counter short (he
+  is long at E) is blocked once mid < E x (1 - p), a counter long (he is
+  short) once mid > E x (1 + p). Liquidity caps read the book on our order side.
+- Each `copies` / `dry_copies` row stores the `direction` it was opened with,
+  and keeps it until it closes. Changing a wallet's direction applies to its
+  next fresh open only: an open copy's adds, catch-ups and flips' close keep
+  the old side (a flip's new open takes the new direction). Rows from before
+  v8 read as `copy`.
+- Safety: an add is skipped when our real position is on the other side from
+  what the copy's direction says it should be (changed outside copycat);
+  adding would net against it. "Not ours" and "vanished" are side-blind
+  (any size counts), and the stranded-copy close seeds his last-seen sign
+  from ours, inverted for a counter copy.
+
+**Coin filters (v8, `coin_allowlist` / `coin_blocklist`)**: an open/add of a
+coin outside a non-empty allowlist, or on the blocklist, is skipped with
+"filtered: <coin>" (a fresh open is then ignored until he goes flat, like
+"disabled"). Exits are never filtered. Matching is case-insensitive; a HIP-3
+coin keeps its "dex:COIN" form ("xyz:TSLA" never matches plain "TSLA"). The
+book-wide lists apply to every wallet whose override does not set its own (an
+override's list, even [], replaces the book-wide one). Sizing still sees his
+whole book: a filtered coin's slice is left unspent, never handed to the
+other coins (`sizing.coin_allowed`).
+
+**Pause (v8, `paused`)**: a paused wallet (its override, or the book-wide
+flag) gets no new opens or adds (skip "paused"; a fresh open is ignored until
+he goes flat; a liquidity catch-up waits); exits always mirror. Pausing is
+not stopping: the wallet stays in the book and its copies keep following him
+out.
+
+**Skip events carry their leader** (v8): a coin's skip reason is logged (once,
+when it first appears or changes) with the leader being diffed, so
+`leader_events` shows one wallet why its moves were not copied.
+
+**Archived wallets** (v8, ledger `archived_ms`, set through the api for a
+stopped wallet with no copies): an archived orphan is no longer read every
+cycle. One that still holds any copy row (real or dry-run) or has a pending
+stop is read as before, so its exits always mirror. A new `invested_ms` (a
+fresh investment) clears `archived_ms`.
 
 **Daily loss halt**: `daily_loss_limit_usd < 0` blocks new opens/adds once
 today's PnL (equity now minus equity at the first cycle of the UTC day) is at

@@ -3,13 +3,11 @@
 it, so rewriting history under a concurrent reader would be wrong, not just
 inconvenient.
 
-Only a few actions are ever logged here (baseline, open, add, reduce, close,
-intent, error, halt, resume) -- the same set `pathiel`'s copycat_live logged
-through its `log_event` callback. Routine per-cycle skip reasons do NOT go
-here; they are cycle-local and only ever visible in the one-line cycle log
-and `run_cycle()`'s return value. Logging every "owned by leader X" or
-"entries blocked" skip to a permanent file would make it grow unboundedly
-fast for no operational benefit.
+Actions: baseline, open, add, reduce, close, intent, error, halt, resume,
+and `skip`. A skip is logged only when a coin's (or leader's) skip reason
+first appears or changes (`core._log_skip_changes`), never every cycle, and
+carries the leader it belongs to, so one wallet's history
+(`read_leader_events`) shows why its moves were not copied.
 
 Growth control: `events.jsonl` still grows forever from the actions that DO
 get logged. Past `_MAX_BYTES` the file is rotated to a single `.jsonl.1`
@@ -76,3 +74,61 @@ def read_events(path: Union[str, Path], limit: int = 100,
             out.append(ev)
     out.sort(key=lambda e: e.ts_ms, reverse=True)
     return out[:limit]
+
+
+_TAIL_BLOCK = 64 * 1024
+MAX_SCAN_BYTES = 8 * 1024 * 1024   # a wallet's history page never reads more than this
+
+
+def read_leader_events(path: Union[str, Path], leader: str, limit: int = 50,
+                       before_ms: Optional[int] = None,
+                       max_scan_bytes: int = MAX_SCAN_BYTES) -> List[EngineEvent]:
+    """One wallet's events (actions and skips with reasons), newest first:
+    `event.leader == leader` and, with `before_ms`, `ts_ms < before_ms`
+    (page with the last row's ts_ms). Reads the live file backwards from the
+    end in 64KB blocks and stops at `limit` matches or `max_scan_bytes`
+    scanned, so a 25MB log costs at most 8MB of reading, never a full parse.
+    Lines are appended in time order, so the backwards walk is newest first;
+    lines that do not parse are skipped. A missing file is an empty list."""
+    path = Path(path)
+    leader = leader.lower()
+    if limit <= 0 or not path.exists():
+        return []
+    out: List[EngineEvent] = []
+    needle = leader.encode()   # cheap prefilter; _match parses and checks the field
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        scanned = 0
+        tail = b""
+        while pos > 0 and scanned < max_scan_bytes and len(out) < limit:
+            step = min(_TAIL_BLOCK, pos)
+            pos -= step
+            fh.seek(pos)
+            buf = fh.read(step) + tail
+            scanned += step
+            lines = buf.split(b"\n")
+            # the first piece may be a partial line unless we reached the file start
+            tail = lines.pop(0) if pos > 0 else b""
+            for raw in reversed(lines):
+                ev = _match(raw, needle, leader, before_ms)
+                if ev is not None:
+                    out.append(ev)
+                    if len(out) >= limit:
+                        break
+    return out[:limit]
+
+
+def _match(raw: bytes, needle: bytes, leader: str, before_ms: Optional[int]) -> Optional[EngineEvent]:
+    raw = raw.strip()
+    if not raw or needle not in raw.lower():
+        return None
+    try:
+        ev = EngineEvent.model_validate_json(raw)
+    except ValueError:
+        return None
+    if (ev.leader or "").lower() != leader:
+        return None
+    if before_ms is not None and ev.ts_ms >= before_ms:
+        return None
+    return ev

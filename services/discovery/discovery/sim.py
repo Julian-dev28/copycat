@@ -36,6 +36,13 @@ n_leaders = 1: each candidate is scored as if copied alone.
   without a wick in our data (missing bars) still caps the loss at the
   margin: unrealized PnL of an isolated copy is floored at -margin.
 - A copy's leverage is fixed at open; adds reuse it.
+- Contract v8, from the effective settings, as the engine applies them:
+  trade_direction counter takes the opposite side of every position he opens
+  (sizes unchanged; execution price, worse-entry check, liquidation price and
+  PnL all on OUR inverted side; his reduces/closes still close ours). Coin
+  allow/block lists skip opens/adds (flag "filtered:<coin>", via
+  engine.sizing.coin_allowed); exits are never filtered. `paused` is ignored:
+  the sim projects the terms, not the wallet's current on/off state.
 """
 from __future__ import annotations
 
@@ -89,9 +96,14 @@ class SimResult:
 
 
 def _is_buy_action(kind: str, side: str) -> bool:
+    """`side` is OUR copy's side (his side, inverted for counter)."""
     if kind in ("open", "add"):
         return side == "long"
     return side == "short"
+
+
+def _flip(side: str) -> str:
+    return "short" if side == "long" else "long"
 
 
 def _upnl(copy: _Copy, mark_px: float) -> float:
@@ -256,6 +268,7 @@ def simulate_wallet(
     allocation = settings.sizing_mode == SizingMode.allocation
     his_book: Dict[str, Dict[str, float]] = {}   # his positions as the engine reads them (in-window events)
     concentrate = allocation and settings.small_account_mode == SmallAccountMode.concentrate
+    counter = getattr(settings.trade_direction, "value", settings.trade_direction) == "counter"
     if curve_step_ms and curve_step_ms > 0:
         start = window_start_ms if window_start_ms is not None else (events[0].time_ms if events else window_end_ms)
         st.curve_step = int(curve_step_ms)
@@ -273,9 +286,16 @@ def simulate_wallet(
         _advance(st, series, e.time_ms)
         st.curve_to(e.time_ms)
         s = series.get(e.coin)
-        is_buy = _is_buy_action(e.kind, e.side)
+        held = st.open.get(e.coin)
+        # our side: an open copy keeps its own; a fresh open is his side (copy)
+        # or the opposite (counter)
+        our_side = held.side if held is not None else (_flip(e.side) if counter else e.side)
+        is_buy = _is_buy_action(e.kind, our_side)
         px = _exec_price(s, e, is_buy)
         _update_his_book(his_book, e)
+        if e.kind in ("open", "add") and not sizing.coin_allowed(settings, e.coin):
+            st.flags.append(f"filtered:{e.coin}")
+            continue
         his_gross = sizing.gross_notional(his_book)
         his_entry = his_book.get(e.coin, {}).get("entry_px", e.px)
         his_added = e.delta_sz * his_entry          # engine: (|cur| - |prev|) x his entry_px
@@ -302,7 +322,7 @@ def simulate_wallet(
             if len(st.open) >= settings.max_open_copies:
                 st.flags.append(f"max_open_copies:{e.coin}")
                 continue
-            if not sizing.worse_entry_ok(e.side, px, e.px, settings.max_worse_entry_pct):
+            if not sizing.worse_entry_ok(our_side, px, e.px, settings.max_worse_entry_pct):
                 st.flags.append(f"worse_entry:{e.coin}")
                 continue
             lev = sizing.exchange_leverage(settings, leader_leverage_by_coin.get(e.coin, float(coin_max)), coin_max)
@@ -329,19 +349,19 @@ def simulate_wallet(
             nb = bisect_left(s.t, e.time_ms) if s is not None else 0
             fixed_margin = (settings.fixed_margin_usd if settings.sizing_mode == SizingMode.fixed_margin
                             else settings.fixed_notional_usd / lev)
-            st.open[e.coin] = _Copy(e.coin, e.side, ntl, margin, lev, px, e.time_ms, px,
-                                    _liq_px(px, e.side, dist), nb,
+            st.open[e.coin] = _Copy(e.coin, our_side, ntl, margin, lev, px, e.time_ms, px,
+                                    _liq_px(px, our_side, dist), nb,
                                     cap_margin=max(fixed_margin, margin) * FIXED_CAP_SLACK if fixed_mode else 0.0)
             st.opens += 1
             if trace:
-                trace(f"  {e.time_ms} OPEN  {e.coin} {e.side} ntl=${ntl:.2f} margin=${margin:.2f} "
+                trace(f"  {e.time_ms} OPEN  {e.coin} {our_side} ntl=${ntl:.2f} margin=${margin:.2f} "
                       f"lev={lev}x px={px:.6g} his_px={e.px:.6g} liq={st.open[e.coin].liq_px:.6g}")
 
         elif e.kind == "add":
             cp = st.open.get(e.coin)
             if cp is None:
                 continue
-            if not sizing.worse_entry_ok(e.side, px, e.px, settings.max_worse_entry_pct):
+            if not sizing.worse_entry_ok(cp.side, px, e.px, settings.max_worse_entry_pct):
                 st.flags.append(f"worse_entry:{e.coin}")
                 continue
             frac = e.delta_sz / abs(e.start_position) if e.start_position else 0.0

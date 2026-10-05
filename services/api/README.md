@@ -21,7 +21,12 @@ are dropped.
 | POST | /wallets/{address}/copy | `WalletCopyRequest` -> `Settings`; invest or adjust (see Trade page) |
 | POST | /wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`; 502 his read failed, 503 engine missing |
 | POST | /wallets/{address}/stop | `WalletStopRequest` -> `{settings, stopping}`; 404 not in book and no copies |
-| GET | /wallets | `WalletPosition[]`: book wallets, then wallets winding down |
+| GET | /wallets | `WalletPosition[]`: book wallets, then stopped ones (winding down or with PnL history); `?include=archived` adds archived |
+| POST | /wallets/{address}/pause | -> `Settings`; no new opens/adds, exits mirrored; 404 not in book |
+| POST | /wallets/{address}/resume | -> `Settings`; 404 not in book |
+| POST | /wallets/{address}/archive | -> `WalletPosition`; stopped wallets only (409 otherwise) |
+| GET | /wallets/{address}/events | `EngineEvent[]` of that wallet, newest first; `limit`, `before_ms` |
+| GET | /wallets/{address}/projection | `WalletProjection` from cached data; 202 while Scout builds him |
 | GET | /status | `EngineStatus` from `engine.public.status()`; 503 if the engine package is missing |
 | GET | /events?limit=&since_ms= | newest first |
 | GET | /events/stream | SSE, tails `data/events.jsonl` from its end, one `EngineEvent` JSON per message |
@@ -198,9 +203,45 @@ Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
   `effective` (the terms it last ran with) for winding-down ones. If the
   engine package is missing the book rows still come back, zeroed.
 
+- **v8 copy fields** (custom only): `trade_direction` (copy | counter),
+  `coin_allowlist`, `coin_blocklist` go into the override when given; lists
+  are stripped and de-duplicated case-insensitively (`clean_coins`), and []
+  is a real value ("no list of its own", replacing the book-wide list).
+  `paused` is never touched by copy: a re-post of a paused wallet stays paused.
+- **pause / resume** (`SettingsStore.set_paused`): sets the override's
+  `paused`. A wallet with no override gets `{paused: true}`; resume sets it
+  back to None (inherit), or `false` when the book-wide `paused` is on, and
+  drops an override left empty. `settings_source` ignores `invested_ms` and
+  `paused`, so a paused global wallet is still "global".
+- **status** (`wallet_status`): stopping (stop flag pending, or the engine
+  says a close is retrying) > in the book: paused (effective `paused`) or
+  running > out of the book: archived (ledger `archived_ms`, no copies) or
+  stopped. A stopped wallet stays listed while it has copies or a ledger row
+  (its PnL history) until it is archived.
+- **archive**: 409 for a wallet in the book, still stopping, or with copies
+  (the engine's status row, and `engine.public.archive_wallet` re-checks its
+  own copy rows: `ArchiveRefused`). Writes `archived_ms` into the engine
+  ledger of the active account; the engine then stops reading that wallet
+  (it keeps reading any wallet that still holds a copy). A later copy sets a
+  new `invested_ms`, which un-archives it.
+- **events**: `engine.public.leader_events` reads `events.jsonl` backwards
+  from the end in 64KB blocks, stops at `limit` matches or 8MB scanned.
+  Skip events carry their leader since v8, so a wallet's history shows
+  "paused", "filtered: BTC", "worse than entry" and the like.
+- **projection**: the Scout what-if (`scout.what_if`, cached fills and
+  candles only, same `scout_what_if_lock` as the trader file) with the
+  override `{sizing_mode: allocation, allocation_usd, trade_direction,
+  exposure_mode, target_leverage}` on the wallet's current effective
+  settings and `sim_equity_usd = allocation_usd`. `LookupError` (no stats
+  cached) -> `scout.profile` queues the build and the route answers 202 with
+  its `ScoutStatus`. `skipped` is the sim's under-minimum count.
+- **style**: one `scout.page({"q": address, "limit": 1})` per wallet,
+  cached 5 minutes on the app; never raises, never queues a build.
+
 `PATCH /settings` also accepts the v5 book-wide fields (`allocation_usd`,
 `exposure_mode`, `target_leverage`, `invested_ms`, `small_account_mode`,
-`max_order_volume_pct`, `max_slippage_pct`).
+`max_order_volume_pct`, `max_slippage_pct`) and the v8 ones
+(`trade_direction`, `coin_allowlist`, `coin_blocklist`, `paused`).
 
 ## Trading accounts (`/api/accounts`)
 

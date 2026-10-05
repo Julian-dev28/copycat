@@ -749,17 +749,43 @@ export interface paths {
         /**
          * List Wallets
          * @description One row per wallet in the book (settings order), then every wallet
-         *     winding down (an orphan with open copies, or a stop still pending).
-         *     Position fields come from the engine's last cycle; if the engine
-         *     package is missing the book rows still come back, zeroed, read_ok
-         *     false. ROE % = (realized + unrealized) / allocation_usd x 100, None for
-         *     a wallet that is not on allocation sizing. Terms: in-book wallets from
-         *     settings; winding-down ones from the engine's `effective` (the terms they
-         *     last ran with).
+         *     out of the book: winding down (an orphan with open copies, or a stop
+         *     still pending) or stopped with a PnL history (a ledger row) and not
+         *     archived yet. `include=archived` also returns archived wallets (from the
+         *     ledger: realized PnL and their last terms). Position fields come from the
+         *     engine's last cycle; if the engine package is missing the book rows still
+         *     come back, zeroed, read_ok false. ROE % = (realized + unrealized) /
+         *     allocation_usd x 100, None for a wallet not on allocation sizing. Terms:
+         *     in-book wallets from settings; out-of-book ones from the engine's
+         *     `effective` (the terms they last ran with). `style` is his Scout style
+         *     when Scout has his board row, else null.
          */
         get: operations["list_wallets_api_wallets_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Wallet
+         * @description Archive a stopped wallet: out of the book, no stop pending, no copies.
+         *     It leaves GET /api/wallets (see `?include=archived`) and the engine stops
+         *     reading it. Copying it again un-archives it (a fresh investment). 409
+         *     otherwise; 503 when the engine package is missing.
+         */
+        post: operations["archive_wallet_api_wallets__address__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -793,6 +819,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wallets/{address}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wallet Events
+         * @description This wallet's engine events, newest first: opens/adds/reduces/closes
+         *     and skips with their reason ("paused", "filtered: BTC", "worse than
+         *     entry"...). Page with `before_ms` = the last row's ts_ms. Read from the
+         *     tail of events.jsonl with a capped scan, so an old wallet in a big log
+         *     may return fewer rows than exist. 503 when the engine package is missing.
+         */
+        get: operations["wallet_events_api_wallets__address__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Wallet
+         * @description Pause one wallet: the engine opens and adds nothing for it (skip
+         *     "paused"); its open copies still follow his reduces and closes. Pausing
+         *     is not stopping: the wallet stays in the book. A global wallet gets a
+         *     minimal override `{paused: true}` and stays "global". 404 when the wallet
+         *     is not in the book.
+         */
+        post: operations["pause_wallet_api_wallets__address__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wallets/{address}/preview": {
         parameters: {
             query?: never;
@@ -809,6 +883,53 @@ export interface paths {
          *     fails, 503 when the engine package is missing.
          */
         post: operations["preview_wallet_api_wallets__address__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/projection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wallet Projection
+         * @description His last 30d replayed onto `allocation_usd` at these terms (counter =
+         *     every side inverted, liquidations on our side), by discovery's copy-sim
+         *     on CACHED fills and candles only: no HL call in this request. Unset terms
+         *     come from the wallet's current settings (custom override, else the
+         *     Settings tab), and his coin filters apply. No cached data for him yet:
+         *     202 with the Scout status, and a build is queued (as GET
+         *     /api/scout/traders/{a} does). 409 while another what-if runs.
+         */
+        get: operations["wallet_projection_api_wallets__address__projection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallets/{address}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Wallet
+         * @description Resume a paused wallet. Moves he made while paused are not entered
+         *     midway; the next position he opens is copied. 404 when not in the book.
+         */
+        post: operations["resume_wallet_api_wallets__address__resume_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1371,6 +1492,10 @@ export interface components {
         LeaderOverride: {
             /** Allocation Usd */
             allocation_usd?: number | null;
+            /** Coin Allowlist */
+            coin_allowlist?: string[] | null;
+            /** Coin Blocklist */
+            coin_blocklist?: string[] | null;
             exposure_mode?: components["schemas"]["ExposureMode"] | null;
             /** Fixed Margin Usd */
             fixed_margin_usd?: number | null;
@@ -1386,12 +1511,15 @@ export interface components {
             max_worse_entry_pct?: number | null;
             /** Only New Positions */
             only_new_positions?: boolean | null;
+            /** Paused */
+            paused?: boolean | null;
             /** Size Multiplier */
             size_multiplier?: number | null;
             sizing_mode?: components["schemas"]["SizingMode"] | null;
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /** Target Leverage */
             target_leverage?: number | null;
+            trade_direction?: components["schemas"]["TradeDirection"] | null;
         };
         /** LeaderStatus */
         LeaderStatus: {
@@ -1629,6 +1757,10 @@ export interface components {
              * @default 0
              */
             allocation_usd: number;
+            /** Coin Allowlist */
+            coin_allowlist?: string[];
+            /** Coin Blocklist */
+            coin_blocklist?: string[];
             /**
              * Contract Version
              * @default 8
@@ -1719,6 +1851,11 @@ export interface components {
              */
             only_new_positions: boolean;
             /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /**
              * Poll Interval S
              * @default 5
              */
@@ -1742,6 +1879,8 @@ export interface components {
              * @default 5
              */
             target_leverage: number;
+            /** @default copy */
+            trade_direction: components["schemas"]["TradeDirection"];
         };
         /**
          * SettingsPatch
@@ -1762,6 +1901,10 @@ export interface components {
         SettingsPatch: {
             /** Allocation Usd */
             allocation_usd?: number | null;
+            /** Coin Allowlist */
+            coin_allowlist?: string[] | null;
+            /** Coin Blocklist */
+            coin_blocklist?: string[] | null;
             /** Contract Version */
             contract_version?: number | null;
             /** Daily Loss Limit Usd */
@@ -1803,6 +1946,8 @@ export interface components {
             min_order_bump?: boolean | null;
             /** Only New Positions */
             only_new_positions?: boolean | null;
+            /** Paused */
+            paused?: boolean | null;
             /** Poll Interval S */
             poll_interval_s?: number | null;
             /** Size Multiplier */
@@ -1813,6 +1958,7 @@ export interface components {
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /** Target Leverage */
             target_leverage?: number | null;
+            trade_direction?: components["schemas"]["TradeDirection"] | null;
         };
         /**
          * SizeTier
@@ -1940,6 +2086,13 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * TradeDirection
+         * @description copy: mirror his positions. counter: take the opposite side of every position he opens
+         *     (he goes long, we go short), same size rules; reduces and closes follow his, inverted.
+         * @enum {string}
+         */
+        TradeDirection: "copy" | "counter";
         /**
          * TradeExample
          * @description One representative round trip shown as evidence for a fingerprint claim.
@@ -2335,6 +2488,10 @@ export interface components {
         WalletCopyRequest: {
             /** Allocation Usd */
             allocation_usd?: number | null;
+            /** Coin Allowlist */
+            coin_allowlist?: string[] | null;
+            /** Coin Blocklist */
+            coin_blocklist?: string[] | null;
             /** @default match */
             exposure_mode: components["schemas"]["ExposureMode"];
             /** Leverage */
@@ -2354,6 +2511,7 @@ export interface components {
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /** Target Leverage */
             target_leverage?: number | null;
+            trade_direction?: components["schemas"]["TradeDirection"] | null;
         };
         /**
          * WalletPosition
@@ -2366,6 +2524,12 @@ export interface components {
             address: string;
             /** Allocation Usd */
             allocation_usd?: number | null;
+            /** Archived Ms */
+            archived_ms?: number | null;
+            /** Coin Allowlist */
+            coin_allowlist?: string[];
+            /** Coin Blocklist */
+            coin_blocklist?: string[];
             /** Equity Usd */
             equity_usd?: number | null;
             exposure_mode?: components["schemas"]["ExposureMode"] | null;
@@ -2423,12 +2587,21 @@ export interface components {
             sizing_mode?: components["schemas"]["SizingMode"] | null;
             small_account_mode?: components["schemas"]["SmallAccountMode"] | null;
             /**
+             * Status
+             * @default running
+             * @enum {string}
+             */
+            status: "running" | "paused" | "stopping" | "stopped" | "archived";
+            /**
              * Stopping
              * @default false
              */
             stopping: boolean;
+            style?: components["schemas"]["TradingStyle"] | null;
             /** Target Leverage */
             target_leverage?: number | null;
+            /** @default copy */
+            trade_direction: components["schemas"]["TradeDirection"];
             /**
              * Unrealized Pnl Usd
              * @default 0
@@ -2529,6 +2702,32 @@ export interface components {
             status: "copy" | "trimmed" | "bump" | "skip";
             /** Weight Pct */
             weight_pct: number;
+        };
+        /**
+         * WalletProjection
+         * @description GET /api/wallets/{a}/projection: his last 30d replayed onto `allocation_usd`
+         *     at the given terms (inverted for counter). From cached data, no orders.
+         */
+        WalletProjection: {
+            /** Address */
+            address: string;
+            /** Allocation Usd */
+            allocation_usd: number;
+            /** Copies */
+            copies: number;
+            /** Curve */
+            curve: components["schemas"]["CurvePoint"][];
+            /** Liquidations */
+            liquidations: number;
+            /** Max Drawdown Pct */
+            max_drawdown_pct: number;
+            /** Note */
+            note?: string | null;
+            /** Return Pct */
+            return_pct: number;
+            /** Skipped */
+            skipped: number;
+            trade_direction: components["schemas"]["TradeDirection"];
         };
         /**
          * WalletStopRequest
@@ -4144,7 +4343,9 @@ export interface operations {
     };
     list_wallets_api_wallets_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4158,6 +4359,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WalletPosition"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_wallet_api_wallets__address__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletPosition"];
+                };
+            };
+            /** @description still in the book, stopping, or holding copies */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4176,6 +4424,71 @@ export interface operations {
                 "application/json": components["schemas"]["WalletCopyRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallet_events_api_wallets__address__events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before_ms?: number | null;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineEvent"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_wallet_api_wallets__address__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -4219,6 +4532,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WalletPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallet_projection_api_wallets__address__projection_get: {
+        parameters: {
+            query?: {
+                allocation_usd?: number;
+                trade_direction?: components["schemas"]["TradeDirection"] | null;
+                exposure_mode?: components["schemas"]["ExposureMode"] | null;
+                target_leverage?: number | null;
+            };
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletProjection"];
+                };
+            };
+            /** @description no cached data yet; a build is queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutStatus"];
+                };
+            };
+            /** @description a what-if is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_wallet_api_wallets__address__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Validation Error */

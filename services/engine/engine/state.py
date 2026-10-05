@@ -37,6 +37,9 @@ Tables:
               `invested_ms` on. A new `invested_ms` (a fresh investment) resets
               the row. Also remembers the wallet's last allocation terms so a
               stopped wallet's winding-down row can still show them.
+              `archived_ms` (contract v8): set by POST /api/wallets/{a}/archive
+              for a stopped wallet with no copies; cleared by a fresh
+              investment (a new `invested_ms`).
   kv          small singleton values as JSON text: `last_good_settings` (the
               last `Settings` that parsed, for `settings_io.py`'s fallback),
               `last_status` (the most recent `EngineStatus` snapshot, so
@@ -72,7 +75,8 @@ CREATE TABLE IF NOT EXISTS copies (
     leverage INTEGER NOT NULL,
     is_cross INTEGER NOT NULL,
     sizing_mode TEXT NOT NULL,
-    pending_cloid TEXT
+    pending_cloid TEXT,
+    direction TEXT NOT NULL DEFAULT 'copy'
 );
 CREATE TABLE IF NOT EXISTS dry_copies (
     coin TEXT PRIMARY KEY,
@@ -81,7 +85,8 @@ CREATE TABLE IF NOT EXISTS dry_copies (
     leverage INTEGER NOT NULL,
     is_cross INTEGER NOT NULL,
     sizing_mode TEXT NOT NULL,
-    size REAL NOT NULL
+    size REAL NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'copy'
 );
 CREATE TABLE IF NOT EXISTS ledger (
     leader TEXT PRIMARY KEY,
@@ -89,7 +94,8 @@ CREATE TABLE IF NOT EXISTS ledger (
     realized_pnl_usd REAL NOT NULL DEFAULT 0,
     fees_usd REAL NOT NULL DEFAULT 0,
     terms TEXT NOT NULL DEFAULT '{}',
-    updated_ms INTEGER
+    updated_ms INTEGER,
+    archived_ms INTEGER
 );
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
@@ -110,12 +116,19 @@ class LeaderState:
 
 
 class Copy:
-    """A real (or, as `DryCopy`, simulated) position this engine opened."""
+    """A real (or, as `DryCopy`, simulated) position this engine opened.
+
+    `direction` ("copy" | "counter", contract v8 TradeDirection) is the side
+    rule this copy was OPENED with: copy = his side, counter = the opposite.
+    It is fixed for the copy's life. Changing a wallet's trade_direction only
+    applies to its next fresh open; an open copy keeps its own direction
+    until it closes (adds, reduces, flips and catch-ups all read it here)."""
     __slots__ = ("coin", "leader", "opened_ms", "leverage", "is_cross", "sizing_mode",
-                 "pending_cloid")
+                 "pending_cloid", "direction")
 
     def __init__(self, coin: str, leader: str, opened_ms: int, leverage: int,
-                 is_cross: bool, sizing_mode: str, pending_cloid: Optional[str] = None):
+                 is_cross: bool, sizing_mode: str, pending_cloid: Optional[str] = None,
+                 direction: str = "copy"):
         self.coin = coin
         self.leader = leader
         self.opened_ms = opened_ms
@@ -123,6 +136,7 @@ class Copy:
         self.is_cross = is_cross
         self.sizing_mode = sizing_mode
         self.pending_cloid = pending_cloid
+        self.direction = direction if direction in ("copy", "counter") else "copy"
 
 
 class DryCopy(Copy):
@@ -131,8 +145,9 @@ class DryCopy(Copy):
     __slots__ = ("size",)
 
     def __init__(self, coin: str, leader: str, opened_ms: int, leverage: int,
-                 is_cross: bool, sizing_mode: str, size: float):
-        super().__init__(coin, leader, opened_ms, leverage, is_cross, sizing_mode)
+                 is_cross: bool, sizing_mode: str, size: float, direction: str = "copy"):
+        super().__init__(coin, leader, opened_ms, leverage, is_cross, sizing_mode,
+                         direction=direction)
         self.size = size
 
 
@@ -150,6 +165,15 @@ class EngineState:
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(copies)").fetchall()}
         if "pending_cloid" not in cols:   # engine.db from before the pending-row protocol
             self._conn.execute("ALTER TABLE copies ADD COLUMN pending_cloid TEXT")
+        # contract v8: every copy row before it was opened as a plain copy
+        for table in ("copies", "dry_copies"):
+            cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "direction" not in cols:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN direction TEXT NOT NULL DEFAULT 'copy'")
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(ledger)").fetchall()}
+        if "archived_ms" not in cols:
+            self._conn.execute("ALTER TABLE ledger ADD COLUMN archived_ms INTEGER")
         self._conn.commit()
         self._lock = threading.Lock()
 
@@ -190,21 +214,22 @@ class EngineState:
 
     def get_copy(self, coin: str) -> Optional[Copy]:
         row = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid "
-            "FROM copies WHERE coin = ?", (coin,)).fetchone()
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid, "
+            "direction FROM copies WHERE coin = ?", (coin,)).fetchone()
         return self._row_to_copy(row) if row else None
 
     def put_copy(self, c: Copy) -> None:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO copies "
-                "(coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
+                "(coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid, direction) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
                 "leader = excluded.leader, opened_ms = excluded.opened_ms, "
                 "leverage = excluded.leverage, is_cross = excluded.is_cross, "
-                "sizing_mode = excluded.sizing_mode, pending_cloid = excluded.pending_cloid",
+                "sizing_mode = excluded.sizing_mode, pending_cloid = excluded.pending_cloid, "
+                "direction = excluded.direction",
                 (c.coin, c.leader, c.opened_ms, c.leverage, int(c.is_cross), c.sizing_mode,
-                 getattr(c, "pending_cloid", None)))
+                 getattr(c, "pending_cloid", None), c.direction))
             self._conn.commit()
 
     def delete_copy(self, coin: str) -> None:
@@ -220,8 +245,8 @@ class EngineState:
 
     def all_copies(self) -> List[Copy]:
         rows = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid "
-            "FROM copies").fetchall()
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, pending_cloid, "
+            "direction FROM copies").fetchall()
         return [self._row_to_copy(r) for r in rows]
 
     def clear_dry_copies(self) -> None:
@@ -231,13 +256,13 @@ class EngineState:
 
     @staticmethod
     def _row_to_copy(row: Any) -> Copy:
-        return Copy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6])
+        return Copy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6], row[7])
 
     # ── dry_copies (shadow) ──────────────────────────────────────────────
 
     def get_dry_copy(self, coin: str) -> Optional[DryCopy]:
         row = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, size "
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, size, direction "
             "FROM dry_copies WHERE coin = ?", (coin,)).fetchone()
         return self._row_to_dry_copy(row) if row else None
 
@@ -245,12 +270,14 @@ class EngineState:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO dry_copies "
-                "(coin, leader, opened_ms, leverage, is_cross, sizing_mode, size) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
+                "(coin, leader, opened_ms, leverage, is_cross, sizing_mode, size, direction) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(coin) DO UPDATE SET "
                 "leader = excluded.leader, opened_ms = excluded.opened_ms, "
                 "leverage = excluded.leverage, is_cross = excluded.is_cross, "
-                "sizing_mode = excluded.sizing_mode, size = excluded.size",
-                (c.coin, c.leader, c.opened_ms, c.leverage, int(c.is_cross), c.sizing_mode, c.size))
+                "sizing_mode = excluded.sizing_mode, size = excluded.size, "
+                "direction = excluded.direction",
+                (c.coin, c.leader, c.opened_ms, c.leverage, int(c.is_cross), c.sizing_mode, c.size,
+                 c.direction))
             self._conn.commit()
 
     def delete_dry_copy(self, coin: str) -> None:
@@ -260,31 +287,51 @@ class EngineState:
 
     def all_dry_copies(self) -> List[DryCopy]:
         rows = self._conn.execute(
-            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, size "
+            "SELECT coin, leader, opened_ms, leverage, is_cross, sizing_mode, size, direction "
             "FROM dry_copies").fetchall()
         return [self._row_to_dry_copy(r) for r in rows]
 
     @staticmethod
     def _row_to_dry_copy(row: Any) -> DryCopy:
-        return DryCopy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6])
+        return DryCopy(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6], row[7])
 
     # ── ledger (per-leader realized PnL) ────────────────────────────────
 
     def get_ledger(self, leader: str) -> Optional[Dict[str, Any]]:
         row = self._conn.execute(
-            "SELECT leader, invested_ms, realized_pnl_usd, fees_usd, terms, updated_ms "
+            "SELECT leader, invested_ms, realized_pnl_usd, fees_usd, terms, updated_ms, archived_ms "
             "FROM ledger WHERE leader = ?", (leader,)).fetchone()
-        if row is None:
-            return None
+        return self._row_to_ledger(row) if row else None
+
+    def all_ledgers(self) -> Dict[str, Dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT leader, invested_ms, realized_pnl_usd, fees_usd, terms, updated_ms, archived_ms "
+            "FROM ledger").fetchall()
+        return {r[0]: self._row_to_ledger(r) for r in rows}
+
+    @staticmethod
+    def _row_to_ledger(row: Any) -> Dict[str, Any]:
         return {"leader": row[0], "invested_ms": row[1], "realized_pnl_usd": float(row[2]),
                 "fees_usd": float(row[3]), "terms": json.loads(row[4] or "{}"),
-                "updated_ms": row[5]}
+                "updated_ms": row[5], "archived_ms": row[6]}
+
+    def archive_ledger(self, leader: str, now_ms: int) -> None:
+        """Mark a stopped wallet archived (contract v8 WalletPosition.archived_ms).
+        Creates the row when the wallet never had one. The caller checks the
+        rules (not in the book, no copies)."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO ledger (leader, invested_ms, realized_pnl_usd, fees_usd, terms, "
+                "updated_ms, archived_ms) VALUES (?, NULL, 0, 0, '{}', ?, ?) "
+                "ON CONFLICT(leader) DO UPDATE SET archived_ms = excluded.archived_ms",
+                (leader, now_ms, now_ms))
+            self._conn.commit()
 
     def sync_ledger(self, leader: str, invested_ms: Optional[int],
                     terms: Optional[Dict[str, Any]] = None, now_ms: Optional[int] = None) -> None:
         """Called every cycle for a leader the settings give an `invested_ms`.
         A different `invested_ms` than the row's is a fresh investment: the
-        row resets to zero. The same one only refreshes the remembered terms.
+        row resets to zero and is un-archived. The same one only refreshes the remembered terms.
         `invested_ms` None never resets (an orphan or a non-allocation
         wallet keeps whatever it has)."""
         if invested_ms is None:
@@ -296,7 +343,7 @@ class EngineState:
                     "INSERT INTO ledger (leader, invested_ms, realized_pnl_usd, fees_usd, terms, "
                     "updated_ms) VALUES (?, ?, 0, 0, ?, ?) ON CONFLICT(leader) DO UPDATE SET "
                     "invested_ms = excluded.invested_ms, realized_pnl_usd = 0, fees_usd = 0, "
-                    "terms = excluded.terms, updated_ms = excluded.updated_ms",
+                    "terms = excluded.terms, updated_ms = excluded.updated_ms, archived_ms = NULL",
                     (leader, invested_ms, json.dumps(terms or {}), now_ms))
             elif terms is not None and terms != cur["terms"]:
                 self._conn.execute("UPDATE ledger SET terms = ? WHERE leader = ?",

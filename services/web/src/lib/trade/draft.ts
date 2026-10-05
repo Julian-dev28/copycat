@@ -9,7 +9,7 @@
 import { normAddr } from "@/lib/address";
 import { clampLeverage, parseInvest } from "./form";
 import type {
-  ExposureMode, MarginMode, SettingsSource, SmallAccountMode, TradeOverride, TradeSettings, WalletCopyRequest, WalletPosition,
+  ExposureMode, MarginMode, SettingsSource, SmallAccountMode, TradeDirection, TradeOverride, TradeSettings, WalletCopyRequest, WalletPosition,
 } from "./types";
 
 export interface TicketDraft {
@@ -21,21 +21,28 @@ export interface TicketDraft {
   maxWorseEntryPct: number | null;
   smallMode: SmallAccountMode | null;
   onlyNew: boolean | null;
+  /** v8: null = follow the Settings tab's direction / lists. */
+  direction: TradeDirection | null;
+  allow: string[] | null;
+  block: string[] | null;
 }
 
-export type InheritableField = "marginMode" | "maxWorseEntryPct" | "smallMode" | "onlyNew";
+export type InheritableField = "marginMode" | "maxWorseEntryPct" | "smallMode" | "onlyNew" | "direction" | "allow" | "block";
 
 export interface ApiCaps {
   /** v7: settings_source, per-wallet leverage_mode and only_new_positions. */
   v7: boolean;
   /** v5: small_account_mode. */
   smallMode: boolean;
+  /** v8: trade_direction, coin_allowlist, coin_blocklist, pause/resume/archive. */
+  v8: boolean;
 }
 
 export function apiCaps(settings: TradeSettings | undefined): ApiCaps {
   return {
     v7: (settings?.contract_version ?? 0) >= 7,
     smallMode: Boolean(settings && "small_account_mode" in settings),
+    v8: (settings?.contract_version ?? 0) >= 8 && Boolean(settings && "trade_direction" in settings),
   };
 }
 
@@ -63,6 +70,9 @@ export function initialDraft(settings: TradeSettings | undefined, address: strin
     maxWorseEntryPct: o?.max_worse_entry_pct ?? null,
     smallMode: o?.small_account_mode ?? null,
     onlyNew: o?.only_new_positions ?? null,
+    direction: o?.trade_direction ?? null,
+    allow: o?.coin_allowlist ?? null,
+    block: o?.coin_blocklist ?? null,
   };
 }
 
@@ -76,6 +86,9 @@ export interface Effective {
   maxWorseEntryPct: number;
   smallMode: SmallAccountMode;
   onlyNew: boolean;
+  direction: TradeDirection;
+  allow: string[];
+  block: string[];
 }
 
 /** What actually applies: the draft's value, or the Settings tab's when inherited. */
@@ -86,6 +99,9 @@ export function effective(d: TicketDraft, s: TradeSettings | undefined): Effecti
     maxWorseEntryPct: custom && d.maxWorseEntryPct !== null ? d.maxWorseEntryPct : s?.max_worse_entry_pct ?? 10,
     smallMode: (custom && d.smallMode) || s?.small_account_mode || "concentrate",
     onlyNew: custom && d.onlyNew !== null ? d.onlyNew : s?.only_new_positions ?? false,
+    direction: (custom && d.direction) || s?.trade_direction || "copy",
+    allow: custom && d.allow !== null ? d.allow : s?.coin_allowlist ?? [],
+    block: custom && d.block !== null ? d.block : s?.coin_blocklist ?? [],
   };
 }
 
@@ -107,6 +123,12 @@ export function buildCopyRequest(d: TicketDraft, caps: ApiCaps): WalletCopyReque
   if (d.maxWorseEntryPct !== null) body.max_worse_entry_pct = d.maxWorseEntryPct;
   if (d.smallMode && caps.smallMode) body.small_account_mode = d.smallMode;
   if (d.onlyNew !== null && caps.v7) body.only_new_positions = d.onlyNew;
+  if (caps.v8) {
+    if (d.direction) body.trade_direction = d.direction;
+    // An empty list is a real choice ("no filter for this wallet"), so it is sent; null inherits.
+    if (d.allow !== null) body.coin_allowlist = [...d.allow];
+    if (d.block !== null) body.coin_blocklist = [...d.block];
+  }
   return body;
 }
 
@@ -117,7 +139,14 @@ function same(a: TicketDraft, b: TicketDraft): boolean {
   if (a.source === "global") return true;
   const amt = (d: TicketDraft) => parseInvest(d.amountText) ?? -1;
   return Math.abs(amt(a) - amt(b)) < 0.005 && a.mode === b.mode && (a.mode === "match" || a.leverage === b.leverage) &&
-    a.marginMode === b.marginMode && a.maxWorseEntryPct === b.maxWorseEntryPct && a.smallMode === b.smallMode && a.onlyNew === b.onlyNew;
+    a.marginMode === b.marginMode && a.maxWorseEntryPct === b.maxWorseEntryPct && a.smallMode === b.smallMode && a.onlyNew === b.onlyNew &&
+    a.direction === b.direction && sameList(a.allow, b.allow) && sameList(a.block, b.block);
+}
+
+function sameList(a: string[] | null, b: string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  const k = (l: string[]) => l.map((x) => x.trim().toLowerCase()).sort().join(",");
+  return k(a) === k(b);
 }
 
 /** New wallet -> copy; invested and something changed -> update; else unchanged. */

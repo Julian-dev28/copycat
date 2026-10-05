@@ -45,3 +45,23 @@ export function checkAmount(amount: number | null, maxUsd: number | null): Amoun
   }
   return { ok: true, warn: null };
 }
+
+export interface TargetLeverageCap {
+  set: number;
+  /** What copies open at: min(set, max_position_leverage), like engine/sizing.py. */
+  effective: number;
+  capped: boolean;
+  cap: number;
+}
+
+/**
+ * "Set leverage" after the Settings tab's Maximum position leverage. The
+ * engine applies min(leverage, max_position_leverage) in every mode (see
+ * components/copy/leverageCap.ts fixedLeverageCap), so a ticket leverage
+ * above the cap opens at the cap.
+ */
+export function targetLeverageCap(leverage: number, maxPositionLeverage: number | null | undefined): TargetLeverageCap {
+  const set = clampLeverage(leverage);
+  const cap = clampLeverage(maxPositionLeverage ?? MAX_LEVERAGE_CAP);
+  return { set, effective: Math.min(set, cap), capped: set > cap, cap };
+}

@@ -174,7 +174,11 @@ def worse_entry_ok(side: str, mid: float, entry: float, pct: float) -> bool:
     price (percent as in the contract: 10.0 = 10%) -- i.e. ok to open/add.
 
     A long is blocked once `mid > entry * (1 + pct/100)`; a short once
-    `mid < entry * (1 - pct/100)`. `entry <= 0` (unknown/missing) always
+    `mid < entry * (1 - pct/100)`. `side` is OUR side (contract v8): a
+    counter copy of his long is a short, checked against HIS entry, so it
+    is blocked once mid has fallen more than pct below his entry (we would
+    sell too cheap); a counter long (he is short) once mid has risen more
+    than pct above it. `entry <= 0` (unknown/missing) always
     returns True: there is nothing to compare against, so this gate cannot
     apply. This only ever gates opens/adds -- reduces and closes never call
     it; exits always mirror regardless of price.
@@ -185,6 +189,35 @@ def worse_entry_ok(side: str, mid: float, entry: float, pct: float) -> bool:
     if side == "long":
         return mid <= entry * (1 + frac)
     return mid >= entry * (1 - frac)
+
+
+def our_is_long(his_szi: float, direction: Any) -> bool:
+    """Contract v8 TradeDirection: the side OUR copy takes for his signed size.
+    copy: his side. counter: the opposite (he is long -> we are short).
+    `direction` is a TradeDirection or its string value."""
+    counter = getattr(direction, "value", direction) == "counter"
+    return (his_szi > 0) != counter
+
+
+def norm_coin(coin: str) -> str:
+    """Coin key for the allow/block lists: case-insensitive, whitespace
+    stripped. A HIP-3 coin keeps its "dex:COIN" form ("xyz:TSLA" and
+    "XYZ:tsla" match each other, never plain "TSLA")."""
+    return str(coin).strip().lower()
+
+
+def coin_allowed(settings: Settings, coin: str) -> bool:
+    """Contract v8 coin filters on the wallet's EFFECTIVE settings
+    (`Settings.for_leader`: a wallet override's list replaces the book-wide
+    one; absent = inherit). False when the allowlist is non-empty and the
+    coin is not on it, or the coin is on the blocklist. Gates opens/adds
+    only: exits are never filtered."""
+    c = norm_coin(coin)
+    allow = {norm_coin(x) for x in (settings.coin_allowlist or []) if str(x).strip()}
+    if allow and c not in allow:
+        return False
+    block = {norm_coin(x) for x in (settings.coin_blocklist or []) if str(x).strip()}
+    return c not in block
 
 
 def bump_allowed(settings: Settings) -> bool:

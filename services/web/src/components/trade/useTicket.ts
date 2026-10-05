@@ -4,10 +4,12 @@ import { useState } from "react";
 import { apiProblem } from "@/lib/trade/apiState";
 import { mergePreview } from "@/lib/trade/apiPreview";
 import { apiCaps, buildCopyRequest, effective, initialDraft, inherit, switchesSource, ticketAction, type InheritableField, type TicketDraft } from "@/lib/trade/draft";
-import { checkAmount, maxInvest, parseInvest } from "@/lib/trade/form";
+import { applyCoinFilter } from "@/lib/trade/coinFilter";
+import { applyDirection } from "@/lib/trade/direction";
+import { checkAmount, maxInvest, parseInvest, targetLeverageCap } from "@/lib/trade/form";
 import { localPreview } from "@/lib/trade/preview";
 import type { TicketPreview } from "@/lib/trade/ticket";
-import type { TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
+import type { TradeDirection, TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
 import type { TraderProfile } from "@/lib/scout/types";
 import { useWalletPreview } from "./hooks";
 
@@ -29,6 +31,14 @@ export function useTicket(address: string | null, profile: TraderProfile | undef
   }
   const setDraft = (patch: Partial<TicketDraft>) => setState((s) => ({ ...s, draft: { ...s.draft, ...patch } }));
   const resetField = (field: InheritableField) => setState((s) => ({ ...s, draft: inherit(s.draft, field) }));
+  /** Copy | Counter is a per-wallet term: picking one on "Use global" moves the ticket to custom (amount from Settings). */
+  const setDirection = (direction: TradeDirection) =>
+    setState((s) => {
+      const d = s.draft;
+      if (d.source === "custom") return { ...s, draft: { ...d, direction } };
+      const alloc = settings?.allocation_usd;
+      return { ...s, draft: { ...d, source: "custom", direction, amountText: d.amountText || (alloc && alloc > 0 ? String(alloc) : "") } };
+    });
 
   const caps = apiCaps(settings);
   const eff = effective(draft, settings);
@@ -41,13 +51,15 @@ export function useTicket(address: string | null, profile: TraderProfile | undef
   const action = ticketAction(draft, savedForCompare, invested);
   const switching = switchesSource(draft, savedForCompare, invested);
 
+  const lev = targetLeverageCap(draft.leverage, settings?.max_position_leverage);
   const otherExposure = (status?.positions ?? []).filter((c) => c.leader !== address).reduce((a, c) => a + Math.abs(c.notional_usd), 0);
   // Local estimate only for custom terms; global sizing can be any mode, so it waits for the engine.
   const local: TicketPreview | null = profile && custom
     ? localPreview({
         allocationUsd: amount ?? 0,
         mode: draft.mode,
-        targetLeverage: draft.leverage,
+        // The engine sizes at the capped leverage (sizing.py exchange_leverage), so the estimate does too.
+        targetLeverage: lev.effective,
         marginMode: eff.marginMode,
         smallMode: caps.smallMode ? eff.smallMode : "skip",
         leaderEquityUsd: profile.row.account_value_usd,
@@ -60,12 +72,14 @@ export function useTicket(address: string | null, profile: TraderProfile | undef
   const api = useWalletPreview(address, body);
   const apiFailed = apiProblem(api.error);
   const fresh = api.settled && body && api.data && !api.isPlaceholderData ? api.data : null;
-  const preview = local ? mergePreview(fresh, local) : fresh;
+  const merged = local ? mergePreview(fresh, local) : fresh;
+  // Filters and direction on top of either source: idempotent when the engine already applied them.
+  const preview = merged ? applyDirection(applyCoinFilter(merged, eff.allow, eff.block), eff.direction) : null;
   const previewNote =
     apiFailed === "too_old" ? "Local estimate: your api has no preview route yet." : apiFailed ? "Local estimate: the engine preview failed." : null;
 
   return {
-    draft, setDraft, resetField, amount, maxUsd, check, body, action, switching, invested, saved, caps, eff,
+    draft, setDraft, resetField, setDirection, lev, amount, maxUsd, check, body, action, switching, invested, saved, caps, eff,
     preview, previewPending: Boolean(body) && (!api.settled || api.isFetching), previewNote, previewError: apiFailed,
   };
 }

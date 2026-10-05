@@ -10,10 +10,12 @@ import type { CopyPosition } from "@/lib/api/types";
 import { demoFileRow } from "@/lib/scout/file/fixtures";
 import { fixtureProfile } from "@/lib/scout/fixtures";
 import type { TraderPositionView } from "@/lib/scout/types";
+import { applyCoinFilter } from "./coinFilter";
+import { ourSide } from "./direction";
 import { localPreview } from "./preview";
 import type {
-  ExposureMode, MarginMode, SettingsSource, SmallAccountMode, TradeLeaderStatus, TradeOverride, TradeSettings, TradeStatus, WalletCopyRequest,
-  WalletPosition,
+  ExposureMode, MarginMode, SettingsSource, SmallAccountMode, TradeDirection, TradeLeaderStatus, TradeOverride, TradeSettings, TradeStatus,
+  TradingStyleName, WalletCopyRequest, WalletPosition,
 } from "./types";
 
 export type DemoAccount = "small" | "default" | "large";
@@ -34,17 +36,18 @@ export const DEMO_GLOBAL_ALLOCATION: Record<DemoAccount, number> = { small: 10, 
 
 export function demoSettings(acct: DemoAccount = "default"): TradeSettings {
   return {
-    contract_version: 7, enabled: true, dry_run: true, leaders: [], sizing_mode: "allocation", fixed_margin_usd: 5,
+    contract_version: 8, enabled: true, dry_run: true, leaders: [], sizing_mode: "allocation", fixed_margin_usd: 5,
     fixed_notional_usd: 10.5, size_multiplier: 1, sleeve_frac: 1, leverage_mode: "match", leverage: 20, max_position_leverage: 50,
     margin_mode: "isolated", include_spot_staked: false, only_new_positions: false, max_worse_entry_pct: 10, min_order_bump: true,
     daily_loss_limit_usd: 0, max_open_copies: 10, poll_interval_s: 5, leader_overrides: {}, allocation_usd: DEMO_GLOBAL_ALLOCATION[acct],
     exposure_mode: "match", target_leverage: 5, small_account_mode: "concentrate", max_order_volume_pct: 0.5, max_slippage_pct: 1,
+    trade_direction: "copy", coin_allowlist: [], coin_blocklist: [], paused: false,
   };
 }
 
-export function leaderPositions(address: string, nowMs: number): { equity: number; positions: TraderPositionView[] } {
+export function leaderPositions(address: string, nowMs: number): { equity: number; positions: TraderPositionView[]; style: TradingStyleName | null } {
   const p = fixtureProfile(demoFileRow(address, nowMs), nowMs);
-  return { equity: p.row.account_value_usd, positions: p.positions };
+  return { equity: p.row.account_value_usd, positions: p.positions, style: p.row.style ?? null };
 }
 
 export interface WalletTerms {
@@ -55,6 +58,10 @@ export interface WalletTerms {
   marginMode: MarginMode;
   smallMode: SmallAccountMode;
   onlyNew: boolean;
+  direction: TradeDirection;
+  allow: string[];
+  block: string[];
+  paused: boolean;
 }
 
 /** The terms a wallet copies with: its override over the Settings tab (custom), or the tab as-is (global). */
@@ -70,6 +77,11 @@ export function walletTerms(s: TradeSettings, address: string, body?: WalletCopy
     marginMode: o.margin_mode ?? s.margin_mode,
     smallMode: o.small_account_mode ?? s.small_account_mode ?? "concentrate",
     onlyNew: o.only_new_positions ?? s.only_new_positions,
+    direction: o.trade_direction ?? s.trade_direction ?? "copy",
+    allow: o.coin_allowlist ?? s.coin_allowlist ?? [],
+    block: o.coin_blocklist ?? s.coin_blocklist ?? [],
+    // Pause lives on the override even for a global wallet (it is never a sizing term).
+    paused: Boolean(s.leader_overrides[a]?.paused ?? s.paused),
   };
 }
 
@@ -78,14 +90,16 @@ export function demoWallet(address: string, s: TradeSettings, nowMs: number, sto
   const a = normAddr(address);
   const o = s.leader_overrides[a] ?? {};
   const t = walletTerms(s, a);
-  const { equity, positions: his } = leaderPositions(a, nowMs);
+  const { equity, positions: his, style } = leaderPositions(a, nowMs);
   // Only new positions: nothing he holds at copy time is mirrored.
   const positions = t.onlyNew ? [] : his;
   const alloc = t.allocationUsd;
-  const pv = localPreview({
+  const pv = applyCoinFilter(localPreview({
     allocationUsd: alloc, mode: t.mode, targetLeverage: t.targetLeverage, marginMode: t.marginMode, smallMode: t.smallMode,
     leaderEquityUsd: equity, positions, volume24hUsd: VOLUME_24H, maxOrderVolumePct: s.max_order_volume_pct, ourEquityUsd: equityUsd,
-  });
+    maxPositionLeverage: s.max_position_leverage,
+  }), t.allow, t.block);
+  const sign = t.direction === "counter" ? -1 : 1;
   const invested = o.invested_ms ?? nowMs;
   const hours = Math.max(0, (nowMs - invested) / 3_600_000);
   const copies: CopyPosition[] = [];
@@ -94,16 +108,18 @@ export function demoWallet(address: string, s: TradeSettings, nowMs: number, sto
     if (c.status === "skipped") return;
     const his = positions[i];
     const ratio = c.notionalUsd / Math.max(1, his.notional_usd);
-    const u = his.unrealized_pnl_usd * ratio * 0.35; // we entered later than him: a slice of his move
+    // We entered later than him: a slice of his move, the other way round when countering.
+    const u = sign * his.unrealized_pnl_usd * ratio * 0.35;
     upnl += u;
-    const size = (c.notionalUsd / his.mark_px) * (c.side === "long" ? 1 : -1);
+    const side = ourSide(c.side, t.direction);
+    const size = (c.notionalUsd / his.mark_px) * (side === "long" ? 1 : -1);
     copies.push({
-      coin: c.coin, leader: a, side: c.side, size, entry_px: his.mark_px * (c.side === "long" ? 0.998 : 1.002), mark_px: his.mark_px,
+      coin: c.coin, leader: a, side, size, entry_px: his.mark_px * (side === "long" ? 0.998 : 1.002), mark_px: his.mark_px,
       notional_usd: c.notionalUsd, leverage: c.leverage, is_cross: t.marginMode === "cross", unrealized_pnl_usd: u,
       liquidation_px: null, opened_ms: invested, sizing_mode: "fixed_notional",
     });
   });
-  const realized = alloc * 0.0006 * Math.min(48, hours);
+  const realized = sign * alloc * 0.0006 * Math.min(48, hours);
   const fees = pv.exposureUsd * 0.00045;
   return {
     copies,
@@ -112,7 +128,9 @@ export function demoWallet(address: string, s: TradeSettings, nowMs: number, sto
       invested_ms: invested, open_copies: copies.length, margin_used_usd: pv.marginUsd, exposure_usd: pv.exposureUsd,
       unrealized_pnl_usd: upnl, realized_pnl_usd: realized, fees_usd: fees,
       roe_pct: alloc > 0 ? ((upnl + realized - fees) / alloc) * 100 : null, stopping, read_ok: true, equity_usd: equity,
-      small_account_mode: t.smallMode,
+      small_account_mode: t.smallMode, pnl_usd: upnl + realized - fees, in_book: true,
+      status: stopping ? "stopping" : t.paused ? "paused" : "running",
+      trade_direction: t.direction, coin_allowlist: t.allow, coin_blocklist: t.block, style,
     },
   };
 }

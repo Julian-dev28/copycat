@@ -17,7 +17,7 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 from contracts.models import (
     MAX_LEADERS,
@@ -225,8 +225,13 @@ class SettingsStore:
         - settings_source custom: the override becomes allocation sizing with
           the ticket's terms (allocation, exposure, target leverage, and when
           given margin mode, worse-entry %, small-account mode, leverage
-          mode, leverage, only_new_positions). Other fields of a previous
-          override are kept.
+          mode, leverage, only_new_positions, and v8 trade_direction,
+          coin_allowlist, coin_blocklist). Other fields of a previous
+          override are kept. A coin list given replaces the wallet's list
+          (see `clean_coins`; [] means "no list", not "inherit").
+
+        `paused` (v8) is never changed here: pause/resume own it, so
+        re-posting the ticket of a paused wallet keeps it paused.
 
         `invested_ms` is `now_ms` for a new wallet or one without it yet; a
         re-post (adjust, or a global <-> custom switch) keeps it, so the
@@ -245,7 +250,8 @@ class SettingsStore:
             fresh = newly_added or prev is None or prev.invested_ms is None
             invested_ms = now_ms if fresh else prev.invested_ms
             if req.settings_source == "global":
-                override = LeaderOverride(invested_ms=invested_ms)
+                override = LeaderOverride(invested_ms=invested_ms,
+                                          paused=prev.paused if prev is not None else None)
             else:
                 data = prev.model_dump() if prev is not None else {}
                 data.update({
@@ -253,15 +259,51 @@ class SettingsStore:
                     "exposure_mode": req.exposure_mode, "invested_ms": invested_ms,
                 })
                 for k in ("target_leverage", "margin_mode", "max_worse_entry_pct",
-                          "small_account_mode", "leverage_mode", "leverage", "only_new_positions"):
+                          "small_account_mode", "leverage_mode", "leverage", "only_new_positions",
+                          "trade_direction"):
                     v = getattr(req, k)
                     if v is not None:
                         data[k] = v
+                for k in ("coin_allowlist", "coin_blocklist"):
+                    v = getattr(req, k)
+                    if v is not None:
+                        data[k] = clean_coins(v)
                 override = LeaderOverride.model_validate(data)
             overrides = dict(current.leader_overrides)
             overrides[addr] = override
             leaders = current.leaders + [addr] if newly_added else list(current.leaders)
             merged = Settings(**{**current.model_dump(mode="json"), "leaders": leaders,
+                                 "leader_overrides": {a: o.model_dump(mode="json")
+                                                      for a, o in overrides.items()}})
+            self._write_atomic(merged)
+            return merged
+
+    def set_paused(self, address: str, paused: bool) -> Settings:
+        """Pause (no new opens/adds, exits still mirrored) or resume one wallet
+        in the book, in one locked write. A wallet without an override (a
+        global copy) gets a minimal one, `{paused}`, which `settings_source`
+        still reads as "global". Resume clears the flag back to inheriting
+        (None) unless the whole book is paused, in which case it writes
+        `paused: false` so this wallet runs anyway. KeyError (-> 404) when
+        the wallet is not in the book."""
+        addr = norm_addr(address)
+        with self._locked():
+            current = self.load()
+            if addr not in current.leaders:
+                raise KeyError(f"{addr} is not in the book")
+            prev = current.leader_overrides.get(addr)
+            data = prev.model_dump() if prev is not None else {}
+            if paused:
+                data["paused"] = True
+            else:
+                data["paused"] = False if current.paused else None
+            overrides = dict(current.leader_overrides)
+            override = LeaderOverride.model_validate(data)
+            if any(v is not None for v in override.model_dump().values()):
+                overrides[addr] = override
+            else:
+                overrides.pop(addr, None)      # nothing left: back to no override at all
+            merged = Settings(**{**current.model_dump(mode="json"),
                                  "leader_overrides": {a: o.model_dump(mode="json")
                                                       for a, o in overrides.items()}})
             self._write_atomic(merged)
@@ -286,10 +328,32 @@ class SettingsStore:
             return merged, was_in_book
 
 
+# Override fields that are bookkeeping/state, not trading terms: a wallet whose
+# override holds only these still runs on the Settings tab ("global").
+_NOT_TERMS = ("invested_ms", "paused")
+
+
 def settings_source(override: Optional[LeaderOverride]) -> str:
     """"global" when a wallet has no per-wallet terms (no override, or only
-    the `invested_ms` bookkeeping a global copy writes), else "custom"."""
+    the `invested_ms` bookkeeping a global copy writes and/or the v8
+    `paused` flag pause/resume writes), else "custom"."""
     if override is None:
         return "global"
-    terms = {k: v for k, v in override.model_dump().items() if v is not None and k != "invested_ms"}
+    terms = {k: v for k, v in override.model_dump().items() if v is not None and k not in _NOT_TERMS}
     return "custom" if terms else "global"
+
+
+def clean_coins(coins: List[str]) -> List[str]:
+    """A coin allow/block list as stored: stripped, empties dropped, duplicates
+    (case-insensitive) dropped, first spelling kept. The engine matches
+    case-insensitively (`engine.sizing.coin_allowed`), so "btc" works; a HIP-3
+    coin keeps its "dex:COIN" form. An empty list is a real value: a wallet
+    override with [] means "no list", replacing the book-wide one."""
+    out: List[str] = []
+    seen = set()
+    for c in coins:
+        c = str(c).strip()
+        if c and c.lower() not in seen:
+            seen.add(c.lower())
+            out.append(c)
+    return out

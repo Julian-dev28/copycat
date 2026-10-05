@@ -64,6 +64,10 @@ export interface PlannedCopy {
   reason: string | null;
   /** Cycles to fill under the liquidity cap; 1 = one order. */
   cycles: number;
+  /** v8: the side WE open (his side inverted for counter). `side` stays his. Unset = same as his. */
+  ourSide?: "long" | "short";
+  /** v8: skipped by your coin filters ("only these" / "never these"). */
+  filtered?: boolean;
 }
 
 export type LiqEstimate =
@@ -89,6 +93,8 @@ export interface TicketPreview {
   /** Engine notes (api preview only), e.g. "his equity read is stale". */
   notes?: string[];
   source: "local" | "api";
+  /** v8: the direction the sides were stamped with (applyDirection). */
+  direction?: "copy" | "counter";
 }
 
 /** Raw (pre-minimum) notionals in his proportions. */

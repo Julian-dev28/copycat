@@ -3,10 +3,10 @@ import { apiCaps, buildCopyRequest, effective, inherit, initialDraft, switchesSo
 import { demoSettings } from "./fixtures";
 import { globalSummary, leverageText, sizingText } from "./globalSummary";
 
-const V7 = { v7: true, smallMode: true };
-const OLD = { v7: false, smallMode: true };
+const V7 = { v7: true, smallMode: true, v8: false };
+const OLD = { v7: false, smallMode: true, v8: false };
 const custom: TicketDraft = {
-  source: "custom", amountText: "50", mode: "target", leverage: 10, marginMode: null, maxWorseEntryPct: null, smallMode: null, onlyNew: null,
+  source: "custom", amountText: "50", mode: "target", leverage: 10, marginMode: null, maxWorseEntryPct: null, smallMode: null, onlyNew: null, direction: null, allow: null, block: null,
 };
 const A = "0x" + "a".repeat(40);
 
@@ -44,7 +44,7 @@ describe("request bodies, contract v7", () => {
     expect(b).not.toHaveProperty("settings_source");
     expect(b).not.toHaveProperty("leverage_mode");
     expect(b).not.toHaveProperty("only_new_positions");
-    expect(buildCopyRequest({ ...custom, smallMode: "bump" }, { v7: true, smallMode: false })).not.toHaveProperty("small_account_mode");
+    expect(buildCopyRequest({ ...custom, smallMode: "bump" }, { v7: true, smallMode: false, v8: false })).not.toHaveProperty("small_account_mode");
   });
 
   it("apiCaps reads the contract version", () => {

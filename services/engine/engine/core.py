@@ -155,12 +155,19 @@ class _Cycle:
         self.leader_coins: Dict[str, List[str]] = {}   # for read-budget pacing
         self.raw_positions: Dict[str, Any] = {}
         self.entry_coins: Set[str] = set()     # coins with an entry this cycle (no catch-up on top)
+        self.cur_leader: Optional[str] = None  # the leader being diffed (tags his skip events)
 
     def event(self, action: str, **kw: Any) -> None:
         self.log_event(EngineEvent(ts_ms=self.now_ms, action=action, **kw))
 
-    def skip(self, coin: str, reason: str) -> None:
+    def skip(self, coin: str, reason: str, leader: Optional[str] = None) -> None:
+        """A coin's skip reason this cycle. The leader it belongs to (given, or
+        the one being diffed) rides along so the `skip` event carries it and
+        GET /api/wallets/{a}/events can show a wallet its own skips."""
         self.out["skipped"][coin] = reason
+        who = leader or self.cur_leader
+        if who:
+            self.out.setdefault("skip_leaders", {})[coin] = who
 
 
 def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address: str,
@@ -249,7 +256,14 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
             cy.event("error", leader=addr, reason=f"stop wallet raised {type(exc).__name__}: {exc}")
             stopping.add(addr)
 
-    orphans = sorted(a for a in state.leader_addresses() if a not in configured_set)
+    # An archived wallet (POST /api/wallets/{a}/archive: stopped, no copies) is no
+    # longer read every cycle. Holding any copy (real or shadow) or a pending stop
+    # keeps it an orphan regardless, so its exits always mirror.
+    holders = {c.leader for c in state.all_copies()} | {c.leader for c in state.all_dry_copies()}
+    archived = {a for a, led in state.all_ledgers().items() if led.get("archived_ms")}
+    orphans = sorted(a for a in state.leader_addresses()
+                     if a not in configured_set
+                     and (a not in archived or a in holders or a in stops))
     order = configured + orphans
     out["leaders_total"] = len(order)
     cy.n_leaders = max(1, len(configured))
@@ -274,7 +288,8 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
                                  include_extras=settings.include_spot_staked)
     out["read_weight"] = weight
     out["effective_poll_s"] = round(pacing.effective_poll_s(settings.poll_interval_s, weight), 3)
-    _log_skip_changes(state, out["skipped"], now_ms, log_event, settings.dry_run)
+    _log_skip_changes(state, out["skipped"], now_ms, log_event, settings.dry_run,
+                      out.get("skip_leaders") or {})
     return out
 
 
@@ -283,13 +298,16 @@ def _terms(es: Settings) -> Dict[str, Any]:
     so a stopped (orphan) wallet's winding-down row can still show them."""
     return {"sizing_mode": es.sizing_mode.value, "allocation_usd": es.allocation_usd,
             "exposure_mode": es.exposure_mode.value, "target_leverage": es.target_leverage,
-            "small_account_mode": es.small_account_mode.value, "invested_ms": es.invested_ms}
+            "small_account_mode": es.small_account_mode.value, "invested_ms": es.invested_ms,
+            "trade_direction": es.trade_direction.value,
+            "coin_allowlist": list(es.coin_allowlist), "coin_blocklist": list(es.coin_blocklist)}
 
 
 # ── one leader ──────────────────────────────────────────────────────────────
 
 def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[str, Any]:
     state, venue, out = cy.state, cy.venue, cy.out
+    cy.cur_leader = leader
     lead_account = venue.account_state(leader)
     if lead_account is None:
         out["skipped"][f"leader:{leader}"] = "leader read failed"
@@ -336,7 +354,9 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
         for c in state.all_copies():
             if (c.leader == leader and c.pending_cloid is None and c.coin not in now_pos
                     and not float(last.get(c.coin) or 0.0) and _szi(cy.our_positions, c.coin)):
-                last[c.coin] = 1.0 if _szi(cy.our_positions, c.coin) > 0 else -1.0
+                # his last-seen sign: ours for a copy, the opposite for a counter copy
+                ours_long = _szi(cy.our_positions, c.coin) > 0
+                last[c.coin] = 1.0 if ours_long == (c.direction == "copy") else -1.0
                 ignored.discard(c.coin)
 
     pending_reduces = state.get_kv(_PENDING_REDUCES_KEY) or {}
@@ -454,24 +474,51 @@ def _diff_coin(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, coin: str
             ignored.add(coin)
         cy.skip(coin, "entries blocked" if cy.settings.enabled else "disabled")
         return
+    # v8 per-wallet entry gates. Like "disabled": a fresh open he makes while
+    # gated is ignored until he goes flat (never entered midway later); an add
+    # to a copy we hold is just not mirrored. Exits never reach this point.
+    if es.paused:
+        if copy is None and cur:
+            ignored.add(coin)
+        cy.skip(coin, "paused")
+        return
+    if not sizing.coin_allowed(es, coin):
+        if copy is None and cur:
+            ignored.add(coin)
+        cy.skip(coin, f"filtered: {coin}")
+        return
+    # Our side. A copy we hold keeps the direction it was opened with; only a
+    # fresh open (incl. the open half of a flip) takes the wallet's current one.
+    direction = copy.direction if copy is not None else es.trade_direction.value
+    is_long = sizing.our_is_long(cur, direction)
+    if copy is not None and not cy.dry:
+        ours = _szi(cy.our_positions, coin)
+        if ours and (ours > 0) != is_long:
+            # Our real position is on the other side from what this copy should
+            # hold (changed outside copycat). Adding would net against it.
+            cy.skip(coin, f"our {coin} position is {'long' if ours > 0 else 'short'}, this "
+                          f"{direction} copy should be {'long' if is_long else 'short'}: add skipped")
+            return
     mid = venue.mid(coin)
     if mid <= 0:
         cy.skip(coin, "no mid")
         retry[coin] = prev
         return
     entry_px = float(lp.get("entry_px") or 0.0)
-    side = "long" if cur > 0 else "short"
+    side = "long" if is_long else "short"          # OUR side vs HIS entry
     if not sizing.worse_entry_ok(side, mid, entry_px, es.max_worse_entry_pct):
         cy.skip(coin, f"mid {mid:.6g} worse than entry {entry_px:.6g} by more than "
                       f"{es.max_worse_entry_pct:.1f}%")
         retry[coin] = prev
         return
-    if _open_or_add(cy, es, coin, leader, cur, prev, lp, his_equity, mid, ignored, copy) == "retry":
+    if _open_or_add(cy, es, coin, leader, cur, prev, lp, his_equity, mid, ignored, copy,
+                    is_long, direction) == "retry":
         retry[coin] = prev
 
 
 def _log_skip_changes(state: EngineState, skipped: Dict[str, str], now_ms: int,
-                      log_event: LogEvent, dry_run: bool) -> None:
+                      log_event: LogEvent, dry_run: bool,
+                      skip_leaders: Optional[Dict[str, str]] = None) -> None:
     """Write a `skip` event when a coin's (or leader's) skip reason first
     appears or changes, not every cycle. Reasons are compared with numbers
     stripped: "mid 182.58 worse than entry 111.38" re-firing every 5s as the
@@ -482,7 +529,8 @@ def _log_skip_changes(state: EngineState, skipped: Dict[str, str], now_ms: int,
     for key, reason in skipped.items():
         if prev.get(key) == now_sig[key]:
             continue
-        leader = key.split(":", 1)[1] if key.startswith("leader:") else None
+        leader = (key.split(":", 1)[1] if key.startswith("leader:")
+                  else (skip_leaders or {}).get(key))
         coin = None if key.startswith("leader:") else key
         log_event(EngineEvent(ts_ms=now_ms, action="skip", leader=leader, coin=coin,
                               reason=reason, dry_run=dry_run))
@@ -645,9 +693,11 @@ def _retry_prev(prev: float, cur: float, size_before: float, order_size: float,
 
 def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, prev: float,
                  lp: Dict[str, Any], his_equity: float, mid: float, ignored: Set[str],
-                 copy: Optional[Copy]) -> str:
+                 copy: Optional[Copy], is_long: bool, direction: str) -> str:
     """`copy` is this leader's existing copy/shadow-copy row for `coin`, or
     None for a fresh open. `es` is this leader's EFFECTIVE settings.
+    `is_long` is OUR side (his side, inverted for a counter `direction`).
+    Sizes are direction-blind: every notional is |size| x price.
     Returns "done", "skip" or "retry" (the caller freezes his size)."""
     state, venue, dry = cy.state, cy.venue, cy.dry
     if copy is None:
@@ -703,7 +753,8 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         his_frac_added = (abs(cur) - abs(prev)) / abs(prev)
         ntl = sizing.add_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders,
                                   cur_size * mid, his_frac_added, cy.lead_gross, lev)
-    return _execute_entry(cy, es, coin, leader, cur > 0, ntl * scale, lev, mid, copy, ignored, cur)
+    return _execute_entry(cy, es, coin, leader, is_long, ntl * scale, lev, mid, copy, ignored, cur,
+                          direction=direction)
 
 
 def _concentrate_scale(cy: _Cycle, es: Settings, leader: str, coin: str,
@@ -779,7 +830,7 @@ def _liquidity_cap(cy: _Cycle, es: Settings, coin: str, is_buy: bool) -> Optiona
 
 def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bool, ntl: float,
                    lev: int, mid: float, copy: Optional[Copy], ignored: Set[str], his_szi: float,
-                   catch_up: bool = False) -> str:
+                   catch_up: bool = False, direction: str = "copy") -> str:
     """Caps, minimum, liquidity split, then the order. In this order:
     margin room (available x lev x 0.95), the allocation cap (allocation
     wallets: total wallet margin <= allocation_usd x 1.02), the bump (not for
@@ -866,7 +917,7 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         signed_delta = size_delta if is_long else -size_delta
         if copy is None:
             state.put_dry_copy(DryCopy(coin, leader, cy.now_ms, lev, actual_cross,
-                                       es.sizing_mode.value, signed_delta))
+                                       es.sizing_mode.value, signed_delta, direction=direction))
             out["opened"].append(coin)
         else:
             dc = state.get_dry_copy(coin)
@@ -891,7 +942,7 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         # reaches HL must still leave a row, or the position would be "not
         # ours" forever and copycat would never close it.
         state.put_copy(Copy(coin, leader, cy.now_ms, lev, actual_cross, es.sizing_mode.value,
-                            pending_cloid=cloid))
+                            pending_cloid=cloid, direction=direction))
     res = venue.market(coin, is_long, size, mid, cloid=cloid, max_slippage_pct=es.max_slippage_pct)
     filled = _filled(res)
     if not res.get("ok") and filled <= 0:
@@ -932,6 +983,8 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
     else:
         # An add never re-leverages or re-records the copy row.
         out["added"].append(coin)
+    if direction == "counter" and copy is None:
+        notes.insert(0, "counter: opposite of his side")
     cy.event(action, leader=leader, coin=coin, side=side, notional_usd=round(ntl, 2),
              leverage=lev, reason="; ".join(notes) or None)
     _after_entry(cy, coin, leader, is_long, his_szi, carry)
@@ -989,18 +1042,26 @@ def _catch_up(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, now_pos: D
             cy.skip(coin, "catch-up paused: entries blocked" if cy.settings.enabled
                     else "catch-up paused: disabled")
             continue
+        if es.paused:
+            cy.skip(coin, "catch-up paused: paused")
+            continue
+        if not sizing.coin_allowed(es, coin):
+            cy.skip(coin, f"catch-up paused: filtered: {coin}")
+            continue
+        is_long = sizing.our_is_long(his, copy.direction)   # the copy's own direction
         mid = cy.venue.mid(coin)
         if mid <= 0:
             cy.skip(coin, "no mid")
             continue
         entry_px = float((now_pos.get(coin) or {}).get("entry_px") or 0.0)
-        side = "long" if his > 0 else "short"
+        side = "long" if is_long else "short"
         if not sizing.worse_entry_ok(side, mid, entry_px, es.max_worse_entry_pct):
             cy.skip(coin, f"catch-up paused: mid {mid:.6g} worse than entry {entry_px:.6g} by more "
                           f"than {es.max_worse_entry_pct:.1f}%")
             continue
-        _execute_entry(cy, es, coin, leader, his > 0, float(e.get("remaining_usd") or 0.0),
-                       max(1, int(copy.leverage)), mid, copy, set(), his, catch_up=True)
+        _execute_entry(cy, es, coin, leader, is_long, float(e.get("remaining_usd") or 0.0),
+                       max(1, int(copy.leverage)), mid, copy, set(), his, catch_up=True,
+                       direction=copy.direction)
 
 
 # ── cycle-start reconciles ──────────────────────────────────────────────────
@@ -1033,7 +1094,7 @@ def _resolve_pending(cy: _Cycle) -> None:
             continue
         st = venue.order_status(c.pending_cloid)
         if not _settled(st, c.opened_ms, cy.now_ms):
-            cy.skip(c.coin, "open order outcome unknown, resolving")
+            cy.skip(c.coin, "open order outcome unknown, resolving", leader=c.leader)
             continue
         state.delete_copy(c.coin)
         _ignore_while_leader_holds(state, c.leader, c.coin)
@@ -1257,7 +1318,7 @@ def _run_stop(cy: _Cycle, addr: str, close_positions: bool) -> bool:
             reason = f"{STOP_REASON}: close outcome unknown, retrying next cycle"
         else:
             reason = f"{STOP_REASON}: close failed, retrying next cycle: {res.get('error')}"
-        cy.skip(c.coin, reason)
+        cy.skip(c.coin, reason, leader=addr)
         cy.event("error", leader=addr, coin=c.coin, reason=reason)
     state.set_kv(_PENDING_REDUCES_KEY, pending_reduces)
     for dc in state.all_dry_copies():

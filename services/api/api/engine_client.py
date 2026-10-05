@@ -12,7 +12,7 @@ and tests inject a fake that implements it -- they never import `engine`.
 from __future__ import annotations
 
 import os
-from typing import List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from contracts.models import EngineEvent, EngineStatus, Settings, WalletCopyRequest, WalletPreview
 
@@ -28,12 +28,24 @@ class PreviewFailed(RuntimeError):
     """The leader's live read failed during a preview. Routes map this to 502."""
 
 
+class ArchiveRefused(RuntimeError):
+    """The engine still holds copies of the wallet. Routes map this to 409."""
+
+
 class EngineClient(Protocol):
     def status(self) -> EngineStatus: ...
 
     def events(self, limit: int, since_ms: Optional[int] = None) -> List[EngineEvent]: ...
 
     def preview(self, address: str, req: WalletCopyRequest, settings: Settings) -> WalletPreview: ...
+
+    # v8
+    def leader_events(self, address: str, limit: int,
+                      before_ms: Optional[int] = None) -> List[EngineEvent]: ...
+
+    def wallet_ledgers(self) -> Dict[str, Dict[str, Any]]: ...
+
+    def archive(self, address: str, now_ms: int) -> Dict[str, Any]: ...
 
 
 class RealEngineClient:
@@ -54,6 +66,31 @@ class RealEngineClient:
 
     def events(self, limit: int, since_ms: Optional[int] = None) -> List[EngineEvent]:
         return self._public().events(limit, since_ms)
+
+    def _fn(self, name: str) -> Any:
+        fn = getattr(self._public(), name, None)
+        if fn is None:
+            raise EngineUnavailable(f"engine.public has no {name}() yet")
+        return fn
+
+    def leader_events(self, address: str, limit: int,
+                      before_ms: Optional[int] = None) -> List[EngineEvent]:
+        """One wallet's events from the tail of events.jsonl (capped scan)."""
+        return self._fn("leader_events")(address, limit, before_ms)
+
+    def wallet_ledgers(self) -> Dict[str, Dict[str, Any]]:
+        """The active account's per-wallet ledger rows (archived_ms included)."""
+        return self._fn("wallet_ledgers")()
+
+    def archive(self, address: str, now_ms: int) -> Dict[str, Any]:
+        fn = self._fn("archive_wallet")
+        refused = getattr(self._public(), "ArchiveRefused", None)
+        try:
+            return fn(address, now_ms)
+        except Exception as e:
+            if isinstance(refused, type) and isinstance(e, refused):
+                raise ArchiveRefused(str(e)) from e
+            raise
 
     def preview(self, address: str, req: WalletCopyRequest, settings: Settings) -> WalletPreview:
         """`engine.public.preview_wallet`: a few live HL reads (his account,

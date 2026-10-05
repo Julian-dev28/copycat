@@ -111,6 +111,15 @@ Per wallet, starting at `sim_equity_usd`, copying ONLY this wallet
   price loses exactly that copy's posted margin. Unrealized loss of a copy
   is floored at its margin, so a price gap in the data can never cost more.
 - Fees: 0.045% taker on every leg.
+- Contract v8, from the effective settings: `trade_direction` counter opens
+  the opposite of his side at the same size; fill price, worse-entry check,
+  liquidation price and PnL are all on our inverted side (a copy that wins
+  is a counter that loses the same move, and both pay fees and slippage).
+  An open copy keeps its side. `coin_allowlist` / `coin_blocklist` skip
+  opens/adds (`filtered:<coin>`, via `engine.sizing.coin_allowed`); exits are
+  never filtered. `paused` is ignored: the sim projects terms, not on/off.
+  This is what `GET /api/wallets/{a}/projection` and the trader file's
+  what-if replay.
 - Optional equity curve: `simulate_wallet(..., curve_step_ms=3_600_000)`
   returns `SimResult.curve = [(t_ms, equity)]` at every step plus the end.
 - Not modeled from the engine: `small_account_mode` concentrate (needs his

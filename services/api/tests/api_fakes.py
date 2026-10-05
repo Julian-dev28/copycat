@@ -51,6 +51,8 @@ class FakeEngineClient:
         self.event_log: List[EngineEvent] = []
         self.preview_calls: List[tuple] = []
         self.preview_result: Any = None        # a WalletPreview, or an exception to raise
+        self.ledgers: Dict[str, Dict[str, Any]] = {}   # v8 wallet_ledgers()
+        self.archive_refused: Optional[str] = None
 
     def preview(self, address: str, req: Any, settings: Settings) -> Any:
         self.preview_calls.append((address, req, settings))
@@ -66,6 +68,26 @@ class FakeEngineClient:
         if since_ms is not None:
             evs = [e for e in evs if e.ts_ms >= since_ms]
         return list(reversed(evs))[:limit]
+
+    # v8
+    def leader_events(self, address: str, limit: int,
+                      before_ms: Optional[int] = None) -> List[EngineEvent]:
+        evs = [e for e in reversed(self.event_log) if e.leader == address
+               and (before_ms is None or e.ts_ms < before_ms)]
+        return evs[:limit]
+
+    def wallet_ledgers(self) -> Dict[str, Dict[str, Any]]:
+        return dict(self.ledgers)
+
+    def archive(self, address: str, now_ms: int) -> Dict[str, Any]:
+        from api.engine_client import ArchiveRefused
+        if self.archive_refused:
+            raise ArchiveRefused(self.archive_refused)
+        row = self.ledgers.setdefault(address, {"leader": address, "invested_ms": None,
+                                                "realized_pnl_usd": 0.0, "fees_usd": 0.0,
+                                                "terms": {}, "updated_ms": now_ms})
+        row["archived_ms"] = now_ms
+        return row
 
 
 class UnavailableEngineClient:
@@ -178,6 +200,7 @@ class FakeScoutClient:
         self.refresh_busy = False
         self.what_if_busy = False
         self.what_if_hook: Any = None          # called inside what_if (concurrency tests)
+        self.what_if_missing: set = set()      # addresses with no cached Scout stats (LookupError)
         self.refresh_id = "r1"
         self._status = ScoutStatus(refresh_id="r1", state="idle", last_ok_ms=1)
 
@@ -209,6 +232,8 @@ class FakeScoutClient:
             raise ScoutBusy("discovery says a what-if is running")
         if self.what_if_hook is not None:
             self.what_if_hook()
+        if address in self.what_if_missing:
+            raise LookupError(f"no Scout stats for {address} yet")
         self.what_if_calls.append((address, settings, sim_equity_usd, override))
         return WhatIfResult(score=make_score(address), sim_curve=[])
 

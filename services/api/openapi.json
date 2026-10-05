@@ -2403,6 +2403,34 @@
             ],
             "title": "Allocation Usd"
           },
+          "coin_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Allowlist"
+          },
+          "coin_blocklist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coin Blocklist"
+          },
           "contract_version": {
             "anyOf": [
               {
@@ -2644,6 +2672,17 @@
             ],
             "title": "Only New Positions"
           },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          },
           "poll_interval_s": {
             "anyOf": [
               {
@@ -2707,6 +2746,16 @@
               }
             ],
             "title": "Target Leverage"
+          },
+          "trade_direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradeDirection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "SettingsPatch",
@@ -4850,6 +4899,73 @@
           "status"
         ],
         "title": "WalletPreviewSlice",
+        "type": "object"
+      },
+      "WalletProjection": {
+        "description": "GET /api/wallets/{a}/projection: his last 30d replayed onto `allocation_usd`\nat the given terms (inverted for counter). From cached data, no orders.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "allocation_usd": {
+            "title": "Allocation Usd",
+            "type": "number"
+          },
+          "copies": {
+            "title": "Copies",
+            "type": "integer"
+          },
+          "curve": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Curve",
+            "type": "array"
+          },
+          "liquidations": {
+            "title": "Liquidations",
+            "type": "integer"
+          },
+          "max_drawdown_pct": {
+            "title": "Max Drawdown Pct",
+            "type": "number"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "return_pct": {
+            "title": "Return Pct",
+            "type": "number"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "trade_direction": {
+            "$ref": "#/components/schemas/TradeDirection"
+          }
+        },
+        "required": [
+          "address",
+          "allocation_usd",
+          "trade_direction",
+          "curve",
+          "return_pct",
+          "max_drawdown_pct",
+          "liquidations",
+          "copies",
+          "skipped"
+        ],
+        "title": "WalletProjection",
         "type": "object"
       },
       "WalletStopRequest": {
@@ -7187,8 +7303,27 @@
     },
     "/api/wallets": {
       "get": {
-        "description": "One row per wallet in the book (settings order), then every wallet\nwinding down (an orphan with open copies, or a stop still pending).\nPosition fields come from the engine's last cycle; if the engine\npackage is missing the book rows still come back, zeroed, read_ok\nfalse. ROE % = (realized + unrealized) / allocation_usd x 100, None for\na wallet that is not on allocation sizing. Terms: in-book wallets from\nsettings; winding-down ones from the engine's `effective` (the terms they\nlast ran with).",
+        "description": "One row per wallet in the book (settings order), then every wallet\nout of the book: winding down (an orphan with open copies, or a stop\nstill pending) or stopped with a PnL history (a ledger row) and not\narchived yet. `include=archived` also returns archived wallets (from the\nledger: realized PnL and their last terms). Position fields come from the\nengine's last cycle; if the engine package is missing the book rows still\ncome back, zeroed, read_ok false. ROE % = (realized + unrealized) /\nallocation_usd x 100, None for a wallet not on allocation sizing. Terms:\nin-book wallets from settings; out-of-book ones from the engine's\n`effective` (the terms they last ran with). `style` is his Scout style\nwhen Scout has his board row, else null.",
         "operationId": "list_wallets_api_wallets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^archived$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Include"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7203,9 +7338,65 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Wallets",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/archive": {
+      "post": {
+        "description": "Archive a stopped wallet: out of the book, no stop pending, no copies.\nIt leaves GET /api/wallets (see `?include=archived`) and the engine stops\nreading it. Copying it again un-archives it (a fresh investment). 409\notherwise; 503 when the engine package is missing.",
+        "operationId": "archive_wallet_api_wallets__address__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletPosition"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "still in the book, stopping, or holding copies"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Wallet",
         "tags": [
           "wallets"
         ]
@@ -7264,6 +7455,125 @@
         ]
       }
     },
+    "/api/wallets/{address}/events": {
+      "get": {
+        "description": "This wallet's engine events, newest first: opens/adds/reduces/closes\nand skips with their reason (\"paused\", \"filtered: BTC\", \"worse than\nentry\"...). Page with `before_ms` = the last row's ts_ms. Read from the\ntail of events.jsonl with a capped scan, so an old wallet in a big log\nmay return fewer rows than exist. 503 when the engine package is missing.",
+        "operationId": "wallet_events_api_wallets__address__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_ms",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Ms"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EngineEvent"
+                  },
+                  "title": "Response Wallet Events Api Wallets  Address  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wallet Events",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/pause": {
+      "post": {
+        "description": "Pause one wallet: the engine opens and adds nothing for it (skip\n\"paused\"); its open copies still follow his reduces and closes. Pausing\nis not stopping: the wallet stays in the book. A global wallet gets a\nminimal override `{paused: true}` and stays \"global\". 404 when the wallet\nis not in the book.",
+        "operationId": "pause_wallet_api_wallets__address__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Wallet",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
     "/api/wallets/{address}/preview": {
       "post": {
         "description": "What investing would copy of his book right now, sized by the same\n`engine.sizing.plan_allocation` the engine uses. 502 when his live read\nfails, 503 when the engine package is missing.",
@@ -7312,6 +7622,166 @@
           }
         },
         "summary": "Preview Wallet",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/projection": {
+      "get": {
+        "description": "His last 30d replayed onto `allocation_usd` at these terms (counter =\nevery side inverted, liquidations on our side), by discovery's copy-sim\non CACHED fills and candles only: no HL call in this request. Unset terms\ncome from the wallet's current settings (custom override, else the\nSettings tab), and his coin filters apply. No cached data for him yet:\n202 with the Scout status, and a build is queued (as GET\n/api/scout/traders/{a} does). 409 while another what-if runs.",
+        "operationId": "wallet_projection_api_wallets__address__projection_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "allocation_usd",
+            "required": false,
+            "schema": {
+              "default": 1000.0,
+              "exclusiveMinimum": 0,
+              "title": "Allocation Usd",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_direction",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TradeDirection"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Direction"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exposure_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ExposureMode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exposure Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_leverage",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 50,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Leverage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoutStatus"
+                }
+              }
+            },
+            "description": "no cached data yet; a build is queued"
+          },
+          "409": {
+            "description": "a what-if is already running"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wallet Projection",
+        "tags": [
+          "wallets"
+        ]
+      }
+    },
+    "/api/wallets/{address}/resume": {
+      "post": {
+        "description": "Resume a paused wallet. Moves he made while paused are not entered\nmidway; the next position he opens is copied. 404 when not in the book.",
+        "operationId": "resume_wallet_api_wallets__address__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Wallet",
         "tags": [
           "wallets"
         ]
