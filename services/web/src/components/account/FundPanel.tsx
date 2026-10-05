@@ -20,7 +20,7 @@ export function QrCode({ text, size = 168 }: { text: string; size?: number }) {
 const STEPS = [
   "From another Hyperliquid account: Send USDC (perps balance) to this address. It lands in seconds, no gas.",
   "From an exchange: withdraw USDC on the Hyperliquid network to this address.",
-  "Do not send USDC on Arbitrum straight to this address: it stays on Arbitrum and never reaches Hyperliquid.",
+  "From Arbitrum: use Deposit, which sends USDC to Hyperliquid's bridge from this address (minimum 5 USDC). Never send USDC on Arbitrum straight to this address: it stays on Arbitrum.",
   "When the balance shows up, refresh the trading agent. Hyperliquid only accepts an agent for a funded account.",
 ];
 

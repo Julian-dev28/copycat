@@ -10,10 +10,11 @@ import { ApiError } from "@/lib/api/client";
 import { isValidAddress, normAddr } from "@/lib/address";
 import { demoNowMs } from "@/lib/scout/api";
 import type { AccountSource } from "./api";
-import { fakeWalletProvider, type DemoWalletMode } from "./demoWallet";
+import { fakeWalletProvider, setDemoDepositListener, type DemoWalletMode } from "./demoWallet";
 import { fixtureAccounts, fixtureHistory, fixtureSummary } from "./fixtures";
-import { approveAgentTypedData } from "./typedData";
-import type { TradingAccount } from "./types";
+import { actionProblem, emptyForm, unitsToUsd } from "./funding";
+import { approveAgentTypedData, userActionTypedData } from "./typedData";
+import type { AccountSummary, FundingInfo, TradingAccount, UserActionKind, UserActionPrepareRequest, UserActionResult } from "./types";
 
 const DAY = 86_400_000;
 const KEY_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -61,6 +62,82 @@ function agentFields(agentAddress: string, name: string | null) {
 export function resetDemoAccounts(empty = false): void {
   store = empty ? [] : fixtureAccounts(demoNowMs());
   unfunded.clear();
+  deltas.clear();
+}
+
+// ── funding (demo) ─────────────────────────────────────────────────────────────
+// Balance changes from demo deposits / moves / sends / withdrawals, per account id.
+const deltas = new Map<string, { perps: number; spot: number }>();
+/** The operator's real situation: $0.03 perps, $0.11 spot USDC, so "Move to perps" shows. */
+const SMALL = "acc_ledger";
+/** A unified account: spot and perps share one balance, nothing to move. */
+const UNIFIED = "acc_api";
+const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+function bump(id: string, perps: number, spot: number): void {
+  const d = deltas.get(id) ?? { perps: 0, spot: 0 };
+  deltas.set(id, { perps: r6(d.perps + perps), spot: r6(d.spot + spot) });
+}
+
+function withDeltas(s: AccountSummary): AccountSummary {
+  const base = s.account.id === SMALL
+    ? { ...s.balances, perps_usd: 0.03, spot_usd: 0.11, staked_usd: 0, copytrade_usd: 0, total_usd: 0.14, withdrawable_usd: 0.03 }
+    : s.balances;
+  const d = deltas.get(s.account.id) ?? { perps: 0, spot: 0 };
+  const b = {
+    ...base, perps_usd: r6(base.perps_usd + d.perps), spot_usd: r6(base.spot_usd + d.spot),
+    total_usd: r6(base.total_usd + d.perps + d.spot), withdrawable_usd: r6(Math.max(0, base.withdrawable_usd + d.perps)),
+  };
+  return { ...s, balances: b };
+}
+
+const demoSummary = (a: TradingAccount) => withDeltas(fixtureSummary({ ...a }, demoNowMs(), !unfunded.has(a.id)));
+
+setDemoDepositListener((from, units) => {
+  const a = db().find((x) => x.address === from);
+  if (!a) return;
+  // Hyperliquid credits a bridge deposit within ~1 minute; the demo takes a few seconds
+  setTimeout(() => {
+    unfunded.delete(a.id);
+    bump(a.id, unitsToUsd(units), 0);
+  }, 3000 * latency);
+});
+
+function demoFundingInfo(a: TradingAccount): FundingInfo {
+  const b = demoSummary(a).balances;
+  const unified = a.id === UNIFIED;
+  return {
+    network: "mainnet", chain_id: 42161, chain_name: "Arbitrum One",
+    usdc_address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", bridge_address: "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7",
+    explorer_url: "https://arbiscan.io", min_deposit_usd: 5, withdraw_fee_usd: 1, account_address: a.address, account_kind: a.kind,
+    signer: a.kind === "created" && a.has_main_key ? "passphrase" : "browser",
+    limits: { abstraction: unified ? "unifiedAccount" : "default", unified, perps_withdrawable_usd: b.withdrawable_usd, spot_usdc_free_usd: Math.max(0, b.spot_usd) },
+    source_url: "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/usdc",
+    notes: ["Demo data: nothing here touches Arbitrum or Hyperliquid."],
+  };
+}
+
+const amountText = (n: number) => String(Math.floor(n * 1e6 + 1e-6) / 1e6);
+
+function guard(a: TradingAccount, req: UserActionPrepareRequest): string {
+  const info = demoFundingInfo(a);
+  const form = { ...emptyForm(Boolean(req.to_perp)), amount: amountText(req.amount_usd), destination: req.destination ?? "", confirm: req.confirm_destination ?? "" };
+  const others = db().filter((x) => x.id !== a.id).map((x) => x.address);
+  const problem = actionProblem(req.kind, form, { limits: info.limits, feeUsd: info.withdraw_fee_usd, own: a.address, others, needsPassphrase: false });
+  if (problem) throw new ApiError(400, problem);
+  return req.kind === "usd_send" || (req.kind === "withdraw" && req.destination) ? normAddr(req.destination ?? "") : req.kind === "withdraw" ? a.address : "";
+}
+
+function apply(a: TradingAccount, kind: UserActionKind, amount: number, toPerp: boolean | null, dest: string, nonce: number): UserActionResult {
+  if (kind === "usd_class_transfer") bump(a.id, toPerp ? amount : -amount, toPerp ? -amount : amount);
+  else bump(a.id, -amount, 0);
+  if (kind === "usd_send") {
+    const to = db().find((x) => x.address === dest);
+    if (to) bump(to.id, amount, 0);
+  }
+  const message = kind === "usd_class_transfer" ? `Moved ${amount} USDC ${toPerp ? "spot -> perps" : "perps -> spot"}.`
+    : kind === "usd_send" ? `Sent ${amount} USDC to ${dest}.` : `Withdrawal of ${amount} USDC to ${dest} on Arbitrum requested (fee 1 USDC, arrives in about 5 minutes).`;
+  return { ok: true, kind, account_address: a.address, amount_usd: amount, to_perp: kind === "usd_class_transfer" ? toPerp : null, destination: dest || null, fee_usd: kind === "withdraw" ? 1 : null, nonce, message };
 }
 
 export function setDemoWalletMode(mode: DemoWalletMode): void {
@@ -146,7 +223,7 @@ export const demoAccounts: AccountSource = {
   },
   summary: async (id) => {
     const a = find(id);
-    const s = fixtureSummary({ ...a }, demoNowMs(), !unfunded.has(a.id));
+    const s = demoSummary(a);
     // accounts added this session: balances yes, discovery metrics not yet (the live api's state too)
     if (a.id.startsWith("acc_demo_") && !unfunded.has(a.id)) {
       return later({ ...s, risk_30d: null, trades_30d: null, style: null, avg_hold_h: null, median_hold_h: null, pnl_tier: null, size_tier: null, longest_win_streak_days: null, daily_pnl: [] });
@@ -156,6 +233,30 @@ export const demoAccounts: AccountSource = {
   history: async (id, kind) => {
     const a = find(id);
     return later(fixtureHistory(a, kind, demoNowMs(), !unfunded.has(a.id)));
+  },
+  fundingInfo: async (id) => later(demoFundingInfo(find(id))),
+  prepareAction: async (id, req) => {
+    const a = find(id);
+    const dest = guard(a, req);
+    const nonce = demoNowMs() + ++seq;
+    return later(userActionTypedData(req.kind, amountText(req.amount_usd), nonce, { toPerp: req.to_perp, destination: dest }, "Mainnet"), 300);
+  },
+  submitAction: async (id, { kind, action, nonce, signature, confirm_destination }) => {
+    const a = find(id);
+    const amount = Number(action.amount);
+    const toPerp = kind === "usd_class_transfer" ? Boolean(action.toPerp) : null;
+    const dest = guard(a, { kind, amount_usd: amount, to_perp: toPerp, destination: kind === "usd_class_transfer" ? null : String(action.destination), confirm_destination });
+    const { typed_data } = userActionTypedData(kind, String(action.amount), nonce, { toPerp, destination: dest }, "Mainnet");
+    const signer = await recoverTypedDataAddress({ ...(typed_data as Parameters<typeof recoverTypedDataAddress>[0]), signature: signature as `0x${string}` });
+    if (normAddr(signer) !== a.address) throw bad(`the signature was not made by ${a.address}. Sign with that wallet.`);
+    return later(apply(a, kind, amount, toPerp, dest, nonce), 500);
+  },
+  runAction: async (id, { passphrase, ...req }) => {
+    const a = find(id);
+    if (a.kind !== "created" || !a.has_main_key) throw new ApiError(400, "only a wallet copycat created can be signed with the passphrase");
+    const dest = guard(a, req);
+    if (passphrase.length < 12) throw new ApiError(401, "invalid passphrase");
+    return later(apply(a, req.kind, Number(amountText(req.amount_usd)), req.kind === "usd_class_transfer" ? Boolean(req.to_perp) : null, dest, demoNowMs()), 700);
   },
   walletProvider: () => fakeWalletProvider(walletMode),
 };

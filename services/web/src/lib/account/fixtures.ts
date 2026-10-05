@@ -10,6 +10,8 @@ import { fixtureOrders, fixtureProfile } from "@/lib/scout/fixtures";
 import type { TraderProfile } from "@/lib/scout/types";
 import type { AccountSummary, HistoryKind, TradingAccount } from "./types";
 
+import { DEMO_WALLET_ADDRESS } from "./demoWallet";
+
 export { DEMO_WALLET_ADDRESS, DEMO_WALLET_MODES, fakeWalletProvider, type DemoWalletMode } from "./demoWallet";
 
 const DAY = 86_400_000;
@@ -22,7 +24,7 @@ export function fixtureAccounts(nowMs: number): TradingAccount[] {
       agent_valid_until_ms: nowMs + 142 * DAY, agent_status: "active", active: true, created_ms: nowMs - 60 * DAY, has_main_key: true,
     },
     {
-      id: "acc_ledger", label: "Ledger via Rabby", kind: "connected_signed", address: "0x3b81d07a62fe0c4a9e5d1b8f7c2a6e4d9f0b1c2a",
+      id: "acc_ledger", label: "Ledger via Rabby", kind: "connected_signed", address: DEMO_WALLET_ADDRESS, // the demo browser wallet owns it
       agent_address: "0x4a6e000000000000000000000000000000d0c0a7", agent_name: "copycat",
       agent_valid_until_ms: nowMs + 12 * DAY, agent_status: "expiring", active: false, created_ms: nowMs - 170 * DAY, has_main_key: false,
     },
@@ -76,7 +78,7 @@ function transfers(account: TradingAccount, nowMs: number) {
   return [
     { time: nowMs - 2 * DAY, hash: "0xd1", delta: { type: "deposit", usdc: "2500.0" } },
     { time: nowMs - 5 * DAY, hash: "0xd2", delta: { type: "accountClassTransfer", usdc: "400.0", toPerp: false } },
-    { time: nowMs - 9 * DAY, hash: "0xd3", delta: { type: "send", usdc: "150.0", user: a, destination: "0x3b81d07a62fe0c4a9e5d1b8f7c2a6e4d9f0b1c2a" } },
+    { time: nowMs - 9 * DAY, hash: "0xd3", delta: { type: "send", usdc: "150.0", user: a, destination: DEMO_WALLET_ADDRESS } },
     { time: nowMs - 20 * DAY, hash: "0xd4", delta: { type: "withdraw", usdc: "1200.0", fee: "1.0" } },
     { time: nowMs - 41 * DAY, hash: "0xd5", delta: { type: "deposit", usdc: "10000.0" } },
   ];

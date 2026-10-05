@@ -75,10 +75,35 @@ address (a failed read 30 s): `active`, `expiring` (<= 30 days), `expired`,
 
 ## Transfers
 
-`transfer(from_id, to_address, amount, passphrase)`: `usdSend` of perps USDC,
+`transfer(from_id, to_address, amount, passphrase, max_usd)`: `usdSend` of perps USDC,
 signed by a created account's main key (passphrase required every time). The
 destination must be another account in this vault: a stolen api token plus a
 guessed passphrase still cannot send funds to an outside address.
+
+## Funding: move, send, withdraw (`vault/funding.py`)
+
+usdClassTransfer (spot <-> perps), usdSend and withdraw3 are user-signed:
+only the MAIN key can sign them. Two paths, same guards:
+
+- browser (connected accounts): `prepare_user_action` returns the action and
+  its EIP-712 typed data (the SDK's own field lists, `hl.accounts.USER_ACTIONS`);
+  the wallet signs; `submit_user_action` checks the exact key set, type, network,
+  nonce (= time/nonce field, under 10 minutes old), amount string, rebuilds the
+  canonical action, recovers the signer and requires it to be the account address.
+- passphrase (created accounts): `run_user_action` unlocks the main key and signs
+  through the SDK's `sign_*` function.
+
+Guards: amount > 0 and <= `max_usd` (the live limit the api read; unknown ->
+refused), withdraw > the 1 USDC fee, withdraw destination defaults to the
+account itself and any other address needs `confirm_destination` equal to it,
+usdSend only to another account in this vault (same rule as `transfer`, which
+now delegates here), no spot/perps move on unified accounts.
+
+`vault/audit.jsonl` (0600, appended under the vault lock): one line per attempt
+that reached a guard, `{ts_ms, action, path, outcome ok|refused|rejected|error,
+account_id, address, amount_usd, to_perp, destination, nonce, reason}`.
+`audit.record` refuses any other field, so a signature, key or passphrase cannot
+be logged by accident; reasons are VaultError messages (secret-free).
 
 ## Threat model, in plain words
 

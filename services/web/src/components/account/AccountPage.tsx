@@ -1,7 +1,6 @@
 "use client";
 
 import { Link2, Plus } from "lucide-react";
-import { useState } from "react";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
@@ -15,10 +14,10 @@ import { AccountHeader } from "./AccountHeader";
 import { AccountTabs } from "./AccountTabs";
 import { AgentBanner } from "./bits";
 import { EquityBreakdown } from "./EquityBreakdown";
+import { FundingBar } from "./FundingBar";
 import { FundPanel } from "./FundPanel";
 import { useAccountSummary, useActiveAccount } from "./hooks";
 import { StatGroups } from "./StatGroups";
-import { TransferDialog } from "./TransferDialog";
 
 function TooOld() {
   return (
@@ -59,7 +58,6 @@ export function AccountPage() {
   const accounts = useActiveAccount();
   const active = accounts.active;
   const summary = useAccountSummary(active?.id ?? null);
-  const [transfer, setTransfer] = useState(false);
 
   if (accounts.isError) return isTooOld(accounts.error) ? <TooOld /> : <LoadError what="your accounts" error={accounts.error} onRetry={() => accounts.refetch()} />;
   if (accounts.isPending) return <PageSkeleton label="Loading account" />;
@@ -70,7 +68,8 @@ export function AccountPage() {
   const s = summary.data;
   return (
     <div className="flex flex-col gap-5">
-      <AccountHeader summary={s} onTransfer={() => setTransfer(true)} />
+      <AccountHeader summary={s} />
+      <FundingBar summary={s} />
       {isEmptyAccount(s) ? (
         <Panel className="p-4 sm:p-5">
           <FundPanel account={s.account} needsAgent={s.account.agent_status !== "active"} onRefreshAgent={() => setManagerView({ view: "refresh", accountId: s.account.id })} />
@@ -83,7 +82,6 @@ export function AccountPage() {
           <AccountTabs summary={s} />
         </>
       )}
-      {s.account.has_main_key ? <TransferDialog summary={s} open={transfer} onClose={() => setTransfer(false)} /> : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { closeWalletManager, openWalletManager, type ManagerView } from "@/lib/a
 import { AccountList } from "./AccountList";
 import { ConnectWallet } from "./ConnectWallet";
 import { CreateForm } from "./CreateForm";
+import { FundingBarFor } from "./FundingBar";
 import { FundPanel } from "./FundPanel";
 import { useAccountMode, useAccounts, useAction, useManagerView } from "./hooks";
 import { KeyReveal } from "./KeyReveal";
@@ -61,7 +62,10 @@ export function WalletManager() {
       ) : null}
       {view.view === "create" && create.step === "reveal" ? <KeyReveal state={create} dispatch={dispatch} /> : null}
       {view.view === "create" && create.step === "fund" ? (
-        <FundPanel account={create.account} needsAgent={create.account.agent_status !== "active"} onRefreshAgent={() => leave({ view: "refresh", accountId: create.account.id })} />
+        <div className="flex flex-col gap-4">
+          <FundPanel account={create.account} needsAgent={create.account.agent_status !== "active"} onRefreshAgent={() => leave({ view: "refresh", accountId: create.account.id })} />
+          <FundingBarFor accountId={create.account.id} />
+        </div>
       ) : null}
       {view.view === "connect" ? (
         <ConnectWallet key={`${view.tab}-${view.refresh?.address}`} initialTab={view.tab} refresh={view.refresh} onClose={() => leave(null)} />

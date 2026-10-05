@@ -23,7 +23,7 @@ state = venue.account_state("0x...")   # None on failure, never raises
 | `hl/meta.py` | per-dex perp-universe cache, HIP-3 dex-list cache, spot-price cache, per-dex asset-ctx cache (`asset_stats`), 2s `l2_book` cache, `max_leverage`, `is_isolated_only` |
 | `hl/sizing.py` | pure price/size rounding math (no network) |
 | `hl/sdk.py` | lazy `hyperliquid.exchange.Exchange` (writes only), timeout-guarded, refuses the main wallet's key, rebuilt when the active credentials change (cache key: agent address, account, base url) |
-| `hl/accounts.py` | account admin for services/vault: approveAgent typed data / signing (SDK `sign_agent`), usdSend signing, `post_signed_action` (POST /exchange, never raises, never logs the body), `extra_agents` |
+| `hl/accounts.py` | account admin for services/vault: approveAgent typed data / signing (SDK `sign_agent`), usdSend signing, funding (`FUNDING` bridge/USDC per network, verified against HL's docs; `user_action` / `user_action_typed_data` / `sign_user_action` for usdClassTransfer, usdSend, withdraw3 with the SDK's own field lists and sign_* functions), `post_signed_action` (POST /exchange, never raises, never logs the body), `extra_agents` |
 | `hl/history.py` | Account page reads: `historical_orders`, `ledger_updates`, `spot_balances` (None on failure) |
 
 Ported from `pathiel` at commit `ab2e800` (`client/exchange.py`,

@@ -47,6 +47,8 @@ are dropped.
 | POST | /accounts/{id}/activate?force=, /accounts/{id}/refresh-agent, /accounts/transfer | |
 | PATCH / DELETE | /accounts/{id} | rename / remove |
 | GET | /accounts/{id}/summary, /accounts/{id}/history?kind= | `AccountSummary`, `{kind, rows}` |
+| GET | /accounts/{id}/funding-info | `FundingInfo` (bridge, USDC, min deposit, withdraw fee, live limits) |
+| POST | /accounts/{id}/action/prepare, /accounts/{id}/action/submit, /accounts/{id}/action | spot<->perps, usdSend, withdraw3 (browser-signed / passphrase) -> `UserActionResult` |
 | GET | /market/candles?coin=&interval=&start_ms=&end_ms= | candle bars, <= 5000, 422 on bad interval/range |
 
 ## Auth
@@ -207,7 +209,7 @@ Routes in `api/routes/accounts_onboard.py` (adding) and `api/routes/accounts.py`
 their `http_status` (400 invalid, 401 wrong passphrase with the single detail
 "invalid passphrase", 404 unknown id, 409 fund first / re-run sign-in / open
 copies, 502 HL). Secret-bearing routes (create, import-key, import-env, submit,
-refresh-agent, transfer) are rate-limited in process: 5/min and 30/hour per
+refresh-agent, transfer, funding submit/run) are rate-limited in process: 5/min and 30/hour per
 route (`api/attempt_limit.py`), 429 beyond. A 422 on `/api/accounts/*` never
 echoes the request input (FastAPI's default would echo a pasted key). No route
 logs a body.
@@ -222,6 +224,27 @@ tiers, win streak and daily pnl need `discovery.scout.public.account_metrics(add
 expose yet; until it does they are null. `copytrade_usd` = sum of
 `LeaderStatus.margin_used_usd` in that account's own engine snapshot.
 
-Tests: `tests/test_accounts_onboard.py`, `tests/test_accounts_manage.py` run the
+### Funding (`api/routes/accounts_funding.py`, `api/funding.py`)
+
+- `GET .../funding-info`: static facts from `hl.accounts.funding_info()` (Arbitrum
+  chain id, native USDC, Hyperliquid bridge, 5 USDC minimum, $1 withdraw fee, the doc
+  URL they were verified against) plus live `limits` from `account_state` +
+  `spotClearinghouseState` (`null` when a read fails; the facts still come back).
+- Limits: usdSend / withdraw3 / perps->spot are capped by the main perp dex's
+  `withdrawable` (unified accounts: spot USDC free, as hl.venue reports it);
+  spot->perps by spot USDC total - hold. Unified accounts refuse a move (one balance).
+- `action/prepare` -> exact action + EIP-712 typed data; `action/submit` -> the vault
+  re-checks every guard, recovers the signer (must be the account address) and
+  posts. `POST .../action` is the passphrase path for created accounts.
+- Every money route reads the limits first (502 if it cannot), submit and the
+  passphrase route are rate-limited per kind (`action-<kind>` buckets, 5/min, 30/h).
+  `/accounts/transfer` now uses the same guards (perps withdrawable cap) and audit.
+- Withdraw destination defaults to the account itself; any other address needs
+  `confirm_destination` equal to it. usdSend only goes to another vault account.
+- The MCP server never calls any `/api/accounts` route (its test forbids it).
+
+Tests: `tests/test_accounts_funding.py` (facts, limits, unified, browser round trip,
+signer mismatch, bounds, confirm, rate limit, no passphrase/signature in logs or the
+audit file). `tests/test_accounts_onboard.py`, `tests/test_accounts_manage.py` run the
 real vault in a temp dir with a fake HL (`tests/accounts_fakes.py`) and assert
 no key or passphrase appears in any response or captured log.

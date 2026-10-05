@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Send, Wallet } from "lucide-react";
+import { RefreshCw, Wallet } from "lucide-react";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
@@ -12,7 +12,7 @@ import { formatAgo, formatSignedUsd, formatUsd } from "@/lib/format";
 import { startRefresh } from "./AccountRow";
 import { AgentBadge, KindBadge } from "./bits";
 
-export function AccountHeader({ summary, onTransfer }: { summary: AccountSummary; onTransfer: () => void }) {
+export function AccountHeader({ summary }: { summary: AccountSummary }) {
   const now = useNow();
   const { account, balances } = summary;
   const v = agentView(account, now);
@@ -36,11 +36,6 @@ export function AccountHeader({ summary, onTransfer }: { summary: AccountSummary
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {account.has_main_key ? (
-            <Button onClick={onTransfer}>
-              <Send size={14} aria-hidden="true" /> Send USDC
-            </Button>
-          ) : null}
           <Button onClick={() => openWalletManager()}>
             <Wallet size={14} aria-hidden="true" /> Wallets
           </Button>

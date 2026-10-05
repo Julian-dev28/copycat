@@ -22,6 +22,7 @@ export const accountKeys = {
   list: (demo: boolean) => ["accounts", demo, "list"] as const,
   summary: (demo: boolean, id: string) => ["accounts", demo, "summary", id] as const,
   history: (demo: boolean, id: string, kind: HistoryKind) => ["accounts", demo, "history", id, kind] as const,
+  funding: (demo: boolean, id: string) => ["accounts", demo, "funding", id] as const,
 };
 
 export function useAccounts() {
@@ -48,6 +49,18 @@ export function useAccountSummary(id: string | null) {
     enabled: enabled && Boolean(id),
     retry,
     refetchInterval: 30_000,
+  });
+}
+
+/** GET .../funding-info: bridge facts + live limits. `fastPoll` while a deposit is being credited. */
+export function useFundingInfo(id: string | null, fastPoll = false) {
+  const { demo, enabled, source } = useAccountMode();
+  return useQuery({
+    queryKey: accountKeys.funding(demo, id ?? ""),
+    queryFn: () => source.fundingInfo(id as string),
+    enabled: enabled && Boolean(id),
+    retry,
+    refetchInterval: fastPoll ? 5_000 : 60_000,
   });
 }
 

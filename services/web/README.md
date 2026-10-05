@@ -26,6 +26,11 @@ Append `?demo=1` to any page to run it on built-in fixtures with no api: the
 Trade book, Scout board and trader files, and the account flows (including a
 fake browser wallet that signs with a public test key) all work in memory. On
 Trade, `&acct=small` and `&acct=large` switch to a $20 or a $1M account.
+On `/account?demo=1`, "Ledger via Rabby" is the fake wallet's own account with
+the $0.03 perps / $0.11 spot split (Move to perps shows), "Old API key" is a
+unified account, and "Main" is a created wallet (passphrase path, any 12+ chars):
+deposit, move, send and withdraw all run against the in-memory store with real
+EIP-712 signatures and ERC-20 calldata; a demo deposit is "credited" ~3 s later.
 
 ## Pages
 
@@ -35,7 +40,7 @@ Trade, `&acct=small` and `&acct=large` switch to a $20 or a $1M account.
 | `/scout` | Trader board: Copy Fit score, PnL windows, filters, sorts, presets |
 | `/scout/[address]` | Trader file: chart with your simulated copy overlaid, calendar, positions, round trips, fills, orders, what-if, Strategy tab (TA fingerprint + theses) |
 | `/portfolio` | Engine status, halt, close all, event feed, your copied wallets |
-| `/account` | Active trading account: value, equity split, performance, history tabs; wallet manager (create, connect by wallet signature or API key, switch, refresh agent) |
+| `/account` | Active trading account: value, equity split, performance, history tabs; wallet manager (create, connect by wallet signature or API key, switch, refresh agent); funding: Deposit (from Arbitrum through the bridge, from another Hyperliquid account, from an exchange), Move spot <-> perps, Withdraw to Arbitrum, Send between your accounts. Created accounts sign with the passphrase, connected ones with the browser wallet (or app.hyperliquid.xyz when there is none). Flows: `lib/account/depositFlow.ts`, `lib/account/actionFlow.ts`, rules in `lib/account/funding.ts` |
 | `/settings` | Global settings every "global" wallet follows: enabled, dry run, sizing, leverage, risk limits |
 | `/discover` | Custom discovery sim runs (linked from Scout) |
 

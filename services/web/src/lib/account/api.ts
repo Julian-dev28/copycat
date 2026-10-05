@@ -13,7 +13,8 @@ import { injectedProvider, type Eip1193Provider } from "./eip1193";
 import { secretFetch } from "./secretFetch";
 import type {
   AccountSummary, AgentApprovalPrepareRequest, AgentApprovalPrepareResponse, AgentApprovalSubmitRequest,
-  CreateAccountRequest, CreateAccountResponse, HistoryKind, ImportApiKeyRequest, ImportEnvStatus, TradingAccount, TransferRequest,
+  CreateAccountRequest, CreateAccountResponse, FundingInfo, HistoryKind, ImportApiKeyRequest, ImportEnvStatus, TradingAccount, TransferRequest,
+  UserActionPrepareRequest, UserActionPrepareResponse, UserActionResult, UserActionRunRequest, UserActionSubmitRequest,
 } from "./types";
 
 export interface AccountSource {
@@ -32,6 +33,13 @@ export interface AccountSource {
   transfer(req: TransferRequest): Promise<void>;
   summary(id: string): Promise<AccountSummary>;
   history(id: string, kind: HistoryKind): Promise<unknown>;
+  /** Bridge, USDC, minimum deposit, withdraw fee, live limits (contract v8). */
+  fundingInfo(id: string): Promise<FundingInfo>;
+  /** Browser path: the exact action + typed data to sign. */
+  prepareAction(id: string, req: UserActionPrepareRequest): Promise<UserActionPrepareResponse>;
+  submitAction(id: string, req: UserActionSubmitRequest): Promise<UserActionResult>;
+  /** Passphrase path (created accounts). SECRET body. */
+  runAction(id: string, req: UserActionRunRequest): Promise<UserActionResult>;
   /** The wallet the sign flow talks to: window.ethereum live, a scripted fake in demo. */
   walletProvider(): Eip1193Provider | null;
 }
@@ -86,5 +94,9 @@ export const liveAccounts: AccountSource = {
   },
   summary: (id) => apiFetch<AccountSummary>(`/api/accounts/${enc(id)}/summary`),
   history: (id, kind) => apiFetch<unknown>(`/api/accounts/${enc(id)}/history?kind=${kind}`),
+  fundingInfo: (id) => apiFetch<FundingInfo>(`/api/accounts/${enc(id)}/funding-info`),
+  prepareAction: (id, req) => apiFetch<UserActionPrepareResponse>(`/api/accounts/${enc(id)}/action/prepare`, post(req)),
+  submitAction: (id, req) => apiFetch<UserActionResult>(`/api/accounts/${enc(id)}/action/submit`, post(req)),
+  runAction: (id, req) => secretFetch<UserActionResult>(`/api/accounts/${enc(id)}/action`, req),
   walletProvider: injectedProvider,
 };

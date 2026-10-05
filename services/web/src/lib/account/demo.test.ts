@@ -23,14 +23,17 @@ async function sign(mode: Parameters<typeof fakeWalletProvider>[0], expectedAddr
 }
 
 describe("demo sign flow", () => {
-  it("connects the demo wallet: real signature, verified, account added", async () => {
+  it("connects the demo wallet: real signature, verified, its account updated (the Ledger fixture is that wallet)", async () => {
     const before = (await demoAccounts.list()).length;
     const { s, result } = await sign("approve");
     expect(s.step).toBe("done");
     expect(result?.address).toBe(DEMO_WALLET_ADDRESS);
     expect(result?.kind).toBe("connected_signed");
     expect(result?.agent_status).toBe("active");
-    expect((await demoAccounts.list()).length).toBe(before + 1);
+    expect((await demoAccounts.list()).length).toBe(before);
+    resetDemoAccounts(true);
+    await sign("approve");
+    expect((await demoAccounts.list()).length).toBe(1);
   });
 
   it("refreshing the same wallet updates it instead of duplicating", async () => {

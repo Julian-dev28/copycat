@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 8   # v8: account funding (FundingInfo, user-signed usdClassTransfer/usdSend/withdraw3)
+CONTRACT_VERSION = 8   # v8: account funding (FundingInfo, usdClassTransfer/usdSend/withdraw3) + TradeDirection, coin lists, pause, WalletProjection
 # v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
 # v6: v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
 # v5: v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
