@@ -7,6 +7,7 @@ import { Panel, PanelHeader, SettingRow } from "@/components/ui/Panel";
 import { Slider } from "@/components/ui/Slider";
 import { Switch } from "@/components/ui/Switch";
 import { LiquidationHint } from "./LiquidationHint";
+import { fixedLeverageCap } from "./leverageCap";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { leverageVibe, worseEntryVibe } from "@/lib/copyRecipe";
 
@@ -21,6 +22,7 @@ export function CopyBehaviorPanel({
   const [maxWorseEntryPct, setMaxWorseEntryPct] = useSyncedState(settings.max_worse_entry_pct);
 
   const debouncedPatch = useDebouncedCallback((patch: SettingsPatch) => onPatch(patch), 350);
+  const fixedCap = fixedLeverageCap({ ...settings, max_position_leverage: maxPositionLeverage });
 
   return (
     <Panel>
@@ -42,6 +44,11 @@ export function CopyBehaviorPanel({
           formatValue={(v) => `${v} x`}
           vibe={leverageVibe}
         />
+        {fixedCap?.capped ? (
+          <p data-testid="max-leverage-caps-fixed" className="mt-1.5 text-xs font-medium text-warning">
+            Below your fixed leverage ({fixedCap.set}x), so new copies open at {fixedCap.effective}x.
+          </p>
+        ) : null}
       </SettingRow>
       <SettingRow
         title="Include spot & staked assets"

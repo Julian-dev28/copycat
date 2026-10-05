@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { CatLogo } from "@/components/CatLogo";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { isNavActive, NAV_LINKS } from "@/lib/trade/nav";
+import { isScoutSection, SCOUT_TABS, scoutTabFor } from "@/components/scoutNav";
 
 const ICONS = { "/": BarChart3, "/scout": Telescope, "/portfolio": Wallet, "/account": CircleUserRound, "/settings": SettingsIcon } as const;
 
@@ -20,8 +21,11 @@ const LINKS: { href: Href; label: string }[] = [
   { href: "/account", label: "Account" },
   ...NAV_LINKS.filter((l) => l.href === "/settings"),
 ];
-const isActive = (href: Href, pathname: string | null) =>
-  href === "/account" ? Boolean(pathname && (pathname === href || pathname.startsWith(`${href}/`))) : isNavActive(href, pathname);
+const isActive = (href: Href, pathname: string | null) => {
+  if (href === "/account") return Boolean(pathname && (pathname === href || pathname.startsWith(`${href}/`)));
+  if (href === "/scout") return isScoutSection(pathname); // /discover is Scout's "Custom sim" tab
+  return isNavActive(href, pathname);
+};
 
 const noopSubscribe = () => () => {};
 const demoQuery = () => {
@@ -102,6 +106,33 @@ export function TopNav() {
           </button>
         </div>
       </div>
+      <ScoutTabs pathname={pathname} demo={demo} />
     </header>
+  );
+}
+
+/** Second row on /scout and /discover so the custom sim is one click from the leaderboard, and back. */
+function ScoutTabs({ pathname, demo }: { pathname: string | null; demo: string }) {
+  const activeTab = scoutTabFor(pathname);
+  if (!activeTab) return null;
+  return (
+    <nav aria-label="Scout" className="mx-auto flex max-w-[1440px] items-center gap-1 px-4 pb-2">
+      {SCOUT_TABS.map(({ href, label }) => {
+        const active = href === activeTab;
+        return (
+          <Link
+            key={href}
+            href={`${href}${demo}`}
+            aria-current={active ? "page" : undefined}
+            className={clsx(
+              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:text-sm",
+              active ? "bg-surface-2 text-foreground" : "text-muted hover:bg-surface-2 hover:text-foreground",
+            )}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

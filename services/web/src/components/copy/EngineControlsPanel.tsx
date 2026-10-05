@@ -10,6 +10,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Slider } from "@/components/ui/Slider";
 import { Input } from "@/components/ui/Input";
 import { LiquidationHint } from "./LiquidationHint";
+import { fixedLeverageCap } from "./leverageCap";
 import { EnableConfirmDialog } from "./EnableConfirmDialog";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { dailyLossLimitToStored, storedToDailyLossMagnitude } from "@/lib/sizing";
@@ -52,6 +53,7 @@ export function EngineControlsPanel({
   const debouncedPatch = useDebouncedCallback((patch: SettingsPatch) => onPatch(patch), 350);
   const lossLimitEnabled = lossLimit > 0;
   const recipeLev = settingsLeverage({ ...settings, leverage }).leverage;
+  const leverageCap = fixedLeverageCap({ ...settings, leverage });
 
   /** Every enabled/dry_run change goes through here, so neither switch can go live unconfirmed. */
   function guardedPatch(patch: SettingsPatch) {
@@ -199,8 +201,15 @@ export function EngineControlsPanel({
               }}
               formatValue={(v) => `${v} x`}
               vibe={leverageVibe}
+              aria-label="Fixed leverage"
             />
-            <LiquidationHint leverage={leverage} marginMode={settings.margin_mode} />
+            {leverageCap?.capped ? (
+              <p data-testid="leverage-capped" className="mt-1.5 text-xs font-medium text-warning">
+                Capped at {leverageCap.effective}x by Maximum position leverage. New copies open at {leverageCap.effective}x,
+                not {leverageCap.set}x. Raise that cap (Copy behavior, below) to use {leverageCap.set}x.
+              </p>
+            ) : null}
+            <LiquidationHint leverage={leverageCap?.effective ?? leverage} marginMode={settings.margin_mode} />
           </>
         </SettingRow>
       ) : null}

@@ -149,7 +149,7 @@ function ScoutBoard() {
           <h1 className="text-xl font-bold tracking-tight">Scout</h1>
           <p className="text-sm text-muted">
             Traders ranked by what copying them would have earned you, at your settings.{" "}
-            <Link href="/discover" className="font-medium text-accent hover:underline">Run a custom sim</Link>
+            <Link href="/discover" className="font-medium text-accent hover:underline">Run a custom sim with your own equity and top N</Link>
           </p>
         </div>
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
