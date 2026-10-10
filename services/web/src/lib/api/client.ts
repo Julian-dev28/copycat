@@ -38,6 +38,24 @@ export function onUnauthorized(cb: () => void): Unsubscribe {
   return () => unauthorizedListeners.delete(cb);
 }
 
+/** Thrown instead of sending a write while the page is in demo mode. */
+export class DemoWriteError extends Error {
+  constructor() {
+    super("demo mode: writes are disabled");
+    this.name = "DemoWriteError";
+  }
+}
+
+/**
+ * Demo mode is `?demo=1` on the current page URL. Read at call time (never
+ * cached), so a client navigation into or out of demo is seen by the next call.
+ */
+export function isDemoMode(search: string = typeof window === "undefined" ? "" : window.location.search): boolean {
+  return new URLSearchParams(search).get("demo") === "1";
+}
+
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 export function getApiBase(): string {
   return process.env.NEXT_PUBLIC_COPYCAT_API?.replace(/\/+$/, "") || "http://localhost:8787";
 }
@@ -54,6 +72,12 @@ export interface ApiFetchOptions extends RequestInit {
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const { token, headers: initHeaders, body, ...rest } = options;
+  // Hard guard (UX audit #1): demo pages run on in-memory sources, and a page
+  // that forgot its demo branch must not change the live account. No write
+  // leaves the browser while ?demo=1 is on the URL, whatever code asked for it.
+  if (!READ_METHODS.has((rest.method ?? "GET").toUpperCase()) && isDemoMode()) {
+    throw new DemoWriteError();
+  }
   const headers = new Headers(initHeaders);
   headers.set("Accept", "application/json");
   if (body !== undefined && !(body instanceof FormData) && !headers.has("Content-Type")) {

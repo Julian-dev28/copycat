@@ -45,7 +45,9 @@ type V5SettingsKeys =
   | "allocation_usd" | "exposure_mode" | "target_leverage" | "invested_ms"
   | "small_account_mode" | "max_order_volume_pct" | "max_slippage_pct"
   // v8: copy/counter, coin lists, pause (a pre-v8 api omits them)
-  | "trade_direction" | "coin_allowlist" | "coin_blocklist" | "paused";
+  | "trade_direction" | "coin_allowlist" | "coin_blocklist" | "paused"
+  // v9: one-shot wallets
+  | "one_shot";
 
 export type Settings = Omit<Schemas["Settings"], "leaders" | "leader_overrides" | V5SettingsKeys> &
   Partial<Pick<Schemas["Settings"], V5SettingsKeys>> & {
@@ -68,7 +70,9 @@ export type LeaderStatus = Omit<Schemas["LeaderStatus"], "owned_coins" | "effect
   effective: Settings;
 };
 
-export type EngineStatus = Omit<Schemas["EngineStatus"], "leaders" | "positions"> & {
+export type EngineStatus = Omit<Schemas["EngineStatus"], "leaders" | "positions" | "day_pnl_reliable"> & {
+  /** v9; older apis omit it (treat as reliable). */
+  day_pnl_reliable?: boolean;
   leaders: LeaderStatus[];
   positions: CopyPosition[];
 };

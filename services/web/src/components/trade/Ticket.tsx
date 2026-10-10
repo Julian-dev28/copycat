@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, PauseCircle, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Panel } from "@/components/ui/Panel";
 import { formatAgo, formatUsd, shortenAddress } from "@/lib/format";
 import { problemText } from "@/lib/trade/apiState";
+import { algoWarning } from "@/lib/trade/algo";
+import { walletStatus } from "@/lib/trade/lifecycle";
+import type { TraderProfile, TraderRow } from "@/lib/scout/types";
 import type { TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
+import { AlgoWarning, CoinFilterFields, DirectionSwitch } from "./TicketExtras";
+import { ProjectionPanel } from "./ProjectionPanel";
+import { WalletLogDrawer } from "./WalletLogDrawer";
 import { AmountField } from "./AmountField";
 import { LeverageField } from "./LeverageField";
 import { AdvancedFields } from "./AdvancedFields";
@@ -29,38 +35,44 @@ export function Ticket({
   wallet,
   settingsHref,
   nowMs,
-  stopRequest,
-  onStopHandled,
+  profile,
+  row,
+  allCoins,
 }: {
   address: string;
   name: string | null;
+  profile: TraderProfile | undefined;
+  row: TraderRow | null;
+  /** Autocomplete pool for the coin filters (every coin the board trades). */
+  allCoins: string[];
   t: TicketState;
   settings: TradeSettings | undefined;
   status: TradeStatus | undefined;
   wallet: WalletPosition | null;
   settingsHref: string;
   nowMs: number;
-  /** Set by "Stop" in Your wallets: open the stop dialog here. */
-  stopRequest: boolean;
-  onStopHandled: () => void;
 }) {
   const copy = useCopyWallet();
   const stop = useStopWallet();
   const [confirm, setConfirm] = useState<"live" | "switch" | null>(null);
   const [stopOpen, setStopOpen] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
   const label = name ?? shortenAddress(address);
   const live = Boolean(settings?.enabled && !settings.dry_run);
   const d = t.draft;
   const custom = d.source === "custom";
-  const showStop = stopOpen || stopRequest;
+  const showStop = stopOpen;
+  const lifeStatus = wallet ? walletStatus(wallet) : null;
+  const warn = algoWarning({ style: profile?.row.style ?? row?.style, walletStyle: wallet?.style, flags: profile?.row.flags ?? row?.flags, scoreFlags: profile?.row.score.flags ?? row?.score.flags });
+  const hisCoins = [...new Set([...(profile?.positions ?? []).map((p) => p.coin), ...(profile?.coins ?? []).map((c) => c.coin), ...(row?.top_coins ?? []).map((c) => c.coin)])];
 
   function submit(confirmed = false) {
     if (!t.body || t.action === "unchanged") return;
     if (!confirmed && t.switching) return setConfirm("switch");
     if (!confirmed && t.action === "copy" && live) return setConfirm("live");
     const body = t.body;
-    const verb = t.action === "copy" ? "Copying" : "Updated";
+    const verb = t.action === "copy" ? (t.eff.direction === "counter" ? "Countering" : "Copying") : "Updated";
     const terms = body.settings_source === "global"
       ? "with your global settings"
       : `${formatUsd(body.allocation_usd)}${body.exposure_mode === "target" ? ` at ${body.target_leverage}x` : ", following his leverage"}`;
@@ -68,7 +80,7 @@ export function Ticket({
   }
 
   const cta = t.action === "copy"
-    ? copy.isPending ? "Copying…" : custom ? "Copy wallet" : "Copy with global settings"
+    ? copy.isPending ? "Copying…" : custom ? (t.eff.direction === "counter" ? "Counter wallet" : "Copy wallet") : "Copy with global settings"
     : t.action === "update" ? (copy.isPending ? "Updating…" : t.switching ? (custom ? "Switch to custom terms" : "Switch to global settings") : "Update") : "No changes";
 
   return (
@@ -85,8 +97,29 @@ export function Ticket({
             <p className="mt-0.5 text-xs text-muted">{custom ? "Like opening a perp: pick a size and a leverage." : "Copies with the terms on your Settings tab."}</p>
           )}
         </div>
-        {wallet?.stopping ? <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">stopping</span> : null}
+        <div className="flex items-center gap-1">
+          {wallet?.stopping ? <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">stopping</span> : null}
+          {wallet ? (
+            <Button size="sm" variant="ghost" onClick={() => setLogOpen(true)} aria-label={`Open the log for ${label}`}>
+              <ScrollText size={13} aria-hidden="true" /> Log
+            </Button>
+          ) : null}
+        </div>
       </div>
+      {lifeStatus === "paused" ? (
+        <p className="flex items-start gap-1.5 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+          <PauseCircle size={13} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> Paused: no new copies; exits still followed. Resume it from Your wallets.
+        </p>
+      ) : null}
+
+      <DirectionSwitch
+        value={t.eff.direction}
+        onChange={t.setDirection}
+        set={t.draft.direction !== null}
+        onReset={() => t.resetField("direction")}
+        supported={t.caps.v8}
+        globalSource={!custom}
+      />
 
       <TicketBanners settings={settings} settingsHref={settingsHref} />
 
@@ -117,10 +150,23 @@ export function Ticket({
             marginMode={t.eff.marginMode}
             marginSet={d.marginMode !== null}
             hisLeverage={t.preview?.hisLeverage ?? null}
+            cap={t.lev}
             onMode={(mode) => t.setDraft({ mode })}
             onLeverage={(leverage) => t.setDraft({ leverage })}
             onMarginMode={(marginMode) => t.setDraft({ marginMode })}
             onMarginReset={() => t.resetField("marginMode")}
+          />
+          <CoinFilterFields
+            allow={t.eff.allow}
+            block={t.eff.block}
+            allowSet={d.allow !== null}
+            blockSet={d.block !== null}
+            hisCoins={hisCoins}
+            allCoins={allCoins}
+            onAllow={(allow) => t.setDraft({ allow })}
+            onBlock={(block) => t.setDraft({ block })}
+            onReset={t.resetField}
+            supported={t.caps.v8}
           />
           <AdvancedFields draft={d} eff={t.eff} caps={t.caps} onChange={t.setDraft} onReset={t.resetField} />
         </>
@@ -133,7 +179,7 @@ export function Ticket({
           preview={t.preview}
           amount={custom ? t.amount ?? 0 : null}
           mode={d.mode}
-          leverage={d.leverage}
+          leverage={t.lev.effective}
           marginMode={t.eff.marginMode}
           pending={t.previewPending}
           sourceNote={t.previewNote}
@@ -145,6 +191,10 @@ export function Ticket({
       ) : !custom && t.previewError ? (
         <p className="text-xs text-muted">The engine preview is unavailable, so there is no estimate for global sizing.</p>
       ) : null}
+
+      <ProjectionPanel address={address} amount={custom ? t.amount : null} direction={t.eff.direction} mode={d.mode} leverage={t.lev.effective} profile={profile} />
+
+      {warn ? <AlgoWarning text={warn} /> : null}
 
       <div className="flex flex-col gap-2">
         <Button variant="primary" size="lg" className="w-full" disabled={!t.body || t.action === "unchanged" || copy.isPending} onClick={() => submit()}>
@@ -164,6 +214,7 @@ export function Ticket({
         ) : null}
       </div>
 
+      <WalletLogDrawer open={logOpen} onClose={() => setLogOpen(false)} address={address} name={label} />
       <LiveCopyDialog open={confirm === "live"} name={label} amount={custom ? t.amount : null} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); submit(true); }} />
       <SwitchSourceDialog open={confirm === "switch"} name={label} to={d.source} live={live} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); submit(true); }} />
       <StopDialog
@@ -172,10 +223,10 @@ export function Ticket({
         name={label}
         openCopies={wallet?.open_copies ?? 0}
         pending={stop.isPending}
-        onCancel={() => { setStopOpen(false); onStopHandled(); }}
+        onCancel={() => setStopOpen(false)}
         onConfirm={(close_positions) =>
           stop.mutate({ address, body: { close_positions } }, {
-            onSettled: () => { setStopOpen(false); onStopHandled(); },
+            onSettled: () => setStopOpen(false),
             onSuccess: () => setDone(close_positions ? `Stopping ${label}: closing its copies.` : `Stopped new copies of ${label}; open ones follow him out.`),
           })
         }

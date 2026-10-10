@@ -65,7 +65,7 @@ from contracts.models import (
 )
 from contracts.venue import Venue
 
-from . import pacing, sizing
+from . import daypnl, pacing, sizing
 from .state import Copy, DryCopy, EngineState, LeaderState
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,9 @@ _VANISH_PENDING_KEY = "vanish_pending"    # coin -> ts_ms of the first read it w
 _PENDING_REDUCES_KEY = "pending_reduces"  # coin -> ambiguous reduce awaiting resolution
 _LAST_DRY_RUN_KEY = "last_dry_run"
 _CATCH_UP_KEY = "catch_up"                # coin -> unfilled remainder of a liquidity-split entry
+# v9 one-shot wallets: leader -> {"invested_ms", "coins": {coin: +1 long / -1 short}}, the
+# positions he held when the engine first saw `one_shot` for this investment
+_ONE_SHOT_KEY = "one_shot"
 STOP_REASON = "stop wallet"
 VANISHED_REASON = "our copy vanished (liquidated or closed outside copycat)"
 # order_status values that mean "not settled yet, ask again next cycle"
@@ -156,6 +159,8 @@ class _Cycle:
         self.raw_positions: Dict[str, Any] = {}
         self.entry_coins: Set[str] = set()     # coins with an entry this cycle (no catch-up on top)
         self.cur_leader: Optional[str] = None  # the leader being diffed (tags his skip events)
+        # v9: the one-shot leader's allowed coins (coin -> his side then), None = not one-shot
+        self.one_shot: Optional[Dict[str, int]] = None
 
     def event(self, action: str, **kw: Any) -> None:
         self.log_event(EngineEvent(ts_ms=self.now_ms, action=action, **kw))
@@ -186,7 +191,7 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
         "opened": [], "added": [], "reduced": [], "closed": [], "skipped": {}, "vanished": [],
         "split": [], "leaders_ok": 0, "leaders_total": 0,
         "equity_usd": None, "available_margin_usd": None, "day_pnl_usd": None,
-        "halted_reason": None, "enabled": settings.enabled, "dry_run": settings.dry_run,
+        "day_pnl_reliable": True, "halted_reason": None, "enabled": settings.enabled, "dry_run": settings.dry_run,
         "positions": [], "leaders": [], "stops_done": [], "effective_poll_s": None,
     }
     stops = {a.lower(): bool(c) for a, c in (stops or {}).items()}
@@ -218,9 +223,12 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
         cy.event("error", reason="degraded account read (equity <= 0)")
         return out
 
-    day_pnl_usd = _update_day_pnl(state, now_ms, equity_usd)
+    day_pnl_usd, day_pnl_reliable = _update_day_pnl(state, venue, our_address, now_ms,
+                                                    equity_usd, log_event)
     out["day_pnl_usd"] = day_pnl_usd
-    halted_reason = _halt_check(state, settings, day_pnl_usd, log_event, now_ms)
+    out["day_pnl_reliable"] = day_pnl_reliable
+    halted_reason = _halt_check(state, settings, day_pnl_usd, log_event, now_ms,
+                                reliable=day_pnl_reliable)
     out["halted_reason"] = halted_reason
 
     cy.equity_usd = equity_usd
@@ -327,6 +335,7 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
     cy.leader_coins[leader] = list(now_pos)
     cy.lead_pos = now_pos
     cy.lead_gross = sizing.gross_notional(now_pos)
+    cy.one_shot = _one_shot_coins(cy, leader, es, now_pos)
     lstate = state.get_leader(leader)
     if lstate is None:
         if es.only_new_positions:          # per-wallet override, else the Settings tab
@@ -388,6 +397,7 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
     new_last = {c: p["szi"] for c, p in now_pos.items()}
     for coin, frozen_prev in retry.items():
         new_last[coin] = frozen_prev
+    _one_shot_prune(cy, leader, now_pos)
     state.put_leader(LeaderState(leader, new_last, sorted(ignored), cy.now_ms))
     out["leaders_ok"] += 1
     return {
@@ -396,6 +406,47 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
         "owned_coins": _owned_coins(state, leader, cy.dry),
         "last_read_ms": cy.now_ms, "effective": es,
     }
+
+
+def _one_shot_coins(cy: _Cycle, leader: str, es: Settings,
+                    now_pos: Dict[str, Any]) -> Optional[Dict[str, int]]:
+    """The coins a one-shot wallet may still open (coin -> his side), or None
+    when the wallet is not one-shot. The first cycle that sees `one_shot`
+    for this investment (`invested_ms`) records what he holds; from then on
+    nothing else is opened for him. Turning one-shot off drops the record."""
+    book = cy.state.get_kv(_ONE_SHOT_KEY) or {}
+    if not es.one_shot:
+        if leader in book:
+            book.pop(leader)
+            cy.state.set_kv(_ONE_SHOT_KEY, book)
+        return None
+    rec = book.get(leader)
+    if rec is None or rec.get("invested_ms") != es.invested_ms:
+        coins = {c: (1 if float(p.get("szi") or 0.0) > 0 else -1)
+                 for c, p in sorted(now_pos.items()) if float(p.get("szi") or 0.0)}
+        rec = {"invested_ms": es.invested_ms, "coins": coins}
+        book[leader] = rec
+        cy.state.set_kv(_ONE_SHOT_KEY, book)
+        held = ", ".join(f"{c} {'long' if s > 0 else 'short'}" for c, s in coins.items())
+        cy.event("baseline", leader=leader,
+                 reason=f"one-shot: copying only what he holds now ({held or 'nothing'}); "
+                        f"nothing he opens later; exits mirrored")
+    return dict(rec.get("coins") or {})
+
+
+def _one_shot_prune(cy: _Cycle, leader: str, now_pos: Dict[str, Any]) -> None:
+    """A one-shot coin he closed or flipped is spent: re-opening it later is a
+    new position, never copied."""
+    if cy.one_shot is None:
+        return
+    keep = {c: s for c, s in cy.one_shot.items()
+            if float((now_pos.get(c) or {}).get("szi") or 0.0) * s > 0}
+    if keep != cy.one_shot:
+        book = cy.state.get_kv(_ONE_SHOT_KEY) or {}
+        if leader in book:
+            book[leader] = {**book[leader], "coins": keep}
+            cy.state.set_kv(_ONE_SHOT_KEY, book)
+        cy.one_shot = keep
 
 
 def _diff_coin(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, coin: str, prev: float,
@@ -487,6 +538,17 @@ def _diff_coin(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, coin: str
             ignored.add(coin)
         cy.skip(coin, f"filtered: {coin}")
         return
+    if cy.one_shot is not None:
+        # v9 one-shot: only a first open of a position he held when copied (same
+        # side). An add, a flip's new side or anything opened later is skipped
+        # like "paused"; exits never reach this point.
+        held = cy.one_shot.get(coin)
+        if copy is not None or flipped or held is None or (cur > 0) != (held > 0):
+            if copy is None and cur:
+                ignored.add(coin)
+            cy.skip(coin, "one-shot: adds not copied" if copy is not None
+                    else "one-shot: only the positions he held when copied")
+            return
     # Our side. A copy we hold keeps the direction it was opened with; only a
     # fresh open (incl. the open half of a flip) takes the wallet's current one.
     direction = copy.direction if copy is not None else es.trade_direction.value
@@ -1378,27 +1440,86 @@ def _spend_margin(cy: "_Cycle", dex: str, margin_usd: float) -> None:
         cy.available[k] = float(cy.available.get(k, 0.0)) - margin_usd
 
 
-def _update_day_pnl(state: EngineState, now_ms: int, equity_usd: float) -> float:
-    """PnL since the UTC day's equity anchor. Re-anchors at the first cycle
-    of a new UTC day. NOT adjusted for deposits/withdrawals: a mid-day
-    transfer is read as PnL (see the README's daily loss section)."""
-    today = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-    anchor = state.get_kv("day_anchor")
+_DAY_ANCHOR_KEY = "day_anchor"          # {"day", "equity_usd", "ts_ms"}
+_DAY_PNL_GOOD_KEY = "day_pnl_good"      # {"day", "value"}: the last reliable day PnL
+_DAY_PNL_PROBLEM_KEY = "day_pnl_problem"  # why the last cycle was unreliable (None = fine)
+_HALTED_REASON_KEY = "halted_reason"
+
+
+def _utc_day(now_ms: int) -> str:
+    return datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+def _update_day_pnl(state: EngineState, venue: Venue, our_address: str, now_ms: int,
+                    equity_usd: float, log_event: LogEvent) -> Tuple[Optional[float], bool]:
+    """(day PnL, reliable). Day PnL = equity now - equity at the UTC day anchor -
+    net transfers since the anchor (engine.daypnl over HL's non-funding ledger),
+    so a deposit or withdrawal is not read as PnL. Re-anchors at the first cycle
+    of a new UTC day (PnL 0 there by definition, no ledger read needed).
+
+    Unreliable (ledger read failed, unknown row, transfer still settling): returns
+    the day's last reliable value (None if there is none) and False; the halt
+    check then holds its state. One `error` event per unreliable stretch."""
+    today = _utc_day(now_ms)
+    anchor = state.get_kv(_DAY_ANCHOR_KEY)
     if not isinstance(anchor, dict) or anchor.get("day") != today:
-        anchor = {"day": today, "equity_usd": equity_usd}
-        state.set_kv("day_anchor", anchor)
-    return equity_usd - float(anchor["equity_usd"])
+        anchor = {"day": today, "equity_usd": equity_usd, "ts_ms": now_ms}
+        state.set_kv(_DAY_ANCHOR_KEY, anchor)
+        return _day_pnl_good(state, today, 0.0)
+    # An anchor written before ts_ms existed: the UTC day start (a transfer
+    # between 00:00 and that anchor's cycle would be counted twice; the engine
+    # anchors on its first cycle of the day, so that window is one poll).
+    start_ms = int(anchor.get("ts_ms") or datetime.strptime(today, "%Y-%m-%d")
+                   .replace(tzinfo=timezone.utc).timestamp() * 1000)
+    try:
+        rows = venue.ledger_updates(our_address, start_ms)
+    except Exception as exc:   # a venue bug must not take down the cycle
+        logger.exception("ledger read raised")
+        rows, problem = None, f"ledger read raised {type(exc).__name__}"
+    else:
+        problem = None if rows is not None else "ledger read failed"
+    net = 0.0
+    if rows is not None:
+        net, problem = daypnl.net_transfers(rows, our_address, start_ms, now_ms)
+    if problem is None:
+        if state.get_kv(_DAY_PNL_PROBLEM_KEY):
+            state.set_kv(_DAY_PNL_PROBLEM_KEY, None)
+        return _day_pnl_good(state, today, equity_usd - float(anchor["equity_usd"]) - net)
+    if state.get_kv(_DAY_PNL_PROBLEM_KEY) != problem:
+        log_event(EngineEvent(ts_ms=now_ms, action="error",
+                              reason=f"day PnL unreliable: {problem}; daily loss halt holds its state"))
+        state.set_kv(_DAY_PNL_PROBLEM_KEY, problem)
+    good = state.get_kv(_DAY_PNL_GOOD_KEY)
+    last = float(good["value"]) if isinstance(good, dict) and good.get("day") == today else None
+    return last, False
 
 
-def _halt_check(state: EngineState, settings: Settings, day_pnl_usd: float,
-                log_event: LogEvent, now_ms: int) -> Optional[str]:
+def _day_pnl_good(state: EngineState, today: str, value: float) -> Tuple[float, bool]:
+    state.set_kv(_DAY_PNL_GOOD_KEY, {"day": today, "value": value})
+    return value, True
+
+
+def _halt_check(state: EngineState, settings: Settings, day_pnl_usd: Optional[float],
+                log_event: LogEvent, now_ms: int, reliable: bool = True) -> Optional[str]:
     """`daily_loss_limit_usd` is always <= 0 by the contract; 0 means off.
-    Halting blocks entries only; exits never check this."""
+    Halting blocks entries only; exits never check this.
+
+    An unreliable day PnL never starts or ends a halt: the previous state and
+    reason hold until a reliable cycle (or a new UTC day, or the limit turned
+    off) decides. A failed read must not halt on a phantom loss, and must not
+    resume on a phantom gain."""
+    was_halted = bool(state.get_kv("halted") or False)
+    limit_on = settings.daily_loss_limit_usd < 0
+    if limit_on and not reliable:
+        if not was_halted:
+            return None
+        return (state.get_kv(_HALTED_REASON_KEY)
+                or f"daily loss limit ${settings.daily_loss_limit_usd:.2f} hit") + \
+            " (day PnL unreliable now; holding)"
     halted_reason: Optional[str] = None
-    if settings.daily_loss_limit_usd < 0 and day_pnl_usd <= settings.daily_loss_limit_usd:
+    if limit_on and day_pnl_usd is not None and day_pnl_usd <= settings.daily_loss_limit_usd:
         halted_reason = (f"daily loss limit ${settings.daily_loss_limit_usd:.2f} hit "
                          f"(day PnL ${day_pnl_usd:.2f})")
-    was_halted = bool(state.get_kv("halted") or False)
     is_halted = halted_reason is not None
     if is_halted and not was_halted:
         log_event(EngineEvent(ts_ms=now_ms, action="halt", reason=halted_reason))
@@ -1406,6 +1527,7 @@ def _halt_check(state: EngineState, settings: Settings, day_pnl_usd: float,
         log_event(EngineEvent(ts_ms=now_ms, action="resume",
                               reason="day PnL back above the daily loss limit"))
     state.set_kv("halted", is_halted)
+    state.set_kv(_HALTED_REASON_KEY, halted_reason)
     return halted_reason
 
 

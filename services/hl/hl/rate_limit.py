@@ -76,6 +76,8 @@ _PER_20_ITEMS = frozenset({
     "fundingHistory", "userFunding", "nonUserFundingUpdates", "twapHistory",
     "userTwapSliceFills", "userTwapSliceFillsByTime", "delegatorHistory",
     "delegatorRewards", "validatorStats",
+    # the docs list it as "nonUserFundingUpdates"; the request type is this one
+    "userNonFundingLedgerUpdates",
 })
 
 

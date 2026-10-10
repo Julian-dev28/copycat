@@ -35,6 +35,7 @@ from .routes import (
     events_stream,
     health,
     market,
+    mcp_plans,
     scout,
     thesis,
     wallets,
@@ -98,6 +99,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(thesis.router)
     app.include_router(market.router)
     app.include_router(wallets.router)
+    app.include_router(mcp_plans.router)       # MCP copy plans (execute is env-gated)
     app.include_router(accounts_onboard.router)   # before accounts: fixed paths win over /{id}
     app.include_router(accounts_routes.router)
     app.include_router(accounts_funding.router)

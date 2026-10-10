@@ -10,6 +10,10 @@ import { LiquidationHint } from "./LiquidationHint";
 import { fixedLeverageCap } from "./leverageCap";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { leverageVibe, worseEntryVibe } from "@/lib/copyRecipe";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { CoinChips } from "@/components/trade/CoinChips";
+import { COMMON_COINS } from "@/lib/trade/coinFilter";
+import { DIRECTION_META } from "@/lib/trade/direction";
 
 export function CopyBehaviorPanel({
   settings,
@@ -98,6 +102,34 @@ export function CopyBehaviorPanel({
           vibe={worseEntryVibe}
         />
       </SettingRow>
+      {settings.trade_direction !== undefined ? (
+        <>
+          <SettingRow
+            title="Default direction"
+            description={`${DIRECTION_META[settings.trade_direction].line} Each wallet can pick its own in the Trade ticket.`}
+            htmlFor="trade_direction"
+          >
+            <SegmentedControl<"copy" | "counter">
+              aria-label="Default direction"
+              options={[{ value: "copy", label: "Copy" }, { value: "counter", label: "Counter" }]}
+              value={settings.trade_direction}
+              onChange={(v) => onPatch({ trade_direction: v })}
+            />
+          </SettingRow>
+          <SettingRow
+            title="Only these coins"
+            description="When set, new copies open only on these coins. Empty: any coin. A wallet's own list replaces this one."
+          >
+            <CoinChips label="Only these coins (all wallets)" value={settings.coin_allowlist ?? []} onChange={(v) => onPatch({ coin_allowlist: v })} hisCoins={[]} allCoins={COMMON_COINS} placeholder="Any coin" />
+          </SettingRow>
+          <SettingRow
+            title="Never these coins"
+            description="New copies never open on these coins. Exits are always followed, whatever the lists say."
+          >
+            <CoinChips label="Never these coins (all wallets)" value={settings.coin_blocklist ?? []} onChange={(v) => onPatch({ coin_blocklist: v })} hisCoins={[]} allCoins={COMMON_COINS} placeholder="None" tone="danger" />
+          </SettingRow>
+        </>
+      ) : null}
       <div className="border-t border-border px-4 py-3 sm:px-5">
         <LiquidationHint leverage={maxPositionLeverage} marginMode={settings.margin_mode} />
       </div>

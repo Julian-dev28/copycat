@@ -6,7 +6,8 @@ import { clsx } from "clsx";
 import type { TraderScore } from "@/lib/api/types";
 import { MAX_LEADERS } from "@/lib/api/types";
 import { formatPct, formatSignedPct, formatSignedUsd, formatUsd } from "@/lib/format";
-import { explainScore, formatScore, isUnscored, summarizeFlags, type ExplainTone } from "@/lib/scoreExplain";
+import { explainScore, formatScore, isUnscored, type ExplainTone } from "@/lib/scoreExplain";
+import { traderFlags } from "./flags";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -150,7 +151,7 @@ export function DiscoveryTable({
                   </div>
                 </dl>
                 <div className="flex flex-wrap items-center gap-1">
-                  {summarizeFlags(t.flags).map((f) => (
+                  {traderFlags(t).map((f) => (
                     <span key={f.key} title={f.meaning}>
                       <Badge tone={f.key === "liquidated" || f.key === "error" ? "danger" : "warning"}>
                         {f.key.replaceAll("_", " ")}
@@ -213,7 +214,7 @@ export function DiscoveryTable({
               sorted.map((t) => {
                 const open = whyOpen === t.address;
                 const following = leaders.includes(t.address.toLowerCase());
-                const flags = summarizeFlags(t.flags);
+                const flags = traderFlags(t);
                 return (
                   <Fragment key={t.address}>
                     <tr className={clsx("border-t border-border text-right", open && "bg-surface-2/40")}>
@@ -318,7 +319,7 @@ const TONE_ICON: Record<ExplainTone, { Icon: typeof Check; className: string }> 
 
 function WhyPanel({ trader, simEquityUsd }: { trader: TraderScore; simEquityUsd: number }) {
   const lines = explainScore(trader, simEquityUsd);
-  const flags = summarizeFlags(trader.flags);
+  const flags = traderFlags(trader);
   return (
     <div className="rounded-lg border border-border bg-surface p-3 text-left sm:p-4">
       <p className="text-xs font-semibold tracking-wide text-muted uppercase">{isUnscored(trader) ? "Why no score?" : `Why ${formatScore(trader)}?`}</p>

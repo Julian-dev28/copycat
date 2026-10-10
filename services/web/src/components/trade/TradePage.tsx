@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { EmptyAccountBanner } from "@/components/EmptyAccountBanner";
@@ -11,6 +10,8 @@ import type { EngineStatus, Settings } from "@/lib/api/types";
 import { boardStateToApiQuery, DEFAULT_BOARD, MAX_LIMIT } from "@/lib/scout/query";
 import { problemText } from "@/lib/trade/apiState";
 import { buildMarkets } from "@/lib/trade/markets";
+import { rowQuote } from "@/lib/trade/equityIndex";
+import { COMMON_COINS } from "@/lib/trade/coinFilter";
 import { useTradeMode, useTradeSettings, useTradeStatus, useWallets } from "./hooks";
 import { MarketsPanel } from "./MarketsPanel";
 import { Workspace } from "./Workspace";
@@ -38,7 +39,6 @@ function TradeInner() {
   const settings = useTradeSettings();
   const status = useTradeStatus();
   const wallets = useWallets();
-  const [stopFor, setStopFor] = useState<string | null>(null);
 
   const rows = traders.data?.rows ?? [];
   const leaders = settings.data?.leaders ?? [];
@@ -46,6 +46,7 @@ function TradeInner() {
   const fallback = leaders[0] ?? buildMarkets(rows, leaders, "top", "")[0]?.address ?? null;
   const selected = wParam && isValidAddress(wParam) ? normAddr(wParam) : fallback;
   const list = wallets.data ?? [];
+  const allCoins = [...new Set([...rows.flatMap((r) => r.top_coins.map((c) => c.coin)), ...COMMON_COINS])];
   const names = Object.fromEntries(rows.map((r) => [normAddr(r.address), r.display_name ?? null]));
   const scoutHref = withDemo("/scout", demo);
   const settingsHref = withDemo("/settings", demo, acct);
@@ -96,8 +97,7 @@ function TradeInner() {
             inBook={leaders.includes(selected)}
             nowMs={nowMs}
             settingsHref={settingsHref}
-            stopRequest={stopFor === selected}
-            onStopHandled={() => setStopFor(null)}
+            allCoins={allCoins}
           />
         ) : (
           <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted xl:col-span-2">
@@ -113,10 +113,8 @@ function TradeInner() {
         loading={wallets.isLoading}
         error={wallets.error ? problemText(wallets.error, "wallets") : null}
         onAdjust={(a) => select(a, "ticket")}
-        onStop={(a) => {
-          select(a);
-          setStopFor(a);
-        }}
+        nowMs={nowMs}
+        sparks={Object.fromEntries(rows.map((r) => [normAddr(r.address), rowQuote(r).spark]))}
         empty={<p className="text-sm text-muted">Nothing invested yet. Pick a wallet, set an amount, press Copy wallet: it shows up here like an open position.</p>}
       />
     </div>

@@ -167,11 +167,11 @@ def test_split_order():
 
 def test_25_leaders_stretch_the_poll_interval():
     leaders = {f"L{i}": ["BTC"] for i in range(25)}
-    # 26 accounts x (clearinghouse 2 + spot 2) = 104, + allMids main 2 = 106
+    # 26 accounts x (clearinghouse 2 + spot 2) = 104, + allMids main 2 + our ledger 20 = 126
     w = pacing.cycle_weight(["BTC"], leaders)
-    assert w == 106
-    # 106 * 60 / (1200 * 0.6) = 8.8333 s
-    assert pacing.effective_poll_s(5.0, w) == pytest.approx(106 * 60 / 720)
+    assert w == 126
+    # 126 * 60 / (1200 * 0.6) = 10.5 s
+    assert pacing.effective_poll_s(5.0, w) == pytest.approx(126 * 60 / 720)
     assert pacing.effective_poll_s(30.0, w) == 30.0                         # never below the setting
 
 

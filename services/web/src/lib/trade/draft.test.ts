@@ -48,7 +48,9 @@ describe("request bodies, contract v7", () => {
   });
 
   it("apiCaps reads the contract version", () => {
-    expect(apiCaps(demoSettings())).toEqual(V7);
+    expect(apiCaps(demoSettings())).toEqual({ ...V7, v8: true });
+    const { trade_direction: _td, ...pre8 } = demoSettings();
+    expect(apiCaps({ ...pre8, contract_version: 8 }).v8).toBe(false);
     expect(apiCaps({ ...demoSettings(), contract_version: 5 }).v7).toBe(false);
   });
 });
@@ -110,7 +112,44 @@ describe("global summary", () => {
     const s = { ...demoSettings(), sizing_mode: "fixed_margin" as const, fixed_margin_usd: 5, leverage_mode: "max" as const, max_position_leverage: 20 };
     expect(sizingText(s)).toBe("Fixed margin, $5.00 per copy");
     expect(leverageText(s)).toBe("Each coin's max, cap 20x");
-    expect(globalSummary(s).map((r) => r.label)).toEqual(["Sizing", "Leverage", "Margin", "Max worse entry", "Under $10", "Only new positions"]);
+    expect(globalSummary(s).map((r) => r.label)).toEqual(["Sizing", "Leverage", "Margin", "Max worse entry", "Under $10", "Only new positions", "Direction"]);
+    const v8 = globalSummary({ ...s, trade_direction: "counter", coin_allowlist: ["BTC"], coin_blocklist: ["DOGE", "xyz:TSLA"] });
+    expect(v8.slice(-3)).toEqual([
+      { label: "Direction", value: "Counter (opposite side)" }, { label: "Only these coins", value: "BTC" }, { label: "Never these coins", value: "DOGE, xyz:TSLA" },
+    ]);
     expect(leverageText({ ...s, sizing_mode: "allocation", exposure_mode: "target", target_leverage: 7 })).toBe("7x on his book (cap 20x)");
+  });
+});
+
+describe("request bodies, contract v8 (counter, coin lists)", () => {
+  const V8 = { v7: true, smallMode: true, v8: true };
+  it("counter and lists are sent on a v8 api", () => {
+    const b = buildCopyRequest({ ...custom, direction: "counter", allow: ["BTC", "ETH"], block: ["xyz:TSLA"] }, V8)!;
+    expect(b).toMatchObject({ trade_direction: "counter", coin_allowlist: ["BTC", "ETH"], coin_blocklist: ["xyz:TSLA"] });
+  });
+  it("null inherits (nothing sent); an empty list is a real choice and is sent", () => {
+    const b = buildCopyRequest(custom, V8)!;
+    expect(b).not.toHaveProperty("trade_direction");
+    expect(b).not.toHaveProperty("coin_allowlist");
+    expect(buildCopyRequest({ ...custom, allow: [] }, V8)!.coin_allowlist).toEqual([]);
+  });
+  it("never sent to a pre-v8 api (extra=forbid)", () => {
+    const b = buildCopyRequest({ ...custom, direction: "counter", allow: ["BTC"], block: ["ETH"] }, V7)!;
+    expect(Object.keys(b).some((k) => k.startsWith("coin_") || k === "trade_direction")).toBe(false);
+  });
+  it("global sends only the source even when the draft has a direction", () => {
+    expect(buildCopyRequest({ ...custom, source: "global", direction: "counter" }, V8)).toEqual({ settings_source: "global" });
+  });
+  it("effective: draft over Settings; saved terms round-trip; a list change is an update", () => {
+    const s = { ...demoSettings(), trade_direction: "counter" as const, coin_blocklist: ["DOGE"] };
+    expect(effective({ ...custom }, s)).toMatchObject({ direction: "counter", allow: [], block: ["DOGE"] });
+    expect(effective({ ...custom, direction: "copy", block: [] }, s)).toMatchObject({ direction: "copy", block: [] });
+    s.leaders = [A];
+    s.leader_overrides = { [A]: { allocation_usd: 50, trade_direction: "counter", coin_allowlist: ["BTC"] } };
+    const saved = initialDraft(s, A);
+    expect(saved).toMatchObject({ direction: "counter", allow: ["BTC"], block: null });
+    expect(ticketAction({ ...saved, allow: ["btc"] }, saved, true)).toBe("unchanged");
+    expect(ticketAction({ ...saved, allow: ["BTC", "ETH"] }, saved, true)).toBe("update");
+    expect(ticketAction({ ...saved, direction: "copy" }, saved, true)).toBe("update");
   });
 });

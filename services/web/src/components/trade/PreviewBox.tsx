@@ -35,6 +35,7 @@ export function PreviewBox({
 }) {
   const p = preview;
   const skipped = p.copies.filter((c) => c.status === "skipped");
+  const filtered = p.copies.filter((c) => c.filtered).length;
   const showFull = onUseFullBook !== null && amount !== null && skipped.length > 0 && p.fullBookUsd !== null && p.fullBookUsd > amount;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2/50 p-3 text-xs" aria-live="polite">
@@ -57,6 +58,10 @@ export function PreviewBox({
       {onlyNew ? (
         <p className="text-muted">Only new positions is on: nothing he holds now is copied. Sizes below apply to his next trades.</p>
       ) : null}
+      {p.direction === "counter" ? (
+        <p className="rounded-md bg-danger/10 px-2 py-1 text-danger">Counter: you take the opposite side of each of his positions. Sides below are yours.</p>
+      ) : null}
+      {filtered > 0 ? <p className="text-muted">{filtered} of his position{filtered === 1 ? "" : "s"} filtered out by your coin lists.</p> : null}
       {p.total === 0 ? (
         <p className="text-muted">He holds nothing right now. Copies open at this size when he trades.</p>
       ) : (
@@ -67,10 +72,11 @@ export function PreviewBox({
               <li key={`${c.coin}-${c.side}`} className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1">
                   <CoinBadge coin={c.coin} />
-                  <span className={clsx("text-[10px] font-semibold uppercase", c.side === "long" ? "text-success" : "text-danger")}>{c.side}</span>
+                  <SideTag side={c.ourSide ?? c.side} />
+                  {c.ourSide && c.ourSide !== c.side ? <span className="text-[10px] text-muted">(he&apos;s {c.side})</span> : null}
                 </span>
                 {c.status === "skipped" ? (
-                  <span className="truncate text-right text-warning" title={c.reason ?? undefined}>{c.reason ?? "skipped"}</span>
+                  <span className={clsx("truncate text-right", c.filtered ? "text-muted" : "text-warning")} title={c.reason ?? undefined}>{c.reason ?? "skipped"}</span>
                 ) : (
                   <span className="font-num text-right">
                     {money(c.notionalUsd)} <span className="text-muted">{c.leverage}x</span>
@@ -108,6 +114,10 @@ export function PreviewBox({
       {sourceNote ? <p className="text-[11px] text-muted">{sourceNote}</p> : null}
     </div>
   );
+}
+
+function SideTag({ side }: { side: "long" | "short" }) {
+  return <span className={clsx("text-[10px] font-semibold uppercase", side === "long" ? "text-success" : "text-danger")}>{side}</span>;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

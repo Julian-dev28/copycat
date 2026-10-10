@@ -212,10 +212,26 @@ cycle. One that still holds any copy row (real or dry-run) or has a pending
 stop is read as before, so its exits always mirror. A new `invested_ms` (a
 fresh investment) clears `archived_ms`.
 
-**Daily loss halt**: `daily_loss_limit_usd < 0` blocks new opens/adds once
-today's PnL (equity now minus equity at the first cycle of the UTC day) is at
-or below it. Exits keep mirroring. Not deposit-adjusted: a mid-day deposit
-reads as profit, a withdrawal as loss. Emits `halt` / `resume` on transitions.
+**Day PnL (UTC)** = equity now - equity at the day anchor (first cycle of the
+UTC day) - net transfers since the anchor. Transfers come from our own HL
+`userNonFundingLedgerUpdates` (`Venue.ledger_updates`, read every cycle, weight
+20, counted in `engine.pacing`), classified by `engine/daypnl.py`: deposits,
+withdrawals (+ fee), USDC `send` / `spotTransfer` / `internalTransfer` /
+`subAccountTransfer` in or out (+ fee), vault deposit/withdraw. Spot<->perp
+`accountClassTransfer` nets to 0 (both sides are in equity); liquidations are
+PnL. A mid-day deposit or withdrawal does not move day PnL.
+
+The number is **unreliable** (`EngineStatus.day_pnl_reliable = false`) when the
+ledger read fails, a row has an unknown type or bad amount, or a transfer sits
+within 15 s of the account read (it may or may not be in that equity). Then
+`day_pnl_usd` is the day's last reliable value (or None) and one `error` event
+("day PnL unreliable: ...") is logged per stretch.
+
+**Daily loss halt**: `daily_loss_limit_usd < 0` blocks new opens/adds once day
+PnL is at or below it. Exits keep mirroring. Emits `halt` / `resume` on
+transitions. An unreliable cycle never starts or ends a halt: the previous
+state and reason hold (the reason gets "day PnL unreliable now; holding")
+until a reliable cycle, a new UTC day, or the limit set to 0.
 
 **Equity**: standard accounts use perp `accountValue` + spot USDC. Unified
 account / portfolio margin (`AccountState["abstraction"]`) use spot USDC +
@@ -278,7 +294,8 @@ remains (logs `halt` "close-all complete"). A failed close keeps the flag.
 - `engine-<address>.db` (SQLite, WAL): `leaders` (last positions + ignored coins per
   leader), `copies` (real copies, `pending_cloid`), `dry_copies` (dry-run
   shadow with simulated size; cleared when `dry_run` flips), `kv`
-  (`last_good_settings`, `last_status`, `day_anchor`, `halted`, `last_skips`,
+  (`last_good_settings`, `last_status`, `day_anchor` {day, equity_usd, ts_ms}, `day_pnl_good`,
+  `day_pnl_problem`, `halted`, `halted_reason`, `last_skips`,
   `last_marks`, `vanish_pending`, `pending_reduces`, `last_dry_run`, `catch_up`), `ledger`
   (per-leader realized PnL since `invested_ms`, plus the wallet's last terms).
 - `events.jsonl`: append-only `EngineEvent` log, written as events happen (so
@@ -305,7 +322,10 @@ SQLite, with `running` true if the last cycle is within max(30s, 3x poll).
   engine only learns of it afterwards ("our copy vanished").
 - Cross margin shares collateral: one bad copy can liquidate others.
 - Copies enter after the leader, at a worse price, and exit after him.
-- Daily loss halt is not deposit-adjusted.
+- Day PnL nets transfers by ledger type. A new HL ledger type makes day PnL
+  unreliable (the halt holds) until `engine/daypnl.py` learns it. A transfer
+  between 00:00 UTC and a pre-upgrade anchor (no `ts_ms`) is counted twice
+  on the upgrade day only.
 
 ## Running and tests
 

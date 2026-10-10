@@ -45,6 +45,9 @@ class FakeVenue:
         self.depth: Dict[str, Optional[float]] = {}
         self.slippages: List[float] = []
         self.close_fill_px: Dict[str, float] = {}   # close(): coin -> avg_px reported
+        # userNonFundingLedgerUpdates: user -> rows ({time, hash, delta}); None = read fails
+        self.ledger: Dict[str, Optional[List[Dict[str, Any]]]] = {}
+        self.ledger_calls: List[tuple] = []
 
     # ── setup helpers (not part of the Venue protocol) ──────────────────
 
@@ -100,6 +103,13 @@ class FakeVenue:
 
     def account_state(self, user: str) -> Optional[Dict[str, Any]]:
         return self.accounts.get(user)
+
+    def ledger_updates(self, user: str, start_ms: int) -> Optional[List[Dict[str, Any]]]:
+        self.ledger_calls.append((user, start_ms))
+        rows = self.ledger.get(user, [])
+        if rows is None:
+            return None
+        return [r for r in rows if int(r["time"]) >= start_ms]
 
     def extras(self, user: str) -> Optional[Dict[str, Any]]:
         return self.extras_map.get(user)

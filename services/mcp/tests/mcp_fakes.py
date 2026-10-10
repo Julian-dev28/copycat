@@ -46,12 +46,14 @@ class FakeApi:
 
 
 def make_server(fake: Optional[Handler] = None, *, token: Optional[str] = TOKEN,
-                data_dir: Path = Path("/nonexistent-copycat-data"), raise_connect: bool = False):
+                data_dir: Path = Path("/nonexistent-copycat-data"), raise_connect: bool = False,
+                allow_trading: bool = False):
     def handler(req: httpx.Request) -> httpx.Response:
         if raise_connect:
             raise httpx.ConnectError("refused", request=req)
         return fake(req)  # type: ignore[misc]
-    cfg = McpConfig(api_url="http://localhost:8795", env_token=token, data_dir=data_dir)
+    cfg = McpConfig(api_url="http://localhost:8795", env_token=token, data_dir=data_dir,
+                    allow_trading=allow_trading)
     api = CopycatApi(cfg, transport=httpx.MockTransport(handler))
     return build_server(cfg, api)
 

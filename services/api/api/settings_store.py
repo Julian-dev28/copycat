@@ -225,8 +225,8 @@ class SettingsStore:
         - settings_source custom: the override becomes allocation sizing with
           the ticket's terms (allocation, exposure, target leverage, and when
           given margin mode, worse-entry %, small-account mode, leverage
-          mode, leverage, only_new_positions, and v8 trade_direction,
-          coin_allowlist, coin_blocklist). Other fields of a previous
+          mode, leverage, only_new_positions, v8 trade_direction,
+          coin_allowlist, coin_blocklist, and v9 one_shot). Other fields of a previous
           override are kept. A coin list given replaces the wallet's list
           (see `clean_coins`; [] means "no list", not "inherit").
 
@@ -260,7 +260,7 @@ class SettingsStore:
                 })
                 for k in ("target_leverage", "margin_mode", "max_worse_entry_pct",
                           "small_account_mode", "leverage_mode", "leverage", "only_new_positions",
-                          "trade_direction"):
+                          "trade_direction", "one_shot"):
                     v = getattr(req, k)
                     if v is not None:
                         data[k] = v

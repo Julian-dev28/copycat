@@ -64,6 +64,16 @@ def test_timing_histograms():
     assert fp.weekday_hist == [1, 1, 1, 1, 1, 0, 0]
 
 
+def test_entries_by_dow_hour_is_the_real_matrix():
+    fp = fp_of(book())
+    m = fp.entries_by_dow_hour
+    assert len(m) == 7 and all(len(r) == 24 for r in m)
+    # every cell is a real count: rows sum to weekday_hist, columns to hour_hist_utc
+    assert [sum(r) for r in m] == fp.weekday_hist
+    assert [sum(r[h] for r in m) for h in range(24)] == fp.hour_hist_utc
+    assert [m[d][1] for d in range(7)] == [1, 1, 1, 1, 1, 0, 0]
+
+
 def test_leverage_and_worst_trip_vs_equity():
     fp = fp_of(book())
     assert fp.worst_trip_pct_of_equity == -0.5               # -5 on a 1000 account

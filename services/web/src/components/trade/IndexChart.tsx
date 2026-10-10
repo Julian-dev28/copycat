@@ -5,7 +5,9 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { linePath, linearScale, niceTicks, timeExtent, valueExtent } from "@/lib/scout/spark";
 import { PNL_WINDOWS, type PnlWindow, type TraderProfile } from "@/lib/scout/types";
 import { nearestIndex, WINDOW_LABEL } from "@/lib/scout/window";
+import { invertSeries } from "@/lib/trade/direction";
 import { formatIndex, profileIndex } from "@/lib/trade/equityIndex";
+import type { TradeDirection } from "@/lib/trade/types";
 import { ChangeText } from "./bits";
 
 const H = 240;
@@ -34,7 +36,7 @@ function fmtTime(t: number, w: PnlWindow, long = false): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(long ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}) });
 }
 
-export function IndexChart({ profile }: { profile: TraderProfile }) {
+export function IndexChart({ profile, direction = "copy" }: { profile: TraderProfile; direction?: TradeDirection }) {
   const [win, setWin] = useState<PnlWindow>("30d");
   const [hoverI, setHoverI] = useState<number | null>(null);
   const [ref, width] = useWidth();
@@ -45,7 +47,9 @@ export function IndexChart({ profile }: { profile: TraderProfile }) {
   const color = up ? "var(--success)" : "var(--danger)";
 
   const [t0, t1] = timeExtent([pts]);
-  const [lo, hi] = valueExtent([pts], false);
+  // Counter: overlay what trading against him did over the same window (his index, inverted).
+  const counter = direction === "counter" ? invertSeries(pts) : [];
+  const [lo, hi] = valueExtent(counter.length ? [pts, counter] : [pts], false);
   const padV = (hi - lo || hi || 1) * 0.08;
   const ticks = niceTicks(lo - padV, hi + padV, 4);
   const yDom: [number, number] = [Math.min(lo - padV, ticks[0] ?? lo), Math.max(hi + padV, ticks.at(-1) ?? hi)];
@@ -85,6 +89,12 @@ export function IndexChart({ profile }: { profile: TraderProfile }) {
           <SegmentedControl aria-label="Chart window" options={PNL_WINDOWS.map((w) => ({ value: w, label: WINDOW_LABEL[w] }))} value={win} onChange={setWin} />
         </div>
       </div>
+      {counter.length ? (
+        <p className="flex items-center gap-3 text-[11px] text-muted">
+          <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4" style={{ background: color }} /> his index</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-4 border-t-2 border-dashed border-accent" /> countering him (inverted)</span>
+        </p>
+      ) : null}
       <div ref={ref} className="relative w-full">
         {pts.length < 2 ? (
           <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted">
@@ -122,6 +132,9 @@ export function IndexChart({ profile }: { profile: TraderProfile }) {
             ))}
             <path d={area} fill={`url(#g${gid})`} />
             <path d={path} fill="none" stroke={color} strokeWidth="1.75" strokeLinejoin="round" />
+            {counter.length ? (
+              <path d={linePath(counter, x, y)} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="5 3" strokeLinejoin="round" data-testid="counter-overlay" />
+            ) : null}
             {hover ? (
               <g pointerEvents="none">
                 <line x1={x(hover.t_ms)} x2={x(hover.t_ms)} y1={PAD.top} y2={H - PAD.bottom} stroke="var(--foreground)" strokeOpacity="0.35" />

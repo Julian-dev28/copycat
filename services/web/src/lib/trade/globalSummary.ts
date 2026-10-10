@@ -44,5 +44,8 @@ export function globalSummary(s: TradeSettings): SummaryRow[] {
   ];
   if (s.small_account_mode) rows.push({ label: "Under $10", value: SMALL[s.small_account_mode] ?? s.small_account_mode });
   rows.push({ label: "Only new positions", value: s.only_new_positions ? "On" : "Off" });
+  if (s.trade_direction) rows.push({ label: "Direction", value: s.trade_direction === "counter" ? "Counter (opposite side)" : "Copy" });
+  if (s.coin_allowlist?.length) rows.push({ label: "Only these coins", value: s.coin_allowlist.join(", ") });
+  if (s.coin_blocklist?.length) rows.push({ label: "Never these coins", value: s.coin_blocklist.join(", ") });
   return rows;
 }

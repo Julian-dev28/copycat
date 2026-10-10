@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { EngineStatus } from "@/lib/api/types";
-import { formatAgo, formatSignedUsd, formatUsd } from "@/lib/format";
+import { formatAgo, formatUsd } from "@/lib/format";
+import { dayPnlView } from "@/lib/engine/dayPnl";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
 import { Panel } from "@/components/ui/Panel";
@@ -30,8 +31,8 @@ export function EngineStatusBar({ status, tradingEnabled }: { status?: EngineSta
 
   const enabled = tradingEnabled ?? status.enabled;
   const stale = status.last_cycle_ms !== null && status.last_cycle_ms !== undefined && now - status.last_cycle_ms > STALE_MS;
-  const dayPnl = status.day_pnl_usd ?? 0;
-  const dayPnlTone = dayPnl > 0 ? "text-success" : dayPnl < 0 ? "text-danger" : "text-foreground";
+  const dayPnl = dayPnlView(status);
+  const dayPnlTone = { up: "text-success", down: "text-danger", flat: "text-foreground", muted: "text-muted" }[dayPnl.tone];
 
   return (
     <Panel className="flex flex-col gap-4 p-4 sm:p-5">
@@ -53,7 +54,12 @@ export function EngineStatusBar({ status, tradingEnabled }: { status?: EngineSta
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
         <Stat label="Equity" value={formatUsd(status.equity_usd)} />
         <Stat label="Available margin" value={formatUsd(status.available_margin_usd)} />
-        <Stat label="Day P&L" value={formatSignedUsd(status.day_pnl_usd)} valueClassName={dayPnlTone} />
+        <Stat
+          label={dayPnl.reliable ? "Day P&L (UTC)" : "Day P&L (UTC), unverified"}
+          value={dayPnl.text}
+          hint={dayPnl.hint}
+          valueClassName={dayPnlTone}
+        />
         <Stat label="Open copies" value={String(status.positions.length)} />
         <Stat
           label="Last cycle"

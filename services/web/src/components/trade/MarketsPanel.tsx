@@ -7,6 +7,7 @@ import { Search, Telescope } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Input } from "@/components/ui/Input";
 import { buildMarkets, type MarketTab } from "@/lib/trade/markets";
+import { extractAddress } from "@/lib/trade/pasteAddress";
 import type { TraderRow } from "@/lib/scout/types";
 import { MarketRow } from "./MarketRow";
 
@@ -51,10 +52,22 @@ export function MarketsPanel({
         </div>
         <Input
           leading={<Search size={13} aria-hidden="true" />}
-          placeholder="Name or 0x address"
+          placeholder="Name, or paste any 0x address"
           aria-label="Search wallets"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onPaste={(e) => {
+            // A pasted address (or explorer link) opens that wallet right away, on Scout or not.
+            const a = extractAddress(e.clipboardData.getData("text"));
+            if (!a) return;
+            e.preventDefault();
+            setQ(a);
+            onSelect(a);
+          }}
+          onKeyDown={(e) => {
+            const a = e.key === "Enter" ? extractAddress(q) : null;
+            if (a) onSelect(a);
+          }}
         />
         <div role="tablist" aria-label="Wallet lists" className="flex gap-1">
           {TABS.map((t) => (

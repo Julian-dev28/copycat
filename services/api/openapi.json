@@ -580,6 +580,217 @@
         "title": "CopyFit",
         "type": "object"
       },
+      "CopyPlan": {
+        "properties": {
+          "book_fingerprint": {
+            "title": "Book Fingerprint",
+            "type": "string"
+          },
+          "book_summary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Book Summary",
+            "type": "array"
+          },
+          "confirm_code": {
+            "maxLength": 6,
+            "minLength": 6,
+            "title": "Confirm Code",
+            "type": "string"
+          },
+          "copy_request": {
+            "$ref": "#/components/schemas/WalletCopyRequest"
+          },
+          "created_ms": {
+            "title": "Created Ms",
+            "type": "integer"
+          },
+          "executable": {
+            "default": true,
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "expires_ms": {
+            "title": "Expires Ms",
+            "type": "integer"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/WalletPreview"
+          },
+          "projection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WalletProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/CopyPlanRequest"
+          },
+          "trading_live": {
+            "title": "Trading Live",
+            "type": "boolean"
+          },
+          "used_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Ms"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plan_id",
+          "confirm_code",
+          "created_ms",
+          "expires_ms",
+          "request",
+          "copy_request",
+          "preview",
+          "trading_live",
+          "book_fingerprint"
+        ],
+        "title": "CopyPlan",
+        "type": "object"
+      },
+      "CopyPlanExecuteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_code": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Confirm Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_code"
+        ],
+        "title": "CopyPlanExecuteRequest",
+        "type": "object"
+      },
+      "CopyPlanRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "amount_usd": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "entry_deviation_pct": {
+            "default": 2.0,
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Entry Deviation Pct",
+            "type": "number"
+          },
+          "follow": {
+            "default": true,
+            "title": "Follow",
+            "type": "boolean"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "trade_direction": {
+            "$ref": "#/components/schemas/TradeDirection",
+            "default": "copy"
+          }
+        },
+        "required": [
+          "address",
+          "amount_usd"
+        ],
+        "title": "CopyPlanRequest",
+        "type": "object"
+      },
+      "CopyPlanResult": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "executed": {
+            "title": "Executed",
+            "type": "boolean"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "one_shot": {
+            "title": "One Shot",
+            "type": "boolean"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "settings_source": {
+            "const": "custom",
+            "default": "custom",
+            "title": "Settings Source",
+            "type": "string"
+          },
+          "trading_live": {
+            "title": "Trading Live",
+            "type": "boolean"
+          },
+          "wallet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WalletPosition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "executed",
+          "plan_id",
+          "address",
+          "one_shot",
+          "trading_live",
+          "note"
+        ],
+        "title": "CopyPlanResult",
+        "type": "object"
+      },
       "CopyPosition": {
         "properties": {
           "coin": {
@@ -972,6 +1183,11 @@
               }
             ],
             "title": "Cycle Ms"
+          },
+          "day_pnl_reliable": {
+            "default": true,
+            "title": "Day Pnl Reliable",
+            "type": "boolean"
           },
           "day_pnl_usd": {
             "anyOf": [
@@ -1576,6 +1792,17 @@
               }
             ],
             "title": "Max Worse Entry Pct"
+          },
+          "one_shot": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Shot"
           },
           "only_new_positions": {
             "anyOf": [
@@ -2212,7 +2439,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 8,
+            "default": 9,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -2332,6 +2559,11 @@
           "min_order_bump": {
             "default": true,
             "title": "Min Order Bump",
+            "type": "boolean"
+          },
+          "one_shot": {
+            "default": false,
+            "title": "One Shot",
             "type": "boolean"
           },
           "only_new_positions": {
@@ -2884,6 +3116,16 @@
               "type": "string"
             },
             "title": "Caveats",
+            "type": "array"
+          },
+          "entries_by_dow_hour": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Entries By Dow Hour",
             "type": "array"
           },
           "examples": {
@@ -4423,6 +4665,17 @@
             ],
             "title": "Max Worse Entry Pct"
           },
+          "one_shot": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Shot"
+          },
           "only_new_positions": {
             "anyOf": [
               {
@@ -4584,6 +4837,11 @@
             "default": 0.0,
             "title": "Margin Used Usd",
             "type": "number"
+          },
+          "one_shot": {
+            "default": false,
+            "title": "One Shot",
+            "type": "boolean"
           },
           "open_copies": {
             "default": 0,
@@ -6267,6 +6525,116 @@
         "summary": "Get Candles",
         "tags": [
           "market"
+        ]
+      }
+    },
+    "/api/mcp/plans": {
+      "post": {
+        "description": "Build a copy plan for `address` at `amount_usd`: the engine's own\npreview at these custom terms, the cached 30-day projection if any, and\nthe warnings to read before approving. Read-only on the book: stored\nfor 120 s, used once by execute. 502/503 when the live preview fails.",
+        "operationId": "create_plan_api_mcp_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyPlan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Plan",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/plans/{plan_id}/execute": {
+      "post": {
+        "description": "Apply a plan: guards (a)-(f) in api.mcp_plans, then the plan's custom\nterms through the Trade page's copy write. Never changes `enabled` or\n`dry_run`; with trading off nothing is ordered.",
+        "operationId": "execute_plan_api_mcp_plans__plan_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyPlanExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyPlanResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "disabled, wrong confirm code, or over a cap"
+          },
+          "404": {
+            "description": "unknown plan"
+          },
+          "409": {
+            "description": "his book changed, or your book is full"
+          },
+          "410": {
+            "description": "plan expired or already used"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "rate limit"
+          }
+        },
+        "summary": "Execute Plan",
+        "tags": [
+          "mcp"
         ]
       }
     },

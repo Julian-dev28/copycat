@@ -13,6 +13,7 @@ import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { YourWallets } from "@/components/trade/YourWallets";
 import { useTradeMode, useTradeSettings, useTradeStatus, useWallets } from "@/components/trade/hooks";
 import { withDemo } from "@/components/trade/bits";
+import { useNow } from "@/hooks/useNow";
 import type { EngineStatus, Settings } from "@/lib/api/types";
 import { problemText } from "@/lib/trade/apiState";
 
@@ -42,6 +43,7 @@ function Portfolio() {
   const wallets = useWallets();
   const status = statusQ.data as EngineStatus | undefined;
   const s = settings.data as Settings | undefined;
+  const nowMs = useNow();
   const open = (a: string) => router.push(withDemo(`/?w=${a}`, demo, acct));
 
   return (
@@ -69,7 +71,7 @@ function Portfolio() {
         loading={wallets.isLoading}
         error={wallets.error ? problemText(wallets.error, "wallets") : null}
         onAdjust={open}
-        onStop={open}
+        nowMs={nowMs}
         empty={<p className="text-sm text-muted">No wallets yet. Copy one from the Trade page.</p>}
       />
       <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} />

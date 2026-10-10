@@ -24,8 +24,7 @@ export function Workspace({
   inBook,
   nowMs,
   settingsHref,
-  stopRequest,
-  onStopHandled,
+  allCoins,
 }: {
   address: string;
   row: TraderRow | null;
@@ -35,8 +34,7 @@ export function Workspace({
   inBook: boolean;
   nowMs: number;
   settingsHref: string;
-  stopRequest: boolean;
-  onStopHandled: () => void;
+  allCoins: string[];
 }) {
   const { demo } = useTradeMode();
   const prof = useScoutProfile(address);
@@ -48,10 +46,10 @@ export function Workspace({
   return (
     <>
       <Panel className="flex min-w-0 flex-col gap-4 p-4">
-        <WalletHeader address={address} row={theRow} nowMs={nowMs} fileHref={fileHref} inBook={inBook} />
+        <WalletHeader address={address} row={theRow} nowMs={nowMs} fileHref={fileHref} inBook={inBook} onScout={row !== null} />
         {profile ? (
           <>
-            <IndexChart profile={profile} />
+            <IndexChart profile={profile} direction={t.eff.direction} />
             <WalletTabs profile={profile} preview={t.draft.source === "global" || t.amount ? t.preview : null} fileHref={fileHref} nowMs={nowMs} />
           </>
         ) : prof.data?.kind === "building" ? (
@@ -74,8 +72,9 @@ export function Workspace({
           wallet={wallet}
           settingsHref={settingsHref}
           nowMs={nowMs}
-          stopRequest={stopRequest}
-          onStopHandled={onStopHandled}
+          profile={profile}
+          row={theRow}
+          allCoins={allCoins}
         />
       </div>
     </>

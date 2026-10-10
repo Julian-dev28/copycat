@@ -18,7 +18,7 @@ from hyperliquid.utils.error import ServerError
 from hyperliquid.utils.signing import OrderType
 from hyperliquid.utils.types import Cloid
 
-from . import env, meta, rate_limit, sdk, sizing
+from . import env, history, meta, rate_limit, sdk, sizing
 from .http import http_post
 
 logger = logging.getLogger(__name__)
@@ -760,6 +760,30 @@ class HlVenue:
             return out
         except Exception as exc:
             logger.error(f"[hl.venue] open_orders: unexpected failure for user={user}: {exc}")
+            return None
+
+    def ledger_updates(self, user: str, start_ms: int) -> Optional[List[Dict[str, Any]]]:
+        """Non-funding ledger rows since start_ms (hl.history.ledger_since).
+
+        Row shapes (curled 2026-10-11 on public addresses), each {time, hash, delta}:
+            {"type": "deposit", "usdc": "1964.72"}
+            {"type": "withdraw", "usdc": "9999.0", "nonce": ..., "fee": "1.0"}
+            {"type": "accountClassTransfer", "usdc": "47000.0", "toPerp": false}
+            {"type": "internalTransfer", "usdc": "1.0", "user": S, "destination": D, "fee": "0.3"}
+            {"type": "send", "user": S, "destination": D, "sourceDex": "spot",
+             "destinationDex": "", "token": "USDC", "amount": "100.0", "usdcValue": "100.0",
+             "fee": "0.0", "nativeTokenFee": "0.0", "nonce": ..., "feeToken": ""}
+            {"type": "spotTransfer", "token": "USDC", "amount": "1.0", "usdcValue": "1.0",
+             "user": S, "destination": D, "fee": "0.0", ...}
+            {"type": "vaultDeposit", "vault": V, "usdc": "5000.0"}
+            {"type": "vaultWithdraw", "vault": V, "user": U, "requestedUsd": ...,
+             "netWithdrawnUsd": "50000.0", ...}
+            {"type": "liquidation", ...}, {"type": "spotGenesis", ...}, {"type": "cStakingTransfer", ...}
+        None on any failure (never a partial list)."""
+        try:
+            return history.ledger_since(user, start_ms)
+        except Exception as exc:
+            logger.error(f"[hl.venue] ledger_updates: unexpected failure for user={user}: {exc}")
             return None
 
     # ── writes ───────────────────────────────────────────────────────────

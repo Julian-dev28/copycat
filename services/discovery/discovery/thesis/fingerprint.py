@@ -280,9 +280,12 @@ def build_fingerprint(address: str, fills: Sequence[Dict[str, Any]],
 
     hour_hist = [0] * 24
     weekday_hist = [0] * 7
+    by_dow_hour = [[0] * 24 for _ in range(7)]   # [weekday][hour], UTC, Monday first
     for t in trips:
-        hour_hist[hour_utc(t.opened_ms)] += 1
-        weekday_hist[weekday(t.opened_ms)] += 1
+        h, d = hour_utc(t.opened_ms), weekday(t.opened_ms)
+        hour_hist[h] += 1
+        weekday_hist[d] += 1
+        by_dow_hour[d][h] += 1
     session_start, session_pct = best_session(hour_hist)
 
     stats = coin_stats(window_fills, trips)
@@ -309,7 +312,8 @@ def build_fingerprint(address: str, fills: Sequence[Dict[str, Any]],
         loser_hold_vs_winner=_r(loser_vs_winner, 3),
         worst_trip_pct_of_equity=_r(min(eq_pcts), 3) if eq_pcts else None,
         pnl_from_top_coin_pct=top_coin_pct,
-        hour_hist_utc=hour_hist, weekday_hist=weekday_hist, top_coins=top,
+        hour_hist_utc=hour_hist, weekday_hist=weekday_hist,
+        entries_by_dow_hour=by_dow_hour, top_coins=top,
     )
     metrics = {k: v for k, v in fields.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     metrics["session_pct"] = session_pct

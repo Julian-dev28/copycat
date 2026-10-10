@@ -11,7 +11,7 @@ import { CatAvatar } from "./CatAvatar";
 import { FitPill } from "./MarketRow";
 import { ChangeText, Stat } from "./bits";
 
-export function WalletHeader({ address, row, nowMs, fileHref, inBook }: { address: string; row: TraderRow | null; nowMs: number; fileHref: string; inBook: boolean }) {
+export function WalletHeader({ address, row, nowMs, fileHref, inBook, onScout = true }: { address: string; row: TraderRow | null; nowMs: number; fileHref: string; inBook: boolean; onScout?: boolean }) {
   const q = row ? rowQuote(row) : null;
   return (
     <div id="wallet-header" className="flex scroll-mt-20 flex-col gap-3">
@@ -21,6 +21,7 @@ export function WalletHeader({ address, row, nowMs, fileHref, inBook }: { addres
           <div className="flex items-center gap-2">
             <h1 className="truncate text-lg font-bold tracking-tight">{row?.display_name ?? shortenAddress(address)}</h1>
             {inBook ? <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">In your book</span> : null}
+            {!onScout ? <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted" title="Opened from a pasted address">Not on Scout</span> : null}
           </div>
           <AddressChip address={address} />
         </div>

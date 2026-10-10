@@ -482,6 +482,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Plan
+         * @description Build a copy plan for `address` at `amount_usd`: the engine's own
+         *     preview at these custom terms, the cached 30-day projection if any, and
+         *     the warnings to read before approving. Read-only on the book: stored
+         *     for 120 s, used once by execute. 502/503 when the live preview fails.
+         */
+        post: operations["create_plan_api_mcp_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/plans/{plan_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Plan
+         * @description Apply a plan: guards (a)-(f) in api.mcp_plans, then the plan's custom
+         *     terms through the Trade page's copy write. Never changes `enabled` or
+         *     `dry_run`; with trading off nothing is ordered.
+         */
+        post: operations["execute_plan_api_mcp_plans__plan_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scout/presets": {
         parameters: {
             query?: never;
@@ -1188,6 +1233,84 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** CopyPlan */
+        CopyPlan: {
+            /** Book Fingerprint */
+            book_fingerprint: string;
+            /** Book Summary */
+            book_summary?: string[];
+            /** Confirm Code */
+            confirm_code: string;
+            copy_request: components["schemas"]["WalletCopyRequest"];
+            /** Created Ms */
+            created_ms: number;
+            /**
+             * Executable
+             * @default true
+             */
+            executable: boolean;
+            /** Expires Ms */
+            expires_ms: number;
+            /** Plan Id */
+            plan_id: string;
+            preview: components["schemas"]["WalletPreview"];
+            projection?: components["schemas"]["WalletProjection"] | null;
+            request: components["schemas"]["CopyPlanRequest"];
+            /** Trading Live */
+            trading_live: boolean;
+            /** Used Ms */
+            used_ms?: number | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** CopyPlanExecuteRequest */
+        CopyPlanExecuteRequest: {
+            /** Confirm Code */
+            confirm_code: string;
+        };
+        /** CopyPlanRequest */
+        CopyPlanRequest: {
+            /** Address */
+            address: string;
+            /** Amount Usd */
+            amount_usd: number;
+            /**
+             * Entry Deviation Pct
+             * @default 2
+             */
+            entry_deviation_pct: number;
+            /**
+             * Follow
+             * @default true
+             */
+            follow: boolean;
+            /** Leverage */
+            leverage?: number | null;
+            /** @default copy */
+            trade_direction: components["schemas"]["TradeDirection"];
+        };
+        /** CopyPlanResult */
+        CopyPlanResult: {
+            /** Address */
+            address: string;
+            /** Executed */
+            executed: boolean;
+            /** Note */
+            note: string;
+            /** One Shot */
+            one_shot: boolean;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Settings Source
+             * @default custom
+             * @constant
+             */
+            settings_source: "custom";
+            /** Trading Live */
+            trading_live: boolean;
+            wallet?: components["schemas"]["WalletPosition"] | null;
+        };
         /** CopyPosition */
         CopyPosition: {
             /** Coin */
@@ -1315,6 +1438,11 @@ export interface components {
             available_margin_usd?: number | null;
             /** Cycle Ms */
             cycle_ms?: number | null;
+            /**
+             * Day Pnl Reliable
+             * @default true
+             */
+            day_pnl_reliable: boolean;
             /** Day Pnl Usd */
             day_pnl_usd?: number | null;
             /** Dry Run */
@@ -1509,6 +1637,8 @@ export interface components {
             margin_mode?: components["schemas"]["MarginMode"] | null;
             /** Max Worse Entry Pct */
             max_worse_entry_pct?: number | null;
+            /** One Shot */
+            one_shot?: boolean | null;
             /** Only New Positions */
             only_new_positions?: boolean | null;
             /** Paused */
@@ -1763,7 +1893,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 8
+             * @default 9
              */
             contract_version: number;
             /**
@@ -1845,6 +1975,11 @@ export interface components {
              * @default true
              */
             min_order_bump: boolean;
+            /**
+             * One Shot
+             * @default false
+             */
+            one_shot: boolean;
             /**
              * Only New Positions
              * @default false
@@ -2002,6 +2137,8 @@ export interface components {
             breakout_pct?: number | null;
             /** Caveats */
             caveats?: string[];
+            /** Entries By Dow Hour */
+            entries_by_dow_hour?: number[][];
             /** Examples */
             examples?: components["schemas"]["TradeExample"][];
             /** Hour Hist Utc */
@@ -2500,6 +2637,8 @@ export interface components {
             margin_mode?: components["schemas"]["MarginMode"] | null;
             /** Max Worse Entry Pct */
             max_worse_entry_pct?: number | null;
+            /** One Shot */
+            one_shot?: boolean | null;
             /** Only New Positions */
             only_new_positions?: boolean | null;
             /**
@@ -2554,6 +2693,11 @@ export interface components {
              * @default 0
              */
             margin_used_usd: number;
+            /**
+             * One Shot
+             * @default false
+             */
+            one_shot: boolean;
             /**
              * Open Copies
              * @default 0
@@ -3640,6 +3784,109 @@ export interface operations {
             };
             /** @description discovery.public.candles isn't available */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_plan_api_mcp_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_plan_api_mcp_plans__plan_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyPlanExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyPlanResult"];
+                };
+            };
+            /** @description disabled, wrong confirm code, or over a cap */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unknown plan */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description his book changed, or your book is full */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description plan expired or already used */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description rate limit */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

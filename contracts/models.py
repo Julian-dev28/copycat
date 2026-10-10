@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 8   # v8: account funding (FundingInfo, usdClassTransfer/usdSend/withdraw3) + TradeDirection, coin lists, pause, WalletProjection
+CONTRACT_VERSION = 9   # v9: MCP copy plans (CopyPlan*), one_shot wallets
+# v8: account funding (FundingInfo, usdClassTransfer/usdSend/withdraw3) + TradeDirection, coin lists, pause, WalletProjection
 # v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
 # v6: v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
 # v5: v5: SmallAccountMode, liquidity caps, MAX_LEADERS 25, Venue.market_stats/depth_usd
@@ -99,6 +100,10 @@ class LeaderOverride(BaseModel):
     coin_allowlist: Optional[List[str]] = None   # if set and non-empty: only these coins ("BTC", "xyz:TSLA")
     coin_blocklist: Optional[List[str]] = None   # never these coins
     paused: Optional[bool] = None                # no new opens/adds; exits still mirrored
+    # v9: copy only the positions he held when the engine first saw this setting (same
+    # side); afterwards no new opens or adds, exits mirrored. Set by an MCP copy plan
+    # with follow=false.
+    one_shot: Optional[bool] = None
 
 
 class Settings(BaseModel):
@@ -137,6 +142,7 @@ class Settings(BaseModel):
     coin_allowlist: List[str] = Field(default_factory=list)
     coin_blocklist: List[str] = Field(default_factory=list)
     paused: bool = False
+    one_shot: bool = False                      # v9: see LeaderOverride.one_shot (per wallet in practice)
     # Large accounts: one order is capped at this % of the coin's 24h volume and at the book
     # depth within the slippage cap; the rest fills over the next cycles.
     max_order_volume_pct: float = Field(0.5, gt=0, le=100)
@@ -228,7 +234,11 @@ class EngineStatus(BaseModel):
     our_address: Optional[str] = None
     equity_usd: Optional[float] = None
     available_margin_usd: Optional[float] = None
-    day_pnl_usd: Optional[float] = None
+    day_pnl_usd: Optional[float] = None     # UTC day: equity - day anchor - net transfers since it
+    # False when this cycle could not net out deposits/withdrawals (ledger read failed or
+    # ambiguous): day_pnl_usd is then the last good value (or None) and the daily loss
+    # halt neither starts nor ends on it. The web must flag or hide the number.
+    day_pnl_reliable: bool = True
     halted_reason: Optional[str] = None     # daily loss limit etc.
     positions: List[CopyPosition] = Field(default_factory=list)
     leaders: List[LeaderStatus] = Field(default_factory=list)
@@ -560,6 +570,9 @@ class StrategyFingerprint(BaseModel):
     # timing
     hour_hist_utc: List[int] = Field(default_factory=list)      # 24 buckets, trip entries
     weekday_hist: List[int] = Field(default_factory=list)       # 7 buckets, Monday first
+    # 7 x 24 trip-entry counts, UTC: entries_by_dow_hour[weekday][hour], Monday first.
+    # Empty on fingerprints cached before it existed (the web then draws the two histograms).
+    entries_by_dow_hour: List[List[int]] = Field(default_factory=list)
     top_coins: List[CoinStat] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)  # e.g. "trend follower", "dip buyer", "scales in"
     summary: str                               # templated plain-English thesis, no AI
@@ -606,6 +619,8 @@ class WalletCopyRequest(BaseModel):
     trade_direction: Optional[TradeDirection] = None
     coin_allowlist: Optional[List[str]] = None
     coin_blocklist: Optional[List[str]] = None
+    # v9 (custom only): see LeaderOverride.one_shot. None keeps the wallet's current value.
+    one_shot: Optional[bool] = None
 
     @model_validator(mode="after")
     def _custom_needs_allocation(self) -> "WalletCopyRequest":
@@ -659,6 +674,7 @@ class WalletPosition(BaseModel):
     coin_blocklist: List[str] = Field(default_factory=list)
     style: Optional[TradingStyle] = None         # his style from Scout, if known (algo -> warn)
     archived_ms: Optional[int] = None
+    one_shot: bool = False                       # v9: copies what he held at invest time only
 
 
 class WalletProjection(BaseModel):
@@ -712,6 +728,74 @@ class WalletPreview(BaseModel):
     multi_cycle: bool = False                  # some slice fills over more than one cycle
     margin_already_used_usd: float = 0.0       # our existing copies of him (re-invest / adjust)
     notes: List[str] = Field(default_factory=list)
+
+
+# ── MCP copy plans (v9): "thesis + trade" from Claude Code ──────────────────
+# POST /api/mcp/plans builds a plan (read-only: a preview, a cached projection,
+# warnings); POST /api/mcp/plans/{id}/execute applies it through the same
+# settings write as the Trade page, behind an env flag, a single-use confirm
+# code, a dollar cap and a check that his book did not change.
+
+MCP_PLAN_TTL_S = 120
+MCP_CONFIRM_CODE_LEN = 6
+MCP_MAX_DEVIATION_PCT = 50.0
+
+
+class CopyPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str
+    amount_usd: float = Field(gt=0)
+    trade_direction: TradeDirection = TradeDirection.copy
+    # None: follow his leverage (exposure match, leverage_mode match); set: your leverage
+    # (exposure target), capped by the coin max and max_position_leverage
+    leverage: Optional[int] = Field(None, ge=1, le=MAX_LEVERAGE_CAP)
+    # max_worse_entry_pct: an open waits while mid is worse than his entry by more than this
+    entry_deviation_pct: float = Field(2.0, ge=0, le=MCP_MAX_DEVIATION_PCT)
+    # true: keep copying his new positions; false: one-shot (copy what he holds now, then
+    # no new opens/adds; exits still mirrored)
+    follow: bool = True
+
+    @field_validator("address")
+    @classmethod
+    def _addr(cls, v: str) -> str:
+        import re
+        a = norm_addr(v)
+        if not re.match(_ADDR, a):
+            raise ValueError(f"not a 0x address: {v!r}")
+        return a
+
+
+class CopyPlan(BaseModel):
+    plan_id: str
+    confirm_code: str = Field(min_length=MCP_CONFIRM_CODE_LEN, max_length=MCP_CONFIRM_CODE_LEN)
+    created_ms: int
+    expires_ms: int
+    request: CopyPlanRequest
+    copy_request: WalletCopyRequest            # exactly what execute writes (custom terms)
+    preview: WalletPreview
+    projection: Optional[WalletProjection] = None   # None when no cached data yet
+    trading_live: bool                         # settings.enabled and not dry_run, at plan time
+    executable: bool = True                    # false: a guard already refuses it (see warnings)
+    warnings: List[str] = Field(default_factory=list)
+    book_fingerprint: str                      # sha256 of his positions (coin, side, |size| x entry)
+    book_summary: List[str] = Field(default_factory=list)   # "BTC long $12,345", sorted by size
+    used_ms: Optional[int] = None
+
+
+class CopyPlanExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm_code: str = Field(min_length=1, max_length=32)
+
+
+class CopyPlanResult(BaseModel):
+    executed: bool
+    plan_id: str
+    address: str
+    settings_source: Literal["custom"] = "custom"
+    one_shot: bool
+    trading_live: bool
+    wallet: Optional[WalletPosition] = None
+    note: str
 
 
 # ── Trading accounts (v6): create / connect wallets, agent keys, multi-account ──

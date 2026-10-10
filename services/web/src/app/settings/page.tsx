@@ -1,8 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import { RequireToken } from "@/components/RequireToken";
-import { useSettings, usePatchSettings } from "@/hooks/useSettings";
-import { useEngineStatus } from "@/hooks/useEngineStatus";
+import { useModePatchSettings, useModeSettings, useModeStatus, useSettingsMode } from "@/components/copy/hooks";
 import { EngineControlsPanel } from "@/components/copy/EngineControlsPanel";
 import { CopyBehaviorPanel } from "@/components/copy/CopyBehaviorPanel";
 import { LeadersPanel } from "@/components/copy/LeadersPanel";
@@ -17,17 +17,28 @@ import { ApiTokenPanel, TradeDefaultsPanel } from "./TradeDefaultsPanel";
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <RequireToken>
-        <SettingsContent />
-      </RequireToken>
+      <Suspense fallback={<PageSkeleton label="Loading settings" />}>
+        <SettingsGate />
+      </Suspense>
     </div>
   );
 }
 
-function SettingsContent() {
-  const { data: settings, isLoading, isError, error, refetch } = useSettings();
-  const { data: status } = useEngineStatus();
-  const patchSettings = usePatchSettings();
+/** Demo (`?demo=1`) runs on the Trade demo book with no token; live needs the api token. */
+function SettingsGate() {
+  const { demo } = useSettingsMode();
+  if (demo) return <SettingsContent demo />;
+  return (
+    <RequireToken>
+      <SettingsContent demo={false} />
+    </RequireToken>
+  );
+}
+
+function SettingsContent({ demo }: { demo: boolean }) {
+  const { data: settings, isLoading, isError, error, refetch } = useModeSettings();
+  const { data: status } = useModeStatus();
+  const patchSettings = useModePatchSettings();
   const onPatch = (patch: SettingsPatch) => patchSettings.mutate(patch);
 
   if (isLoading) return <PageSkeleton label="Loading settings" />;
@@ -38,7 +49,11 @@ function SettingsContent() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted">Applies to every wallet you copy. Changes save as you go.</p>
+          <p className="text-sm text-muted">
+            {demo
+              ? "Demo settings: they change the demo book in this tab only, never your account."
+              : "Applies to every wallet you copy. Changes save as you go."}
+          </p>
         </div>
         <SaveStatusBadge
           state={patchSettings.isPending ? "saving" : patchSettings.isError ? "error" : patchSettings.isSuccess ? "saved" : "idle"}
@@ -51,7 +66,7 @@ function SettingsContent() {
       <CopyBehaviorPanel settings={settings} onPatch={onPatch} />
       <CopyRecipeCard settings={settings} status={status} />
       <LeadersPanel settings={settings} status={status} />
-      <ApiTokenPanel />
+      {demo ? null : <ApiTokenPanel />}
     </>
   );
 }

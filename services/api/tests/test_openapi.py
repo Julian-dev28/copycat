@@ -58,6 +58,8 @@ def test_openapi_has_every_documented_route() -> None:
         ("GET", "/api/wallets"),
         ("POST", "/api/wallets/{address}/copy"),
         ("POST", "/api/wallets/{address}/preview"),
+        ("POST", "/api/mcp/plans"),
+        ("POST", "/api/mcp/plans/{plan_id}/execute"),
         ("POST", "/api/wallets/{address}/stop"),
     }
     actual = {

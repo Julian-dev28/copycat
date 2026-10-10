@@ -4,6 +4,8 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Slider } from "@/components/ui/Slider";
 import { leverageVibe } from "@/lib/copyRecipe";
 import { MAX_LEVERAGE_CAP } from "@/lib/api/types";
+import { formatLiquidationHint } from "@/lib/liquidation";
+import type { TargetLeverageCap } from "@/lib/trade/form";
 import type { ExposureMode, MarginMode } from "@/lib/trade/types";
 import { Inherit } from "./Inherit";
 
@@ -22,6 +24,7 @@ export function LeverageField({
   marginMode,
   hisLeverage,
   marginSet,
+  cap,
   onMode,
   onLeverage,
   onMarginMode,
@@ -33,6 +36,8 @@ export function LeverageField({
   hisLeverage: number | null;
   /** True when this wallet overrides the Settings tab's margin mode. */
   marginSet: boolean;
+  /** Set leverage after the Settings tab's Maximum position leverage. */
+  cap: TargetLeverageCap;
   onMode: (m: ExposureMode) => void;
   onLeverage: (l: number) => void;
   onMarginMode: (m: MarginMode) => void;
@@ -51,8 +56,8 @@ export function LeverageField({
               max={MAX_LEVERAGE_CAP}
               value={leverage}
               onChange={onLeverage}
-              formatValue={(v) => `${v}x`}
-              vibe={leverageVibe}
+              formatValue={(v) => (cap.capped && v === leverage ? `${cap.effective}x` : `${v}x`)}
+              vibe={(v) => leverageVibe(Math.min(v, cap.cap))}
             />
             <div className="font-num relative mt-0.5 mr-[5.75rem] h-3 text-[10px] text-muted" aria-hidden="true">
               {[1, 10, 25, 50].map((v) => (
@@ -61,6 +66,12 @@ export function LeverageField({
                 </span>
               ))}
             </div>
+            {cap.capped ? (
+              <p data-testid="ticket-leverage-capped" className="mt-1 text-xs font-medium text-warning">
+                Capped at {cap.cap}x by Maximum position leverage (Settings): you set {cap.set}x, copies open at {cap.effective}x.
+              </p>
+            ) : null}
+            <p className="font-num mt-1 text-xs text-muted">{formatLiquidationHint(cap.effective, marginMode)}</p>
             <p className="mt-1 text-xs text-muted">His book in his proportions, at your leverage. A coin with a lower max opens at its max.</p>
           </div>
         ) : (

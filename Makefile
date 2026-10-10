@@ -50,7 +50,13 @@ up: ## docker compose up (api, engine, scout, web)
 down: ## docker compose down
 	docker compose down
 
-mcp-install: ## print (or with RUN=1, run) the `claude mcp add` command and install the /copycat-thesis slash command
+mcp-install: ## print (or with RUN=1, run) the `claude mcp add` command and install the /copycat-thesis and /copycat-copy slash commands
 	@echo 'claude mcp add copycat -s user -- $(CURDIR)/services/mcp/run.sh'
-	@echo 'mkdir -p ~/.claude/commands && cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md ~/.claude/commands/'
-	@if [ "$(RUN)" = "1" ]; then 	  claude mcp add copycat -s user -- $(CURDIR)/services/mcp/run.sh && 	  mkdir -p $$HOME/.claude/commands && 	  cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md $$HOME/.claude/commands/ && 	  echo "installed: copycat MCP server + /copycat-thesis"; 	else echo "(dry run; re-run with RUN=1 to execute)"; fi
+	@echo '  (to allow execute_copy_plan, add: -e COPYCAT_MCP_ALLOW_TRADING=1 before --; the api needs the same flag)'
+	@echo 'mkdir -p ~/.claude/commands && cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md $(CURDIR)/services/mcp/claude/commands/copycat-copy.md ~/.claude/commands/'
+	@if [ "$(RUN)" = "1" ]; then \
+	  claude mcp add copycat -s user -- $(CURDIR)/services/mcp/run.sh && \
+	  mkdir -p $$HOME/.claude/commands && \
+	  cp $(CURDIR)/services/mcp/claude/commands/copycat-thesis.md $(CURDIR)/services/mcp/claude/commands/copycat-copy.md $$HOME/.claude/commands/ && \
+	  echo "installed: copycat MCP server + /copycat-thesis + /copycat-copy"; \
+	else echo "(dry run; re-run with RUN=1 to execute)"; fi

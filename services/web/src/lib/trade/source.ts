@@ -115,6 +115,10 @@ export function resetDemoBooks(): void {
   books.clear();
 }
 
+/** The demo clock is frozen, so a new copy is backdated 30h: its log, realized PnL and share card have history to show. */
+export const DEMO_BACKDATE_MS = 30 * 3_600_000;
+const demoInvestedMs = () => demoNowMs() - DEMO_BACKDATE_MS;
+
 /** Append a demo event (newest first). */
 function logEvent(b: DemoBook, a: string, e: Omit<EngineEvent, "leader" | "dry_run">): void {
   b.log.set(a, [{ ...e, leader: a, dry_run: true }, ...(b.log.get(a) ?? [])]);
@@ -161,7 +165,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       s.leaders = s.leaders.includes(a) ? s.leaders : [...s.leaders, a];
       // global: the Settings tab as-is, any override cleared (we keep only when it was first invested, and a pause).
       const terms: TradeOverride = body.settings_source === "global"
-        ? { invested_ms: prev?.invested_ms ?? demoNowMs(), paused: prev?.paused ?? null }
+        ? { invested_ms: prev?.invested_ms ?? demoInvestedMs(), paused: prev?.paused ?? null }
         : {
             ...prev,
             sizing_mode: "allocation",
@@ -176,7 +180,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
             trade_direction: body.trade_direction ?? null,
             coin_allowlist: body.coin_allowlist ?? null,
             coin_blocklist: body.coin_blocklist ?? null,
-            invested_ms: prev?.invested_ms ?? demoNowMs(),
+            invested_ms: prev?.invested_ms ?? demoInvestedMs(),
           };
       s.leader_overrides = { ...s.leader_overrides, [a]: terms };
       b.stopping.delete(a);

@@ -250,17 +250,12 @@ def wallet_projection(request: Request, address: str,
     /api/scout/traders/{a} does). 409 while another what-if runs."""
     addr = _addr_or_400(address)
     settings = store.load()
-    eff = settings.for_leader(addr)
-    direction = trade_direction or eff.trade_direction
-    patch = LeaderOverride(sizing_mode=SizingMode.allocation, allocation_usd=allocation_usd,
-                           trade_direction=direction,
-                           exposure_mode=exposure_mode or eff.exposure_mode,
-                           target_leverage=target_leverage or eff.target_leverage)
     lock = request.app.state.scout_what_if_lock
     if not lock.acquire(blocking=False):
         raise HTTPException(status.HTTP_409_CONFLICT, "a what-if is already running")
     try:
-        res = scout.what_if(addr, settings, allocation_usd, patch)
+        return build_projection(scout, addr, settings, allocation_usd, trade_direction,
+                                exposure_mode, target_leverage)
     except LookupError:
         return _queue_build(scout, addr)
     except ScoutBusy as e:
@@ -269,6 +264,23 @@ def wallet_projection(request: Request, address: str,
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
     finally:
         lock.release()
+
+
+def build_projection(scout: ScoutClient, addr: str, settings: Settings, allocation_usd: float,
+                     trade_direction: Optional[TradeDirection] = None,
+                     exposure_mode: Optional[ExposureMode] = None,
+                     target_leverage: Optional[int] = None) -> WalletProjection:
+    """The projection itself, shared with the MCP copy plan (api.mcp_plans).
+    Unset terms come from the wallet's current settings. Raises LookupError
+    (no cached data), ScoutBusy, ScoutUnavailable; the caller holds the
+    what-if lock."""
+    eff = settings.for_leader(addr)
+    direction = trade_direction or eff.trade_direction
+    patch = LeaderOverride(sizing_mode=SizingMode.allocation, allocation_usd=allocation_usd,
+                           trade_direction=direction,
+                           exposure_mode=exposure_mode or eff.exposure_mode,
+                           target_leverage=target_leverage or eff.target_leverage)
+    res = scout.what_if(addr, settings, allocation_usd, patch)
     sc = res.score
     note = "his last 30 days on cached data"
     if direction == TradeDirection.counter:
@@ -375,6 +387,7 @@ def _position(addr: str, in_book: bool, row: Optional[LeaderStatus], eff: Settin
         coin_allowlist=list(eff.coin_allowlist), coin_blocklist=list(eff.coin_blocklist),
         style=style,
         archived_ms=led.get("archived_ms") if status_ == "archived" else None,
+        one_shot=bool(eff.one_shot),
     )
 
 

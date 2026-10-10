@@ -4,25 +4,13 @@ import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { clsx } from "clsx";
 import type { LeaderOverride, LeaderStatus, Settings } from "@/lib/api/types";
-import { formatAgo, formatLeverage, formatUsd } from "@/lib/format";
+import { formatAgo, formatUsd } from "@/lib/format";
 import { effectiveSettingsForLeader, hasActiveOverride } from "@/lib/forLeader";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { LeaderOverridePanel } from "./LeaderOverridePanel";
-
-const SIZING_LABEL: Record<Settings["sizing_mode"], string> = {
-  fixed_margin: "fixed margin",
-  fixed_notional: "fixed notional",
-  proportional: "proportional",
-  allocation: "invested $ (Trade)",
-};
-
-function leverageLabel(s: Settings): string {
-  if (s.leverage_mode === "fixed") return formatLeverage(Math.min(s.leverage, s.max_position_leverage));
-  if (s.leverage_mode === "match") return `match, max ${s.max_position_leverage}x`;
-  return `coin max, cap ${s.max_position_leverage}x`;
-}
+import { leaderTerms } from "./leaderTerms";
 
 export function LeaderRow({
   address,
@@ -43,6 +31,7 @@ export function LeaderRow({
   const effective = liveStatus?.effective ?? effectiveSettingsForLeader(settings, address);
   const hasOverride = hasActiveOverride(settings.leader_overrides[address]);
   const panelId = `override-${address}`;
+  const terms = leaderTerms(effective);
 
   return (
     <div className="border-t border-border first:border-t-0">
@@ -74,8 +63,12 @@ export function LeaderRow({
           >
             <span>equity {formatUsd(liveStatus?.equity_usd ?? null, true)}</span>
             <span>{liveStatus?.open_positions ?? 0} open</span>
-            <span>
-              {SIZING_LABEL[effective.sizing_mode]} · {leverageLabel(effective)}
+            <span>{terms.sizing}</span>
+            <span
+              className={terms.capped ? "text-warning" : undefined}
+              title={terms.capped ? "Settings > Copy behavior > Maximum position leverage caps every copy" : undefined}
+            >
+              {terms.leverage}
             </span>
             {liveStatus?.last_read_ms ? <span>read {formatAgo(liveStatus.last_read_ms)}</span> : null}
           </button>

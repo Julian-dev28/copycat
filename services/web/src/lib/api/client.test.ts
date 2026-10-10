@@ -227,3 +227,54 @@ describe("apiFetch network failure", () => {
     });
   });
 });
+
+describe("demo write guard", () => {
+  const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+  beforeEach(() => {
+    fetchMock.mockClear();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("reads demo mode from the current URL at call time", async () => {
+    const { isDemoMode } = await import("./client");
+    expect(isDemoMode("?demo=1&acct=small")).toBe(true);
+    expect(isDemoMode("?demo=0")).toBe(false);
+    expect(isDemoMode("")).toBe(false);
+    window.history.replaceState(null, "", "/settings?demo=1");
+    expect(isDemoMode()).toBe(true);
+  });
+
+  it.each(["POST", "PATCH", "PUT", "DELETE", "patch"])("blocks %s in demo before fetch", async (method) => {
+    window.history.replaceState(null, "", "/settings?demo=1");
+    await expect(apiFetch("/api/settings", { method, body: "{}" })).rejects.toThrow("demo mode: writes are disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks every typed write endpoint in demo", async () => {
+    window.history.replaceState(null, "", "/discover?demo=1");
+    const writes = [
+      () => api.patchSettings({ enabled: true }),
+      () => api.putSettings({} as never),
+      () => api.addLeader("0xabc"),
+      () => api.removeLeader("0xabc"),
+      () => api.haltEngine(),
+      () => api.closeAllCopies(),
+      () => api.startDiscoveryRun({ sim_equity_usd: 1000, top_n: 25 } as never),
+    ];
+    for (const w of writes) await expect(w()).rejects.toThrow("demo mode: writes are disabled");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lets reads through in demo and writes through outside demo", async () => {
+    window.history.replaceState(null, "", "/?demo=1");
+    await apiFetch("/api/settings");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, "", "/settings");
+    await api.patchSettings({ enabled: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

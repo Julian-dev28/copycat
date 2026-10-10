@@ -12,7 +12,9 @@ Pure and deterministic: same book, same interval.
 Weights (hl.rate_limit, HL docs): clearinghouseState 2 (one per dex read),
 spotClearinghouseState 2, allMids 2 (one per dex). The hl venue reads, per
 account, the main dex plus every HIP-3 dex the user is active on. Extras
-(include_spot_staked) add a spot read and a delegator summary (2 + 20).
+(include_spot_staked) add a spot read and a delegator summary (2 + 20). Our own
+non-funding ledger (day PnL net of transfers) is 20 every cycle (+1 per 20
+rows today, negligible).
 userAbstraction (20, cached 10 min) and the 5-minute full-dex rescan are
 amortized and small next to the per-cycle reads, so they are left out;
 `BUDGET_FRAC` keeps the headroom for them.
@@ -27,6 +29,7 @@ W_CLEARINGHOUSE = 2
 W_SPOT = 2
 W_MIDS = 2
 W_EXTRAS = 22
+W_LEDGER = 20   # our own userNonFundingLedgerUpdates, every cycle (day PnL net of transfers)
 
 
 def dexes_of(coins: Iterable[str]) -> Set[str]:
@@ -45,11 +48,11 @@ def account_weight(coins: Iterable[str]) -> int:
 
 def cycle_weight(our_coins: Iterable[str], leader_coins: Mapping[str, Iterable[str]],
                  include_extras: bool = False) -> int:
-    """Estimated /info weight of one cycle: our account, every leader's
+    """Estimated /info weight of one cycle: our account and its ledger, every leader's
     account (his active dexes), extras per leader when enabled, and one
     allMids per dex we hold copies on (mids for exits/adds)."""
     our = list(our_coins)
-    w = account_weight(our)
+    w = account_weight(our) + W_LEDGER
     for coins in leader_coins.values():
         w += account_weight(coins)
         if include_extras:

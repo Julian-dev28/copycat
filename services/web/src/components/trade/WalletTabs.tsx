@@ -79,9 +79,14 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
               </td>
               <td className={TD}>
                 {!c ? <span className="text-muted">{preview ? "not copied" : "enter an amount"}</span> : c.status === "skipped" ? (
-                  <span className="text-warning" title={c.reason ?? undefined}>skipped</span>
+                  <span className={c.filtered ? "text-muted" : "text-warning"} title={c.reason ?? undefined}>{c.filtered ? "filtered" : "skipped"}</span>
                 ) : (
-                  <span>{formatUsd(c.notionalUsd, c.notionalUsd >= 100_000)} <span className="text-[11px] text-muted">{c.leverage}x</span></span>
+                  <span>
+                    {c.ourSide && c.ourSide !== c.side ? (
+                      <span className={clsx("mr-1 text-[11px] font-semibold uppercase", c.ourSide === "long" ? "text-success" : "text-danger")}>{c.ourSide}</span>
+                    ) : null}
+                    {formatUsd(c.notionalUsd, c.notionalUsd >= 100_000)} <span className="text-[11px] text-muted">{c.leverage}x</span>
+                  </span>
                 )}
               </td>
               <td className={TD}>{p.leverage}x <span className="text-[11px] text-muted">{p.is_cross ? "cross" : "iso"}</span></td>

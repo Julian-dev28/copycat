@@ -6,7 +6,9 @@ MCP `ToolError`, so Claude reads the message instead of a stack trace.
 
 Status mapping:
   connect error / timeout  -> "start copycat"
-  401 / 403                -> "set COPYCAT_API_TOKEN"
+  401                      -> "set COPYCAT_API_TOKEN" (the api's bearer auth is 401 only)
+  403                      -> the api's own `detail` (a policy refusal, e.g. MCP trading off)
+  410 / 429                -> the api's own `detail` (plan used/expired, rate limit)
   503                      -> "start copycat" (the api is up, its backing service is not)
   404 with FastAPI's bare "Not Found" -> the route does not exist in this api build
   other 4xx                -> the api's own `detail`
@@ -93,8 +95,14 @@ class CopycatApi:
             return resp.json() if resp.content else None
         detail = _detail(resp)
         where = f"{method} {path}"
-        if s in (401, 403):
+        if s == 401:
             raise ApiError(f"copycat api rejected the token ({s} on {where}). {TOKEN_HINT}", status=s)
+        if s == 403:
+            raise ApiError(f"copycat api refused ({s} on {where}): {detail}", status=s)
+        if s == 410:
+            raise ApiError(f"Gone ({where}): {detail}", status=s)
+        if s == 429:
+            raise ApiError(f"Rate limited ({where}): {detail}", status=s)
         if s == 503:
             raise ApiError(f"copycat api answered 503 on {where}: {detail}. A backing copycat service "
                            f"is not running. {START_HINT}", status=s)

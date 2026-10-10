@@ -202,6 +202,7 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             equity_usd=summary["equity_usd"],
             available_margin_usd=summary["available_margin_usd"],
             day_pnl_usd=summary["day_pnl_usd"],
+            day_pnl_reliable=summary.get("day_pnl_reliable", True),
             halted_reason=summary["halted_reason"],
             positions=summary["positions"],
             leaders=summary["leaders"],

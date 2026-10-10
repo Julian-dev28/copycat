@@ -32,6 +32,10 @@ DEFAULT_API_PORT = 8787
 TOKEN_FILE = "api_token"
 DEFAULT_AUTHOR = "claude-code via copycat MCP"
 DEFAULT_TIMEOUT_S = 30.0
+# Opt-in for the one money-moving tool (execute_copy_plan). Read from the MCP
+# server's own process env ONLY, never from .env: the api reads the same name
+# from its env/.env for its own guard, and the two must be switched on separately.
+ALLOW_TRADING_ENV = "COPYCAT_MCP_ALLOW_TRADING"
 
 # The only .env keys this server reads. COPYCAT_AGENT_KEY is deliberately absent.
 _DOTENV_KEYS = ("COPYCAT_API_URL", "COPYCAT_API_PORT", "COPYCAT_API_TOKEN", "COPYCAT_DATA_DIR",
@@ -62,6 +66,7 @@ class McpConfig:
     data_dir: Path
     author: str = DEFAULT_AUTHOR
     timeout_s: float = DEFAULT_TIMEOUT_S
+    allow_trading: bool = False      # registers execute_copy_plan; env COPYCAT_MCP_ALLOW_TRADING=1 only
 
     @property
     def token_file(self) -> Path:
@@ -101,4 +106,5 @@ class McpConfig:
             env_token=get("COPYCAT_API_TOKEN"),
             data_dir=data_dir,
             author=get("COPYCAT_MCP_AUTHOR") or DEFAULT_AUTHOR,
+            allow_trading=(env.get(ALLOW_TRADING_ENV) or "").strip() == "1",
         )

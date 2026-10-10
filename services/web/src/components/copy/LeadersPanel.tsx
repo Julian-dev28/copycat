@@ -8,14 +8,15 @@ import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { LeaderRow } from "./LeaderRow";
-import { useAddLeader, usePatchSettings, useRemoveLeader } from "@/hooks/useSettings";
+import { useModeAddLeader, useModePatchSettings, useModeRemoveLeader, useSettingsMode } from "./hooks";
 
 export function LeadersPanel({ settings, status }: { settings: Settings; status?: EngineStatus }) {
   const [addressDraft, setAddressDraft] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const addLeader = useAddLeader();
-  const removeLeader = useRemoveLeader();
-  const patchSettings = usePatchSettings();
+  const addLeader = useModeAddLeader();
+  const removeLeader = useModeRemoveLeader();
+  const patchSettings = useModePatchSettings();
+  const { demo } = useSettingsMode();
 
   const atCap = settings.leaders.length >= MAX_LEADERS;
 
@@ -75,7 +76,7 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
       {settings.leaders.length === 0 ? (
         <p className="border-t border-border px-4 py-6 text-center text-sm text-muted sm:px-5">
           No leaders yet. Add an address above, or find one on{" "}
-          <a href="/discover" className="text-accent underline-offset-2 hover:underline">
+          <a href={demo ? "/discover?demo=1" : "/discover"} className="text-accent underline-offset-2 hover:underline">
             Discover
           </a>
           .

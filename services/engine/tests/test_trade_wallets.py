@@ -289,9 +289,9 @@ def test_25_leaders_report_the_stretched_poll(engine_state, venue):
     for a in leaders:
         venue.set_account(a, 1000.0)
     out = run(venue, wallet(leaders=leaders, enabled=False), engine_state)
-    # 26 accounts x 4 + allMids 2 = 106 -> 106 * 60 / 720
-    assert out["read_weight"] == 106
-    assert out["effective_poll_s"] == pytest.approx(round(106 * 60 / 720, 3))
+    # 26 accounts x 4 + allMids 2 + our ledger 20 = 126 -> 126 * 60 / 720
+    assert out["read_weight"] == 126
+    assert out["effective_poll_s"] == pytest.approx(round(126 * 60 / 720, 3))
 
 
 # ── public: stop flags, status, preview ─────────────────────────────────────

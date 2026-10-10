@@ -104,6 +104,7 @@ context as the denominator; None when no trip has context.
 | `worst_trip_pct_of_equity` | min over trips of `net / account value at open * 100` (negative = loss) |
 | `pnl_from_top_coin_pct` | best coin's realized PnL / sum of positive coins' realized PnL * 100. Realized PnL per coin = `sum(closed_pnl - fee)` over the window's fills. None when no coin made money. |
 | `hour_hist_utc` / `weekday_hist` | entry counts per UTC hour (24) and weekday (7, Monday first) |
+| `entries_by_dow_hour` | 7 x 24 entry counts, `[weekday][hour]`, UTC, Monday first (rows sum to `weekday_hist`, columns to `hour_hist_utc`); empty on fingerprints cached before it existed |
 | `top_coins` | top 5 by window fill volume `sum(px*sz)`, plus the most profitable coin if it is not in them |
 | session window | best 6h UTC window (wraps midnight, earliest start wins ties); share = its entries / all entries |
 
