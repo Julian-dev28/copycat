@@ -147,3 +147,13 @@ def test_liq_distance_pct_cross_uses_the_same_formula_as_a_documented_estimate()
     iso = sizing.liq_distance_pct(20, is_cross=False, maint_frac=0.02)
     cross = sizing.liq_distance_pct(20, is_cross=True, maint_frac=0.02)
     assert iso == cross == pytest.approx(3.0)
+
+
+def test_one_x_isolated_needs_a_near_total_move_to_liquidate():
+    """Operator report 2026-10-11: a what-if at fixed 1x showed liquidations.
+    (Cause: a stale api process on old sim code.) At 1x the liquidation is
+    ~(1 - maintenance) away, so the sim can only liquidate on a near-total
+    adverse move."""
+    from engine.sizing import liq_distance_pct
+    assert liq_distance_pct(1, False, 0.0125) >= 95.0
+    assert liq_distance_pct(40, False, 0.0125) == pytest.approx(1.25)

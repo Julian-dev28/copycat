@@ -319,3 +319,11 @@ def test_allocation_cap_holds_total_margin_across_coins():
     # fits the cap. The sim follows core, which is what trades.)
     assert r.sim_copies == 2
     assert r.sim_fees_usd == pytest.approx((500.0 + HL_MIN_ORDER_USD) * TAKER_FEE_RATE, rel=1e-9)
+
+
+def test_liq_price_at_1x_is_near_zero_for_a_long_and_double_for_a_short():
+    from discovery.sim import _liq_px
+    from engine.sizing import liq_distance_pct
+    d = liq_distance_pct(1, False, 0.0125)
+    assert _liq_px(100.0, "long", d) <= 5.0          # a long at 1x survives a 95% drop
+    assert _liq_px(100.0, "short", d) >= 195.0       # a short at 1x survives a 95% rise
