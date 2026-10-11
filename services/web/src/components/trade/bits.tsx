@@ -6,7 +6,7 @@ import { formatSignedPct } from "@/lib/format";
 export function ChangeText({ pct, className, digits = 2 }: { pct: number | null | undefined; className?: string; digits?: number }) {
   const ok = pct !== null && pct !== undefined && Number.isFinite(pct);
   return (
-    <span className={clsx("font-num", !ok ? "text-muted" : pct > 0 ? "text-success" : pct < 0 ? "text-danger" : "text-muted", className)}>
+    <span className={clsx("font-num", !ok ? "text-muted" : pct > 0 ? "text-up" : pct < 0 ? "text-down" : "text-muted", className)}>
       {ok ? formatSignedPct(pct, Math.abs(pct) >= 100 ? 0 : digits) : "n/a"}
     </span>
   );
@@ -15,7 +15,7 @@ export function ChangeText({ pct, className, digits = 2 }: { pct: number | null 
 /** Signed USD with tone. */
 export function PnlText({ usd, children, className }: { usd: number | null | undefined; children: ReactNode; className?: string }) {
   return (
-    <span className={clsx("font-num", !usd ? "text-muted" : usd > 0 ? "text-success" : "text-danger", className)}>{children}</span>
+    <span className={clsx("font-num", !usd ? "text-muted" : usd > 0 ? "text-up" : "text-down", className)}>{children}</span>
   );
 }
 

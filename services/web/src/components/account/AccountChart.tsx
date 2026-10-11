@@ -79,7 +79,7 @@ export function AccountChart({ summary }: { summary: AccountSummary }) {
         <>
           <p className="text-xs text-muted" aria-live="polite">
             {hp ? new Date(hp.t_ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : `${metric === "pnl" ? "PnL" : "Value change"} over ${WINDOW_LABEL[win]}`}{" "}
-            <span className={clsx("font-num text-base font-semibold", signed ? ((hp?.value ?? change ?? 0) >= 0 ? "text-success" : "text-danger") : "text-foreground")}>
+            <span className={clsx("font-num text-base font-semibold", signed ? ((hp?.value ?? change ?? 0) >= 0 ? "text-up" : "text-down") : "text-foreground")}>
               {hp ? fmt(hp.value) : change === null ? "—" : signed ? fmt(change) : formatSignedUsdCompact(change)}
             </span>
           </p>

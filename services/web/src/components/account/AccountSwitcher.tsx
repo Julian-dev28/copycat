@@ -24,8 +24,8 @@ export function AccountSwitcher() {
     body = (
       <>
         <AgentDot account={active} nowMs={now} />
-        <span className="hidden max-w-24 truncate font-medium min-[480px]:inline">{active.label}</span>
-        <span className="hidden font-num text-muted lg:inline">{shortenAddress(active.address, 4, 4)}</span>
+        <span className="max-w-24 truncate font-medium">{active.label.trim() || shortenAddress(active.address, 4, 4)}</span>
+        {active.label.trim() ? <span className="hidden font-num text-muted lg:inline">{shortenAddress(active.address, 4, 4)}</span> : null}
         <span className="sr-only">, trading agent {v.label}</span>
         <ChevronDown size={13} className="text-muted" aria-hidden="true" />
       </>
@@ -48,7 +48,7 @@ export function AccountSwitcher() {
           type="button"
           onClick={() => openWalletManager()}
           aria-label={active ? `Active trading account ${active.label}. Manage accounts` : "Manage accounts"}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 text-xs hover:border-accent/60"
+          className="flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 text-xs transition-colors duration-[var(--dur-fast)] hover:border-border-strong hover:bg-surface-3"
         >
           {body}
         </button>

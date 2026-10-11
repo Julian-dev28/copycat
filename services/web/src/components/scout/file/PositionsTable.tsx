@@ -42,13 +42,13 @@ export function PositionsTable({ positions, asOfMs }: { positions: TraderPositio
                   <td className={TD}>{formatUsd(p.notional_usd, true)}</td>
                   <td className={TD}>{formatPrice(p.entry_px)}</td>
                   <td className={TD}>{formatPrice(p.mark_px)}</td>
-                  <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger")}>
+                  <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down")}>
                     {formatSignedUsd(p.unrealized_pnl_usd)} <span className="text-[11px]">({formatSignedPct(p.roe_pct)})</span>
                   </td>
                   <td className={TD}>{p.liquidation_px ? formatPrice(p.liquidation_px) : "—"}</td>
                   <td className={clsx(TD, "font-semibold", LIQ_TEXT[tone])}>{formatPct(p.liq_distance_pct)}</td>
                   <td className={TD}>{formatUsd(p.margin_usd, true)}</td>
-                  <td className={clsx(TD, p.funding_since_open_usd >= 0 ? "text-success" : "text-danger")}>{formatSignedUsd(p.funding_since_open_usd)}</td>
+                  <td className={clsx(TD, p.funding_since_open_usd >= 0 ? "text-up" : "text-down")}>{formatSignedUsd(p.funding_since_open_usd)}</td>
                 </tr>
               );
             })}

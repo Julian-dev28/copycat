@@ -27,7 +27,7 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
         description="Only positions copycat opened. Anything you trade by hand on the same account is left alone."
         action={
           positions.length ? (
-            <span className={`font-num text-sm font-semibold ${totalPnl >= 0 ? "text-success" : "text-danger"}`}>
+            <span className={`font-num text-sm font-semibold ${totalPnl >= 0 ? "text-up" : "text-down"}`}>
               {formatSignedUsd(totalPnl)}
             </span>
           ) : undefined
@@ -57,7 +57,7 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
                       {formatLeverage(p.leverage)} {p.is_cross ? "cross" : "iso"}
                     </span>
                   </div>
-                  <span className={`font-num font-semibold ${p.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger"}`}>
+                  <span className={`font-num font-semibold ${p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
                     {formatSignedUsd(p.unrealized_pnl_usd)}
                   </span>
                 </div>
@@ -122,7 +122,7 @@ function PositionsDesktopTable({ positions }: { positions: CopyPosition[] }) {
               <td className="font-num px-3 py-2.5 text-right whitespace-nowrap">
                 {formatLeverage(p.leverage)} <span className="text-xs text-muted">{p.is_cross ? "cross" : "iso"}</span>
               </td>
-              <td className={`font-num px-3 py-2.5 text-right ${p.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger"}`}>
+              <td className={`font-num px-3 py-2.5 text-right ${p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
                 {formatSignedUsd(p.unrealized_pnl_usd)}
               </td>
               <td className="font-num px-3 py-2.5 pr-5 text-right">{formatPrice(p.liquidation_px)}</td>

@@ -103,7 +103,7 @@ export function TraderCard({
         <div className="min-w-0 text-xs leading-tight">
           <div className="text-muted">If you copied (30d)</div>
           <div className="font-num">
-            <span className={clsx("font-semibold", s.sim_return_pct >= 0 ? "text-success" : "text-danger")}>
+            <span className={clsx("font-semibold", s.sim_return_pct >= 0 ? "text-up" : "text-down")}>
               {formatSignedPct(s.sim_return_pct)}
             </span>
             <span className="text-muted"> · DD {formatSignedPct(s.sim_max_drawdown_pct)}</span>

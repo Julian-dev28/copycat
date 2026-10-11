@@ -38,7 +38,7 @@ export function TripsTable({ trips }: { trips: RoundTrip[] }) {
               <td className={TD}>{formatPrice(t.entry_px)}</td>
               <td className={TD}>{formatPrice(t.exit_px)}</td>
               <td className={TD}>{formatUsd(t.max_notional_usd, true)}</td>
-              <td className={clsx(TD, "font-semibold", t.win ? "text-success" : "text-danger")}>{formatSignedUsd(t.net_pnl_usd)}</td>
+              <td className={clsx(TD, "font-semibold", t.win ? "text-up" : "text-down")}>{formatSignedUsd(t.net_pnl_usd)}</td>
             </tr>
           ))}
         </tbody>

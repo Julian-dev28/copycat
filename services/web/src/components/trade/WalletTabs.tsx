@@ -93,7 +93,7 @@ function Positions({ profile, preview }: { profile: TraderProfile; preview: Tick
               <td className={TD}>{formatUsd(p.notional_usd, true)}</td>
               <td className={TD}>{formatPrice(p.entry_px)}</td>
               <td className={TD}>{formatPrice(p.mark_px)}</td>
-              <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger")}>
+              <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down")}>
                 {formatSignedUsd(p.unrealized_pnl_usd)} <span className="text-[11px]">({formatSignedPct(p.roe_pct)})</span>
               </td>
               <td className={TD}>{formatPct(p.liq_distance_pct)}</td>
@@ -124,7 +124,7 @@ function Trades({ profile, nowMs }: { profile: TraderProfile; nowMs: number }) {
             <td className={clsx("whitespace-nowrap px-3 py-2 text-xs font-medium", /Long/.test(f.dir) === /Open/.test(f.dir) ? "text-success" : "text-danger")}>{f.dir}</td>
             <td className={TD}>{formatPrice(f.px)}</td>
             <td className={TD}>{formatUsd(f.notional_usd, true)}</td>
-            <td className={clsx(TD, f.closed_pnl_usd > 0 ? "text-success" : f.closed_pnl_usd < 0 ? "text-danger" : "text-muted")}>
+            <td className={clsx(TD, f.closed_pnl_usd > 0 ? "text-up" : f.closed_pnl_usd < 0 ? "text-down" : "text-muted")}>
               {f.closed_pnl_usd ? formatSignedUsd(f.closed_pnl_usd) : "—"}
             </td>
           </tr>

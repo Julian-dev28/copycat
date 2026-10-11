@@ -60,7 +60,7 @@ function TradeInner() {
   }
 
   return (
-    <div className="flex flex-col gap-4 xl:mx-[calc((100%-min(1440px,100vw-2rem))/2)]">
+    <div className="flex flex-col gap-4">
       {demo ? (
         <TradeDemoBanner
           acct={acct}

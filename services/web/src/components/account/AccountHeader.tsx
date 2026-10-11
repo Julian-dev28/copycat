@@ -29,7 +29,7 @@ export function AccountHeader({ summary }: { summary: AccountSummary }) {
           <AddressChip address={account.address} className="-ml-0.5" />
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3">
             <span className="font-num text-3xl font-bold tracking-tight">{formatUsd(balances.total_usd)}</span>
-            <span className={`font-num text-sm ${summary.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger"}`}>
+            <span className={`font-num text-sm ${summary.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
               {formatSignedUsd(summary.unrealized_pnl_usd)} open
             </span>
             <span className="text-xs text-muted">account value · updated {formatAgo(summary.as_of_ms, now)}</span>

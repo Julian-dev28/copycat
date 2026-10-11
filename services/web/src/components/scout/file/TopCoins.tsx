@@ -17,7 +17,7 @@ export function TopCoins({ coins, max = 8 }: { coins: CoinStat[]; max?: number }
               <CoinBadge coin={c.coin} />
               <span className="text-muted">{c.trips} trips</span>
               <span className="ml-auto font-num text-muted">{formatUsd(c.volume_usd, true)}</span>
-              <span className={clsx("w-20 text-right font-num font-semibold", c.pnl_usd >= 0 ? "text-success" : "text-danger")}>
+              <span className={clsx("w-20 text-right font-num font-semibold", c.pnl_usd >= 0 ? "text-up" : "text-down")}>
                 {formatSignedUsd(Math.round(c.pnl_usd))}
               </span>
             </div>

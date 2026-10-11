@@ -136,7 +136,7 @@ export function DiscoveryTable({
                   </div>
                   <div>
                     <dt className="text-muted">Sim</dt>
-                    <dd className={t.sim_return_pct >= 0 ? "text-success" : "text-danger"}>{formatSignedPct(t.sim_return_pct)}</dd>
+                    <dd className={t.sim_return_pct >= 0 ? "text-up" : "text-down"}>{formatSignedPct(t.sim_return_pct)}</dd>
                   </div>
                   <div>
                     <dt className="text-muted">Max DD</dt>
@@ -241,7 +241,7 @@ export function DiscoveryTable({
                           <ChevronDown size={12} className={clsx("text-muted transition-transform", open && "rotate-180")} aria-hidden="true" />
                         </button>
                       </td>
-                      <td className={`font-num px-3 py-2.5 ${t.sim_return_pct >= 0 ? "text-success" : "text-danger"}`}>
+                      <td className={`font-num px-3 py-2.5 ${t.sim_return_pct >= 0 ? "text-up" : "text-down"}`}>
                         {formatSignedPct(t.sim_return_pct)}
                       </td>
                       <td className="font-num px-3 py-2.5 text-danger">{formatPct(t.sim_max_drawdown_pct)}</td>
@@ -249,10 +249,10 @@ export function DiscoveryTable({
                         {t.sim_liquidations}
                       </td>
                       <td className="font-num px-3 py-2.5">{t.sim_copies}</td>
-                      <td className={`font-num px-3 py-2.5 ${t.pnl_30d_usd >= 0 ? "text-success" : "text-danger"}`}>
+                      <td className={`font-num px-3 py-2.5 ${t.pnl_30d_usd >= 0 ? "text-up" : "text-down"}`}>
                         {formatSignedUsd(t.pnl_30d_usd)}
                       </td>
-                      <td className={`font-num px-3 py-2.5 ${t.roi_30d_pct >= 0 ? "text-success" : "text-danger"}`}>
+                      <td className={`font-num px-3 py-2.5 ${t.roi_30d_pct >= 0 ? "text-up" : "text-down"}`}>
                         {formatSignedPct(t.roi_30d_pct)}
                       </td>
                       <td className="font-num px-3 py-2.5">{t.opens_per_day.toFixed(1)}</td>

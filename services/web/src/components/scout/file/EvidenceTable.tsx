@@ -23,7 +23,7 @@ export function EvidenceTable({ examples }: { examples: TradeExample[] }) {
               {day(e.opened_ms)} · held {formatHold(e.hold_h)} · {e.adds} add{e.adds === 1 ? "" : "s"}
               {e.max_leverage ? ` · up to ${e.max_leverage}x` : ""}
             </span>
-            <span className={clsx("ml-auto font-num text-sm font-semibold", e.net_pnl_usd >= 0 ? "text-success" : "text-danger")}>
+            <span className={clsx("ml-auto font-num text-sm font-semibold", e.net_pnl_usd >= 0 ? "text-up" : "text-down")}>
               {formatSignedUsd(e.net_pnl_usd)} <span className="text-xs font-normal">({formatSignedPct(e.return_pct)})</span>
             </span>
           </div>

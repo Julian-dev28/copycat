@@ -27,7 +27,7 @@ export function parseTokens(css: string): Tokens {
   const t: Tokens = { light: {}, dark: {}, modes: {} };
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
   for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const sel = m[1].trim();
+    const sel = (m[1].split(";").pop() ?? "").trim(); // drop a leading `@import ...;`
     if (sel === ":root") Object.assign(t.light, decls(m[2]));
     else if (sel === ".dark") Object.assign(t.dark, decls(m[2]));
     else {

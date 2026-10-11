@@ -53,7 +53,7 @@ export function FillsHistory({ account }: { account: TradingAccount }) {
               <td className={TD}>{formatPrice(f.px)}</td>
               <td className={TD}>{formatSize(f.sz)}</td>
               <td className={TD}>{formatUsd(f.notional_usd, true)}</td>
-              <td className={clsx(TD, f.closed_pnl_usd > 0 ? "text-success" : f.closed_pnl_usd < 0 ? "text-danger" : "text-muted")}>{f.closed_pnl_usd ? formatSignedUsd(f.closed_pnl_usd) : "—"}</td>
+              <td className={clsx(TD, f.closed_pnl_usd > 0 ? "text-up" : f.closed_pnl_usd < 0 ? "text-down" : "text-muted")}>{f.closed_pnl_usd ? formatSignedUsd(f.closed_pnl_usd) : "—"}</td>
               <td className={clsx(TD, "text-muted")}>{formatUsd(f.fee_usd)}</td>
             </tr>
           ))}

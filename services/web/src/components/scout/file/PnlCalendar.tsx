@@ -42,7 +42,7 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted">
           <span>
-            Net <span className={`font-num font-semibold ${grid.total >= 0 ? "text-success" : "text-danger"}`}>{formatSignedUsdCompact(grid.total)}</span>
+            Net <span className={`font-num font-semibold ${grid.total >= 0 ? "text-up" : "text-down"}`}>{formatSignedUsdCompact(grid.total)}</span>
           </span>
           <span>
             <span className="font-num text-foreground">{grid.green}</span> green days · <span className="font-num text-foreground">{grid.red}</span> red
@@ -108,7 +108,7 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
             <>
               {hover ? "" : "Best day: "}
               {dayLabel(shown.t_ms)}{" "}
-              <span className={`font-num font-semibold ${(shown.value ?? 0) >= 0 ? "text-success" : "text-danger"}`}>
+              <span className={`font-num font-semibold ${(shown.value ?? 0) >= 0 ? "text-up" : "text-down"}`}>
                 {shown.value === null ? "no data" : formatSignedUsd(Math.round(shown.value))}
               </span>
             </>

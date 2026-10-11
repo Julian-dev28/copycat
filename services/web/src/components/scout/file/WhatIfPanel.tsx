@@ -19,7 +19,7 @@ function SimLine({ label, s }: { label: string; s: TraderScore }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
       <span className="w-full text-[11px] text-muted">{label}</span>
-      <span className={`font-num font-semibold ${s.sim_return_pct >= 0 ? "text-success" : "text-danger"}`}>{formatSignedPct(s.sim_return_pct)}</span>
+      <span className={`font-num font-semibold ${s.sim_return_pct >= 0 ? "text-up" : "text-down"}`}>{formatSignedPct(s.sim_return_pct)}</span>
       <span className="font-num text-muted">DD {formatPct(s.sim_max_drawdown_pct)}</span>
       <span className="font-num text-muted">
         {s.sim_liquidations} liq · {formatUsd(s.sim_fees_usd)} fees

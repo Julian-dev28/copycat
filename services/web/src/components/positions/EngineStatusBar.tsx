@@ -32,7 +32,7 @@ export function EngineStatusBar({ status, tradingEnabled }: { status?: EngineSta
   const enabled = tradingEnabled ?? status.enabled;
   const stale = status.last_cycle_ms !== null && status.last_cycle_ms !== undefined && now - status.last_cycle_ms > STALE_MS;
   const dayPnl = dayPnlView(status);
-  const dayPnlTone = { up: "text-success", down: "text-danger", flat: "text-foreground", muted: "text-muted" }[dayPnl.tone];
+  const dayPnlTone = { up: "text-up", down: "text-down", flat: "text-foreground", muted: "text-muted" }[dayPnl.tone];
 
   return (
     <Panel className="flex flex-col gap-4 p-4 sm:p-5">

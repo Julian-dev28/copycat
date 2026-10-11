@@ -56,7 +56,7 @@ export function AccountPositions({ account, own, asOfMs, demo }: { account: Trad
                 <td className={TD}>{formatUsd(p.notional_usd, true)}</td>
                 <td className={TD}>{formatPrice(p.entry_px)}</td>
                 <td className={TD}>{formatPrice(p.mark_px)}</td>
-                <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-success" : "text-danger")}>
+                <td className={clsx(TD, p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down")}>
                   {formatSignedUsd(p.unrealized_pnl_usd)} <span className="text-[11px]">({formatSignedPct(p.roe_pct)})</span>
                 </td>
                 <td className={TD}>{p.liquidation_px ? formatPrice(p.liquidation_px) : "n/a"}</td>
