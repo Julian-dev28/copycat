@@ -131,3 +131,18 @@ def test_wallets_without_one_shot_are_untouched(engine_state, venue):
     venue.hold(LEADER1, "BTC", 1000.0, entry_px=100.0)
     out = run(venue, cfg(one_shot=None), engine_state, 0)
     assert out["opened"] == ["BTC"] and engine_state.get_kv("one_shot") is None
+
+
+def test_leader_book_is_one_account_read_entry_based(venue):
+    import pytest
+
+    from engine import public
+    venue.hold(LEADER1, "ETH", -2.0, entry_px=3000.0)
+    venue.hold(LEADER1, "BTC", 0.5, entry_px=60_000.0)
+    venue.mids["BTC"] = 99_999.0                                  # marks never enter it
+    assert public.leader_book(LEADER1, venue=venue) == [
+        {"coin": "BTC", "side": "long", "notional_usd": 30_000.0},
+        {"coin": "ETH", "side": "short", "notional_usd": 6000.0}]
+    venue.accounts[LEADER1] = None
+    with pytest.raises(public.PreviewUnavailable):
+        public.leader_book(LEADER1, venue=venue)

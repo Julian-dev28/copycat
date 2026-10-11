@@ -13,6 +13,7 @@ Public surface (the only names other services import):
 | `engine.public.status() -> EngineStatus` | last cycle's snapshot, read from SQLite, no network |
 | `engine.public.events(limit, since_ms)` | `EngineEvent`s, newest first |
 | `engine.public.preview_wallet(address, req, settings, venue=None)` | Trade ticket preview (`WalletPreview`), read only |
+| `engine.public.leader_book(address, venue=None)` | v9: his positions from one account read, `[{coin, side, notional_usd}]` (size x entry); the api hashes it for MCP copy plans |
 | `engine.public.read_stops()` | pending `data/stop/<address>.flag` requests |
 | `engine.public.leader_events(address, limit, before_ms)` | one wallet's events, newest first (tail read, 8MB cap) |
 | `engine.public.wallet_ledgers()` / `archive_wallet(address)` | per-wallet ledger rows; mark a stopped wallet archived (`ArchiveRefused` while it has copies) |

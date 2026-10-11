@@ -31,6 +31,15 @@ the $0.03 perps / $0.11 spot split (Move to perps shows), "Old API key" is a
 unified account, and "Main" is a created wallet (passphrase path, any 12+ chars):
 deposit, move, send and withdraw all run against the in-memory store with real
 EIP-712 signatures and ERC-20 calldata; a demo deposit is "credited" ~3 s later.
+`/settings?demo=1` edits the Trade demo book (`components/copy/settingsSource.ts`);
+`/discover?demo=1` runs canned scans over the Scout demo board
+(`components/discover/source.ts`). Every route shows a demo strip
+(`components/DemoStrip.tsx`, or the page's own banner).
+
+Hard guard: while `?demo=1` is on the URL, `apiFetch` and `secretFetch` throw
+"demo mode: writes are disabled" for any non-GET request before it reaches
+`fetch`. `src/lib/demo/noWrites.test.ts` walks every demo and live source with
+demo on and fails on any write.
 
 ## Pages
 

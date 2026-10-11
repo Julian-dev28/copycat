@@ -19,7 +19,8 @@ Execute guards, in this order (each one audit-logged with its outcome):
       codes burn the plan
   (d) amount_usd <= COPYCAT_MCP_MAX_USD (default 100) and leverage <=
       settings.max_position_leverage (403)
-  (e) his positions now hash to the plan's book_fingerprint (409, plan burned)
+  (e) his positions now (one account read, `leader_book`) hash to the plan's
+      book_fingerprint (409, plan burned)
   (f) the book has room (MAX_LEADERS) unless he is already in it (409)
 Then `copy_wallet` with the plan's custom terms. `enabled` and `dry_run` are
 never touched: whether anything is ordered stays the user's switch.
@@ -118,11 +119,12 @@ def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
     )
 
 
-def book_fingerprint(preview: WalletPreview) -> Tuple[str, List[str]]:
+def book_fingerprint(book: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
     """sha256 over his positions (coin, side, |size| x entry to the cent),
-    sorted by coin, plus a human summary sorted by size. Entry-based, so a
-    mark move does not change it; an open, add, reduce, close or flip does."""
-    rows = sorted((s.coin, s.side, round(s.his_notional_usd, 2)) for s in preview.slices)
+    sorted by coin, plus a human summary sorted by size. `book` is
+    `engine.public.leader_book` (one account read). Entry-based, so a mark
+    move does not change it; an open, add, reduce, close or flip does."""
+    rows = sorted((str(b["coin"]), str(b["side"]), round(float(b["notional_usd"]), 2)) for b in book)
     digest = hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode()).hexdigest()
     summary = [f"{c} {side} ${n:,.0f}" for c, side, n in sorted(rows, key=lambda r: -r[2])]
     return digest, summary
@@ -337,8 +339,9 @@ def audit_terms(req: CopyPlanRequest) -> Dict[str, Any]:
 
 
 def new_plan(req: CopyPlanRequest, preview: WalletPreview, projection: Optional[WalletProjection],
-             settings: Settings, warnings: List[str], executable: bool, now_ms: int) -> CopyPlan:
-    fp, summary = book_fingerprint(preview)
+             settings: Settings, warnings: List[str], executable: bool, now_ms: int,
+             book: List[Dict[str, Any]]) -> CopyPlan:
+    fp, summary = book_fingerprint(book)
     return CopyPlan(
         plan_id="plan_" + secrets.token_hex(8), confirm_code=new_confirm_code(),
         created_ms=now_ms, expires_ms=now_ms + MCP_PLAN_TTL_S * 1000,

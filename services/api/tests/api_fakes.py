@@ -53,6 +53,17 @@ class FakeEngineClient:
         self.preview_result: Any = None        # a WalletPreview, or an exception to raise
         self.ledgers: Dict[str, Dict[str, Any]] = {}   # v8 wallet_ledgers()
         self.archive_refused: Optional[str] = None
+        self.book_result: Any = None           # v9 leader_book(): a list, or an exception
+
+    def leader_book(self, address: str) -> List[Dict[str, Any]]:
+        """v9: `book_result` if set, else his positions as the preview shows them."""
+        if isinstance(self.book_result, Exception):
+            raise self.book_result
+        if self.book_result is not None:
+            return self.book_result
+        pv = self.preview_result
+        return [{"coin": s.coin, "side": s.side, "notional_usd": s.his_notional_usd}
+                for s in (pv.slices if pv is not None and not isinstance(pv, Exception) else [])]
 
     def preview(self, address: str, req: Any, settings: Settings) -> Any:
         self.preview_calls.append((address, req, settings))

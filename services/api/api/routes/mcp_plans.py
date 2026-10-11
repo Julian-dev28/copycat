@@ -56,6 +56,15 @@ def _preview(engine: EngineClient, store: SettingsStore, addr: str, req):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
 
 
+def _book(engine: EngineClient, addr: str):
+    try:
+        return engine.leader_book(addr)
+    except PreviewFailed as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+    except EngineUnavailable as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
+
+
 def _projection(request: Request, scout: ScoutClient, addr: str, settings, body: CopyPlanRequest,
                 creq) -> Optional[WalletProjection]:
     """Cached data only, never waits: None when there is none yet, Scout is
@@ -105,13 +114,15 @@ def create_plan(request: Request, body: CopyPlanRequest,
     addr = body.address
     creq = mp.copy_request_for(body)
     preview = _preview(engine, store, addr, creq)
+    book = _book(engine, addr)        # after the preview: the plan never predates what it shows
     settings = store.load()
     projection = _projection(request, scout, addr, settings, body, creq)
     own = addr in store.own_addresses()
     warnings, executable = mp.plan_warnings(
         body, preview, projection, settings, _style(scout, addr), _his_liq_pct(scout, addr),
         own, mp.trading_allowed(), mp.max_usd())
-    plan = mp.new_plan(body, preview, projection, settings, warnings, executable, plans.now_ms())
+    plan = mp.new_plan(body, preview, projection, settings, warnings, executable, plans.now_ms(),
+                       book)
     plans.put(plan)
     plans.audit("plan", plan_id=plan.plan_id, outcome="created", executable=executable,
                 trading_live=plan.trading_live, book_fingerprint=plan.book_fingerprint,
@@ -149,8 +160,7 @@ def execute_plan(plan_id: str, body: CopyPlanExecuteRequest,
             settings = store.load()
             mp.check_caps(plan, settings, mp.max_usd())
             addr = plan.request.address
-            preview = _preview(engine, store, addr, plan.copy_request)
-            now_fp, _ = mp.book_fingerprint(preview)
+            now_fp, _ = mp.book_fingerprint(_book(engine, addr))
             if now_fp != plan.book_fingerprint:
                 raise mp.PlanRefused(409, "book_changed", "his book changed since the plan was made: "
                                                           "make a new plan with copy_plan", burn=True)

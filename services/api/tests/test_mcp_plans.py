@@ -311,11 +311,32 @@ def test_e_his_book_changed_409_and_burns(client, auth_headers, fake_engine, pla
 
 
 def test_e_mark_moves_do_not_change_the_fingerprint():
-    a = preview(slice_(), slice_("ETH", "short", 30_000.0))
-    b = preview(slice_("ETH", "short", 30_000.0, lev=9, status="trimmed"), slice_())
+    a = [{"coin": "BTC", "side": "long", "notional_usd": 50_000.0},
+         {"coin": "ETH", "side": "short", "notional_usd": 30_000.0}]
+    b = list(reversed(a))
     assert mp.book_fingerprint(a)[0] == mp.book_fingerprint(b)[0]
-    c = preview(slice_(), slice_("ETH", "long", 30_000.0))
+    assert mp.book_fingerprint([{**a[0], "notional_usd": 50_000.001}, a[1]])[0] == mp.book_fingerprint(a)[0]
+    c = [a[0], {**a[1], "side": "long"}]
     assert mp.book_fingerprint(a)[0] != mp.book_fingerprint(c)[0]
+    d = [a[0], {**a[1], "notional_usd": 30_010.0}]
+    assert mp.book_fingerprint(a)[0] != mp.book_fingerprint(d)[0]
+
+
+def test_e_uses_one_account_read_not_a_second_preview(client, auth_headers, fake_engine, plans, allow):
+    fake_engine.preview_result = preview()
+    p = make_plan(client, auth_headers)
+    n = len(fake_engine.preview_calls)
+    assert execute(client, auth_headers, p).status_code == 200
+    assert len(fake_engine.preview_calls) == n
+
+
+def test_e_his_read_failing_is_502_and_writes_nothing(client, auth_headers, engine, plans, allow,
+                                                     data_dir):
+    from api.engine_client import PreviewFailed
+    p = make_plan(client, auth_headers)
+    engine.book_result = PreviewFailed("read failed")
+    assert execute(client, auth_headers, p).status_code == 502
+    assert not (data_dir / "settings.json").exists()
 
 
 def test_f_book_full_409(client, auth_headers, engine, plans, allow, data_dir):

@@ -504,6 +504,25 @@ def _default_venue() -> Any:
     return HlVenue()
 
 
+def leader_book(address: str, venue: Optional[Any] = None) -> List[Dict[str, Any]]:
+    """His open perp positions from ONE account read (no per-coin reads), as
+    [{coin, side, notional_usd}] with notional = |size| x his entry (what the
+    engine sizes from). The api's MCP copy plan hashes this to detect that his
+    book changed between a plan and its execute. PreviewUnavailable if the
+    read fails."""
+    venue = venue or _default_venue()
+    acct = venue.account_state(norm_addr(address))
+    if acct is None:
+        raise PreviewUnavailable(f"account read failed for {address}")
+    out: List[Dict[str, Any]] = []
+    for c, p in sorted((acct.get("positions") or {}).items()):
+        szi = float(p.get("szi") or 0.0)
+        if szi:
+            out.append({"coin": c, "side": "long" if szi > 0 else "short",
+                        "notional_usd": sizing.his_notional(p)})
+    return out
+
+
 def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
                    venue: Optional[Any] = None, now_ms: Optional[int] = None) -> WalletPreview:
     """What investing `req` in `address` would copy of his book now. Read

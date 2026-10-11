@@ -47,6 +47,9 @@ class EngineClient(Protocol):
 
     def archive(self, address: str, now_ms: int) -> Dict[str, Any]: ...
 
+    # v9
+    def leader_book(self, address: str) -> List[Dict[str, Any]]: ...
+
 
 class RealEngineClient:
     """Implements EngineClient by calling engine.public, imported lazily."""
@@ -90,6 +93,22 @@ class RealEngineClient:
         except Exception as e:
             if isinstance(refused, type) and isinstance(e, refused):
                 raise ArchiveRefused(str(e)) from e
+            raise
+
+    def leader_book(self, address: str) -> List[Dict[str, Any]]:
+        """`engine.public.leader_book`: his positions from one account read
+        (background HL priority, like preview). PreviewFailed on a failed read."""
+        public = self._public()
+        fn = getattr(public, "leader_book", None)
+        if fn is None:
+            raise EngineUnavailable("engine.public has no leader_book() yet")
+        os.environ["COPYCAT_HL_PRIORITY"] = "background"
+        failed = getattr(public, "PreviewUnavailable", None)
+        try:
+            return fn(address)
+        except Exception as e:
+            if isinstance(failed, type) and isinstance(e, failed):
+                raise PreviewFailed(str(e)) from e
             raise
 
     def preview(self, address: str, req: WalletCopyRequest, settings: Settings) -> WalletPreview:
