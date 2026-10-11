@@ -23,7 +23,7 @@ from .http import http_post
 
 logger = logging.getLogger(__name__)
 
-LEADERBOARD_HOST = "https://stats-data.hyperliquid.xyz"
+LEADERBOARD_HOST = env.STATS_HOST  # default; env.stats_url() resolves the override
 
 
 def _size_tolerance(sz_dec: Optional[int]) -> float:
@@ -636,7 +636,7 @@ class HlVenue:
         None on any fetch/parse failure.
         """
         net_path = "Testnet" if env.network() == "testnet" else "Mainnet"
-        url = f"{LEADERBOARD_HOST}/{net_path}/leaderboard"
+        url = f"{env.stats_url()}/{net_path}/leaderboard"
         try:
             resp = requests.get(url, timeout=env.request_timeout_s())
             resp.raise_for_status()

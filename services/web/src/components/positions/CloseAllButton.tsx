@@ -63,7 +63,7 @@ export function CloseAllButton({ openCopies }: { openCopies: number }) {
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={submit} disabled={!closeAllConfirmed(typed) || closeAll.isPending}>
+            <Button variant="danger-solid" onClick={submit} disabled={!closeAllConfirmed(typed) || closeAll.isPending}>
               {closeAll.isPending ? "Closing…" : "Close all copies"}
             </Button>
           </>

@@ -15,11 +15,12 @@ export function CatLogo({ size = 24, className, title = "copycat" }: {
       height={size}
       viewBox="0 0 32 32"
       fill="none"
-      role="img"
-      aria-label={title}
+      role={title ? "img" : undefined}
+      aria-label={title || undefined}
+      aria-hidden={title ? undefined : true}
       className={className}
     >
-      <title>{title}</title>
+      {title ? <title>{title}</title> : null}
       {/* head with two pointed ears */}
       <path
         d="M5 27V11.5L7.5 3.5L13 9h6l5.5-5.5L27 11.5V27a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z"

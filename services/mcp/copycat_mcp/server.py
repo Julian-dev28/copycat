@@ -14,7 +14,7 @@ both only compute (nothing in the book changes). No tool calls /copy or /stop.
 execute_copy_plan (v0.3) is the one tool that can put money to work. It is not
 registered at all unless COPYCAT_MCP_ALLOW_TRADING=1 is in this server's env,
 and the api refuses it unless the same flag is in the api's env. It applies a
-plan the user saw (single-use, 120 s, confirm code, dollar cap, his book
+plan the user saw (single-use, MCP_PLAN_TTL_S, confirm code, dollar cap, his book
 unchanged) through the engine, and still cannot change `enabled` or `dry_run`.
 
 Never exposed, and pinned by a gate test (`FORBIDDEN_TOOL_WORDS`): anything
@@ -32,6 +32,7 @@ import re
 import time
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
+from contracts.models import MCP_PLAN_TTL_S
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
@@ -496,7 +497,8 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         right now, computed by copycat's engine from his live positions (per-position copy sizes,
         skips under the $10.50 minimum, margin), plus the cached 30-day projection, warnings,
         his fingerprint summary and the newest saved thesis. Places NOTHING and changes nothing in
-        the book; the plan is stored for 120 s with a one-time confirm_code. Show the user
+        the book; the plan is stored for a few minutes (see plan.expires_ms) with a one-time
+        confirm_code. Show the user
         `present` and ask before anything else happens."""
         a = norm_address(address)
         body: Dict[str, Any] = {"address": a, "amount_usd": amount_usd,
@@ -537,8 +539,8 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
                       "Execute a copy plan made by copy_plan: copycat starts copying this trader "
                       "with REAL MONEY on the user's Hyperliquid account (the engine places the "
                       "orders on its next cycle when trading is live). " + EXECUTE_RULE + " The "
-                      "plan is single-use, expires 120 s after it was made, and is refused if his "
-                      "positions changed since, if the amount is over the operator's cap, or if "
+                      f"plan is single-use, expires {MCP_PLAN_TTL_S} s after it was made, and is refused if the "
+                      "positions it copies changed since, if the amount is over the operator's cap, or if "
                       "the code is wrong. It never turns trading on: with enabled=false or "
                       "dry_run=true nothing is ordered."))
         async def execute_copy_plan(

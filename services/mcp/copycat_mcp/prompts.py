@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from typing import List
 
+from contracts.models import MCP_PLAN_TTL_S
+
 # Order matters: the prompt lists them in this order and asks for `## <name>` headings.
 THESIS_SECTIONS = (
     "Edge in one sentence",
@@ -148,7 +150,7 @@ and only execute it after an explicit yes. You are handling the user's real mone
 ## 4. Make the plan and show it
 Call `copy_plan(address, amount_usd, leverage, entry_deviation_pct, trade_direction, follow)` with
 the user's answers. Show the plan's `present` block as-is: terms, positions, warnings, the
-`confirm_code` and when it expires (plans live 120 seconds and are single-use). If `executable` is
+`confirm_code` and when it expires (plans live {MCP_PLAN_TTL_S} seconds and are single-use). If `executable` is
 false, say why (from the warnings) and stop.
 
 ## 5. Execute only on an explicit yes

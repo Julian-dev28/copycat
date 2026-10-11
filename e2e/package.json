@@ -1,0 +1,17 @@
+{
+  "name": "copycat-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "demo": "playwright test --project=demo --project=a11y --project=visual",
+    "full": "E2E_STACK=full playwright test --project=full --workers=1",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

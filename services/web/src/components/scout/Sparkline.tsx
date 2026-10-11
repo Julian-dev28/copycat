@@ -62,10 +62,10 @@ export function Sparkline({
           <rect x="0" y={s.zeroY} width={width} height={Math.max(0, height - s.zeroY)} />
         </clipPath>
       </defs>
-      <line x1="0" x2={width} y1={s.zeroY} y2={s.zeroY} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-      <path d={s.his.area} fill="var(--success)" opacity="0.14" clipPath={`url(#${up})`} />
-      <path d={s.his.area} fill="var(--danger)" opacity="0.14" clipPath={`url(#${down})`} />
-      <path d={s.his.path} fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <line x1="0" x2={width} y1={s.zeroY} y2={s.zeroY} stroke="var(--faint)" strokeOpacity="0.5" strokeWidth="1" strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
+      <path d={s.his.area} fill="var(--up)" opacity="0.14" clipPath={`url(#${up})`} />
+      <path d={s.his.area} fill="var(--down)" opacity="0.14" clipPath={`url(#${down})`} />
+      <path d={s.his.path} fill="none" stroke="var(--fg-soft)" strokeOpacity="0.8" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       {s.sim ? (
         <path d={s.sim.path} fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       ) : null}

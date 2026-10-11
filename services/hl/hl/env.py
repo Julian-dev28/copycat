@@ -5,6 +5,8 @@ immediately, with no process restart.
 
 COPYCAT_NETWORK: "mainnet" (default) or "testnet" -- picks the Hyperliquid
 base URL for every /info and /exchange call this service makes.
+COPYCAT_HL_BASE_URL / COPYCAT_HL_STATS_URL (loopback URLs only) replace both
+hosts; the e2e lane (e2e/) points the whole stack at a local mock Hyperliquid.
 
 COPYCAT_AGENT_KEY + COPYCAT_ACCOUNT_ADDRESS gate every write (set_leverage,
 market, close). Reads work without them. Per docs/ARCHITECTURE.md: the
@@ -28,6 +30,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Optional, Tuple
+from urllib.parse import urlsplit
 
 from hyperliquid.utils import constants
 
@@ -41,8 +44,46 @@ def network() -> str:
     return n if n in ("mainnet", "testnet") else "mainnet"
 
 
+STATS_HOST = "https://stats-data.hyperliquid.xyz"
+# COPYCAT_HL_BASE_URL / COPYCAT_HL_STATS_URL only ever point at this machine (the
+# e2e lane's mock Hyperliquid). A browser-signed withdraw or usdSend posted to a
+# remote override could be replayed on the real chain, so anything else is ignored.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _loopback_override(var: str) -> str:
+    """The env override `var` (scheme://loopback-host[:port], no trailing
+    slash), or "" when unset or not on this machine (logged, then ignored)."""
+    raw = (os.environ.get(var) or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        ok = parsed.scheme in ("http", "https") and parsed.hostname in _LOOPBACK_HOSTS
+    except ValueError:
+        ok = False
+    if not ok:
+        logger.error("[hl.env] %s=%r is not a loopback http(s) URL: ignored, using the real Hyperliquid",
+                     var, raw)
+        return ""
+    return raw
+
+
 def base_url() -> str:
+    """The /info + /exchange base. COPYCAT_HL_BASE_URL (loopback only) wins:
+    the e2e lane runs the whole stack against a local mock Hyperliquid."""
+    override = _loopback_override("COPYCAT_HL_BASE_URL")
+    if override:
+        return override
     return constants.TESTNET_API_URL if network() == "testnet" else constants.MAINNET_API_URL
+
+
+def stats_url() -> str:
+    """The stats-data host (leaderboard). COPYCAT_HL_STATS_URL, else
+    COPYCAT_HL_BASE_URL (both loopback only), else stats-data.hyperliquid.xyz."""
+    return (_loopback_override("COPYCAT_HL_STATS_URL")
+            or _loopback_override("COPYCAT_HL_BASE_URL")
+            or STATS_HOST)
 
 
 def vault_exists() -> bool:

@@ -68,7 +68,7 @@ export function RemoveConfirm({ account, onDone }: { account: TradingAccount; on
       </label>
       <div className="flex gap-2">
         <Input id={id} value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoFocus />
-        <Button size="sm" variant="danger" disabled={!match || act.pending} onClick={remove}>
+        <Button size="sm" variant="danger-solid" disabled={!match || act.pending} onClick={remove}>
           {act.pending ? "Removing…" : "Remove"}
         </Button>
         <Button size="sm" onClick={onDone}>Cancel</Button>

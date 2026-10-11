@@ -85,7 +85,7 @@ explicitly approves THIS plan. Three independent switches must be on:
 3. copycat's own `enabled` on and `dry_run` off (web UI). Execute never changes
    them; with trading off it only saves the wallet's terms.
 
-The api also enforces: single use, 120 s expiry, constant-time confirm code (3
+The api also enforces: single use, expiry (`MCP_PLAN_TTL_S`, 300 s), constant-time confirm code (3
 wrong codes void the plan), leverage <= `max_position_leverage`, his book
 unchanged since the plan (409), room in the book, 10 executes per hour. Every
 plan and execute is logged to `data/mcp_audit.jsonl` (no code, no token).

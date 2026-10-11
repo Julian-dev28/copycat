@@ -88,7 +88,7 @@ export function StopDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>Keep copying</Button>
-          <Button variant="danger" onClick={() => onConfirm(close)} disabled={pending}>
+          <Button variant="danger-solid" onClick={() => onConfirm(close)} disabled={pending}>
             {pending ? "Stopping…" : close ? "Stop and close" : "Stop new copies"}
           </Button>
         </>
@@ -122,7 +122,7 @@ export function ArchiveDialog({ open, name, pending, onCancel, onConfirm }: { op
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-          <Button variant="danger" disabled={!ok || pending} onClick={onConfirm}>{pending ? "Archiving…" : "Archive"}</Button>
+          <Button variant="danger-solid" disabled={!ok || pending} onClick={onConfirm}>{pending ? "Archiving…" : "Archive"}</Button>
         </>
       }
     >

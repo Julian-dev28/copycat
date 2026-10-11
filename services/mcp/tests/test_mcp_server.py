@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 
 import httpx
+from contracts.models import MCP_PLAN_TTL_S
 import pytest
 from copycat_mcp.config import McpConfig, read_dotenv, scrub_agent_key
 from copycat_mcp.prompts import THESIS_MAX_CHARS, THESIS_SECTIONS, missing_sections
@@ -589,7 +590,7 @@ def test_copy_trader_prompt_sections_and_rules():
         assert q in body, q
     for needle in ("trader_fingerprint", "trader_profile", "trader_trades", "list_theses", "copy_plan(",
                    "execute_copy_plan(plan_id, confirm_code)", "most recent message explicitly",
-                   "Never execute on your own initiative", "confirm_code", "120 seconds", "is not approval",
+                   "Never execute on your own initiative", "confirm_code", f"{MCP_PLAN_TTL_S} seconds", "is not approval",
                    "not in your tool list", "No financial advice", ADDR, "with $50,"):
         assert needle in body, needle
     assert "$$" not in body                                     # "$50" was given with its dollar sign
@@ -618,3 +619,18 @@ def test_plan_calls_get_the_long_timeout():
     call(s, "execute_copy_plan", {"plan_id": PLAN_ID, "confirm_code": "ABC234"})
     from copycat_mcp.server import PLAN_TIMEOUT_S
     assert seen == [PLAN_TIMEOUT_S, PLAN_TIMEOUT_S]
+
+
+def test_no_hardcoded_plan_expiry_in_anything_the_model_reads():
+    """The plan TTL went 120 -> 300 s while the tool text still said 120: the model
+    would have told the user the wrong deadline. Every user/model-facing expiry
+    must come from MCP_PLAN_TTL_S."""
+    from pathlib import Path
+    root = Path(__file__).parents[1]
+    texts = [p.read_text() for p in (root / "copycat_mcp").glob("*.py")]
+    texts += [p.read_text() for p in (root / "claude" / "commands").glob("*.md")]
+    for t in texts:
+        assert "120 s" not in t and "120 seconds" not in t
+    tools = run(make_server(FakeApi(), allow_trading=True), lambda c: c.list_tools()).tools
+    ex = next(t for t in tools if t.name == "execute_copy_plan")
+    assert f"{MCP_PLAN_TTL_S} s" in ex.description

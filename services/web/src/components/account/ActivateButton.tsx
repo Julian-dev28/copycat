@@ -65,7 +65,7 @@ export function ActivateButton({
             >
               Go to Close all
             </Link>
-            <Button variant="danger" disabled={act.pending} onClick={() => activate(true)}>
+            <Button variant="danger-solid" disabled={act.pending} onClick={() => activate(true)}>
               {act.pending ? "Switching…" : "Switch anyway"}
             </Button>
           </>

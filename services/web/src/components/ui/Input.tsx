@@ -6,32 +6,43 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   leading?: ReactNode;
   /** Unit shown inside the field after the value, e.g. "x" or "%". */
   trailing?: ReactNode;
+  /** Mark the field invalid (danger border; pair with an error message + aria-describedby). */
+  invalid?: boolean;
 }
 
-const base = [
-  "w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground",
-  "placeholder:text-muted focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]",
-  "disabled:cursor-not-allowed disabled:opacity-50",
+/** The field box. With units, the ring is drawn on this wrapper only (DESIGN 5: one focus ring). */
+const FIELD = [
+  "rounded-lg border bg-surface-2 text-sm text-fg transition-[border-color,box-shadow] duration-[var(--dur-fast)]",
+  "hover:border-border-strong",
 ];
+const RING = "focus-within:border-accent focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[var(--accent)]";
+const INNER = "w-full bg-transparent py-2 text-fg placeholder:text-muted outline-none focus-visible:outline-none disabled:cursor-not-allowed";
 
-export function Input({ className, leading, trailing, type, ...rest }: InputProps) {
-  const numeric = type === "number";
+/** Text/number input with optional units. `className` goes on the outer element. */
+export function Input({ className, leading, trailing, type, invalid, ...rest }: InputProps) {
+  const numeric = type === "number" || rest.inputMode === "decimal" || rest.inputMode === "numeric";
+  const tone = invalid ? "border-danger" : "border-border";
   if (leading === undefined && trailing === undefined) {
-    return <input type={type} className={clsx(base, numeric && "font-num tabular-nums", className)} {...rest} />;
-  }
-  return (
-    <div className={clsx("relative", className)}>
-      {leading !== undefined ? (
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted">{leading}</span>
-      ) : null}
+    return (
       <input
         type={type}
-        className={clsx(base, numeric && "font-num tabular-nums", leading !== undefined && "pl-7", trailing !== undefined && "pr-9")}
+        aria-invalid={invalid || undefined}
+        className={clsx(
+          FIELD,
+          tone,
+          "w-full px-3 py-2 placeholder:text-muted focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-40",
+          numeric && "font-num tabular-nums",
+          className,
+        )}
         {...rest}
       />
-      {trailing !== undefined ? (
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted">{trailing}</span>
-      ) : null}
+    );
+  }
+  return (
+    <div className={clsx(FIELD, tone, RING, "flex items-center gap-1.5 px-3 has-[:disabled]:opacity-40", className)}>
+      {leading !== undefined ? <span className="num-sm pointer-events-none flex-shrink-0 text-muted">{leading}</span> : null}
+      <input type={type} aria-invalid={invalid || undefined} className={clsx(INNER, numeric && "font-num tabular-nums")} {...rest} />
+      {trailing !== undefined ? <span className="num-sm pointer-events-none flex-shrink-0 text-muted">{trailing}</span> : null}
     </div>
   );
 }

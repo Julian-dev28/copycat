@@ -410,6 +410,93 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* Popovers and menus (native [popover]): pinned under the header's right edge,
+   opacity + 4px drop on --dur-base (DESIGN 4 "Popovers"). */
+.menu-pop {
+  position: fixed;
+  inset: auto 12px auto auto;
+  top: calc(var(--header-h) + 4px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    overlay var(--dur-base) allow-discrete,
+    display var(--dur-base) allow-discrete;
+}
+.menu-pop:popover-open {
+  @starting-style {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Dialogs and sheets (components/ui/Dialog.tsx): backdrop fade, panel scale
+   .98 -> 1 (dialog) or slide 16px (sheet), --dur-slow. */
+dialog.ui-dialog[open] {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    scale var(--dur-slow) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+dialog.ui-sheet[open] {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    translate var(--dur-slow) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    translate: 16px 0;
+  }
+}
+dialog.ui-dialog::backdrop,
+dialog.ui-sheet::backdrop {
+  background: var(--scrim);
+}
+dialog.ui-dialog[open]::backdrop,
+dialog.ui-sheet[open]::backdrop {
+  transition: opacity var(--dur-base) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+/* NumberFlow (components/ui/NumberFlow.tsx): a changed digit rolls 4px into place. */
+@keyframes nf-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.3em);
+  }
+}
+@keyframes nf-down {
+  from {
+    opacity: 0;
+    transform: translateY(-0.3em);
+  }
+}
+.nf-digit {
+  display: inline-block;
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+.nf-digit.nf-up {
+  animation-name: nf-up;
+}
+.nf-digit.nf-down {
+  animation-name: nf-down;
+}
+
+/* Toasts (components/ui/Toast.tsx): in from below, --dur-slow. */
+.ui-toast {
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    translate var(--dur-slow) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
 /* Route change: cross-fade (View Transitions; ignored where unsupported). The
    header and tab bar keep their own names so they do not flicker. */
 @view-transition {

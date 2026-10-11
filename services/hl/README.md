@@ -149,6 +149,13 @@ makes (`hl.env.base_url()`), including the leaderboard pull (hits
 Reads work with no keys set at all; only the three write methods need
 them.
 
+`COPYCAT_HL_BASE_URL` (and optionally `COPYCAT_HL_STATS_URL`) replace both
+hosts with a local server. Loopback URLs only (`localhost`, `127.0.0.1`, `::1`);
+anything else is logged and ignored, so a browser-signed withdraw can never be
+posted to a remote server. The e2e lane (`e2e/`) uses it to run the whole stack
+against a mock Hyperliquid. Orders signed against an override use the SDK's
+non-mainnet signature source, so they are not valid on mainnet either.
+
 ## Rate limiting
 
 Hyperliquid meters `/info` + `/exchange` requests by a documented weight

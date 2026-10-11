@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 type Tone = "warning" | "danger" | "info";
 
 const toneClasses: Record<Tone, string> = {
-  warning: "border-warning/40 bg-warning/10",
-  danger: "border-danger/40 bg-danger/10",
-  info: "border-accent/30 bg-accent-soft",
+  warning: "border-warn/30 bg-warn-soft",
+  danger: "border-danger/30 bg-danger-soft",
+  info: "border-accent/25 bg-accent-soft",
 };
 
 const iconClasses: Record<Tone, string> = {

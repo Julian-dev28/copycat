@@ -1,112 +1,114 @@
 "use client";
 
-import { BarChart3, CircleUserRound, KeyRound, Moon, Settings as SettingsIcon, Sun, Telescope, Wallet } from "lucide-react";
+import { KeyRound, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useSyncExternalStore, type CSSProperties } from "react";
+import { Suspense, type CSSProperties } from "react";
 import { clsx } from "clsx";
 import { useAuth } from "@/context/AuthContext";
 import { CatLogo } from "@/components/CatLogo";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
-import { isNavActive, NAV_LINKS } from "@/lib/trade/nav";
-import { isScoutSection, SCOUT_TABS, scoutTabFor } from "@/components/scoutNav";
+import { AccountMenu } from "@/components/shell/AccountMenu";
+import { DemoStrip } from "@/components/DemoStrip";
+import { NAV_ICONS } from "@/components/shell/navIcons";
+import { TokenDot } from "@/components/shell/TokenDot";
+import { useDemoQuery, useMounted } from "@/components/shell/useDemoQuery";
+import { SCOUT_TABS, scoutTabFor } from "@/components/scoutNav";
+import { LABELS } from "@/lib/labels";
+import { containerClass } from "@/lib/shell/container";
+import { isItemActive, NAV_ITEMS } from "@/lib/shell/nav";
 
-const ICONS = { "/": BarChart3, "/scout": Telescope, "/portfolio": Wallet, "/account": CircleUserRound, "/settings": SettingsIcon } as const;
+const ICON_BTN =
+  "relative grid h-9 w-9 place-items-center rounded-full text-muted transition-colors duration-[var(--dur-fast)] hover:bg-surface-2 hover:text-fg";
 
-/** NAV_LINKS (lib/trade/nav) plus Account, slotted before Settings: Trade · Scout · Portfolio · Account · Settings. */
-type Href = keyof typeof ICONS;
-const LINKS: { href: Href; label: string }[] = [
-  ...NAV_LINKS.filter((l) => l.href !== "/settings"),
-  { href: "/account", label: "Account" },
-  ...NAV_LINKS.filter((l) => l.href === "/settings"),
-];
-const isActive = (href: Href, pathname: string | null) => {
-  if (href === "/account") return Boolean(pathname && (pathname === href || pathname.startsWith(`${href}/`)));
-  if (href === "/scout") return isScoutSection(pathname); // /discover is Scout's "Custom sim" tab
-  return isNavActive(href, pathname);
-};
-
-const noopSubscribe = () => () => {};
-const demoQuery = () => {
-  const p = new URLSearchParams(window.location.search);
-  return p.get("demo") === "1" ? `?demo=1${p.get("acct") ? `&acct=${p.get("acct")}` : ""}` : "";
-};
-
+/**
+ * Sticky glass header (DESIGN.md 6): cat + wordmark (brand ember), the
+ * primary nav as a pill group (sm and up; phones use BottomTabBar), then the
+ * account chip, theme and API token. Same container as <main>.
+ */
 export function TopNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { openDrawer, hasToken } = useAuth();
-  // false during SSR/hydration, true on the client: the theme icon needs it.
-  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
-  // Keep demo mode across the nav (read at render; client navigation re-renders the nav).
-  const demo = useSyncExternalStore(noopSubscribe, demoQuery, () => "");
+  const mounted = useMounted();
+  const demo = useDemoQuery();
+  const tokenOk = hasToken || Boolean(demo);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-2 px-4">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
+    <header className="vt-header sticky top-0 z-40 border-b border-border bg-[var(--glass-bg)] backdrop-blur-xl backdrop-saturate-150">
+      <div className={clsx(containerClass(pathname), "flex h-14 items-center justify-between gap-2")}>
+        <div className="flex min-w-0 items-center gap-4 lg:gap-6">
           <Link
             href={`/${demo}`}
             aria-label="copycat home"
-            className="flex items-center gap-1.5 text-base font-bold tracking-tight"
-            // Eyes use the accent's own foreground: near-black on the dark theme's #ff7a1a (7.7:1),
-            // near-white on the light theme's #b04a08 (6.2:1). Near-black on #b04a08 is only ~3:1.
-            style={{ "--cat-eye": "var(--accent-foreground)" } as CSSProperties}
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-full text-base font-semibold tracking-tight"
+            style={{ "--cat-eye": "var(--brand-fg)" } as CSSProperties}
           >
-            <CatLogo size={22} className="text-accent" />
-            <span className="hidden min-[420px]:inline">
-              <span className="text-accent">copy</span>
-              <span>cat</span>
+            <CatLogo size={24} className="text-brand" />
+            <span>
+              <span className="text-brand">copy</span>
+              <span className="text-fg">cat</span>
             </span>
           </Link>
-          <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Primary">
-            {LINKS.map(({ href, label }) => {
-              const Icon = ICONS[href];
-              const active = isActive(href, pathname);
+          <nav aria-label="Primary" className="hidden items-center gap-0.5 rounded-full border border-border bg-surface-2/60 p-1 sm:flex">
+            {NAV_ITEMS.map(({ href, label }) => {
+              const Icon = NAV_ICONS[href];
+              const active = isItemActive(href, pathname);
               return (
                 <Link
                   key={href}
                   href={`${href}${demo}`}
                   aria-current={active ? "page" : undefined}
-                  aria-label={label}
                   className={clsx(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
-                    active ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-2 hover:text-foreground",
+                    "relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-[var(--dur-fast)]",
+                    active ? "text-fg" : "text-muted hover:text-fg",
                   )}
                 >
-                  <Icon size={15} aria-hidden="true" />
-                  <span className={active ? "hidden min-[480px]:inline" : "hidden md:inline"}>{label}</span>
+                  {active ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-full bg-surface shadow-e1 dark:bg-surface-3"
+                      style={{ viewTransitionName: "nav-pill" }}
+                    />
+                  ) : null}
+                  <Icon size={15} aria-hidden="true" className="relative" />
+                  <span className="relative hidden md:inline">{label}</span>
+                  <span className="sr-only md:hidden">{label}</span>
                 </Link>
               );
             })}
           </nav>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
+        <div className="flex min-w-0 flex-shrink items-center gap-1 sm:gap-1.5">
           <Suspense fallback={null}>
             <AccountSwitcher />
           </Suspense>
-          {!hasToken && !demo ? <span className="hidden text-xs text-warning lg:inline">no API token set</span> : null}
           <button
             type="button"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label={mounted && theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-foreground"
+            aria-label={mounted && theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            className={clsx(ICON_BTN, "hidden sm:grid")}
           >
-            {mounted && theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            {mounted && theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
           </button>
           <button
             type="button"
             onClick={openDrawer}
-            aria-label="API token"
-            title="API token"
-            className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-foreground"
+            aria-label={`${LABELS.apiToken}: ${tokenOk ? "set" : "missing"}`}
+            title={tokenOk ? LABELS.apiTokenSet : LABELS.noApiToken}
+            className={clsx(ICON_BTN, "hidden sm:grid")}
           >
-            <KeyRound size={17} />
+            <KeyRound size={17} aria-hidden="true" />
+            {mounted ? <TokenDot ok={tokenOk} /> : null}
           </button>
+          <AccountMenu />
         </div>
       </div>
       <ScoutTabs pathname={pathname} demo={demo} />
+      <Suspense fallback={null}>
+        <DemoStrip />
+      </Suspense>
     </header>
   );
 }
@@ -116,7 +118,7 @@ function ScoutTabs({ pathname, demo }: { pathname: string | null; demo: string }
   const activeTab = scoutTabFor(pathname);
   if (!activeTab) return null;
   return (
-    <nav aria-label="Scout" className="mx-auto flex max-w-[1440px] items-center gap-1 px-4 pb-2">
+    <nav aria-label="Scout" className={clsx(containerClass(pathname), "flex items-center gap-1 pb-2")}>
       {SCOUT_TABS.map(({ href, label }) => {
         const active = href === activeTab;
         return (
@@ -125,8 +127,8 @@ function ScoutTabs({ pathname, demo }: { pathname: string | null; demo: string }
             href={`${href}${demo}`}
             aria-current={active ? "page" : undefined}
             className={clsx(
-              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:text-sm",
-              active ? "bg-surface-2 text-foreground" : "text-muted hover:bg-surface-2 hover:text-foreground",
+              "rounded-full px-3 py-1 text-xs font-medium transition-colors duration-[var(--dur-fast)] sm:text-sm",
+              active ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
             )}
           >
             {label}

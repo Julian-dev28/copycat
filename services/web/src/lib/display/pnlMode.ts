@@ -14,10 +14,10 @@ export const PNL_MODE_STORAGE_KEY = "copycat.pnlMode";
 /** Fired on window after a change in this tab (the storage event covers other tabs). */
 export const PNL_MODE_EVENT = "copycat:pnl-mode";
 
-export const PNL_MODE_LABELS: Record<PnlMode, { label: string; hint: string }> = {
-  standard: { label: "Green up, red down", hint: "Western convention" },
-  colorblind: { label: "Blue up, orange down", hint: "Easier with red-green color blindness" },
-  "east-asia": { label: "Red up, green down", hint: "China, Taiwan, Japan convention" },
+export const PNL_MODE_LABELS: Record<PnlMode, { label: string; short: string; hint: string }> = {
+  standard: { label: "Green up, red down", short: "Standard", hint: "Green up, red down (Western convention)" },
+  colorblind: { label: "Blue up, orange down", short: "Colorblind", hint: "Blue up, orange down: easier with red-green color blindness" },
+  "east-asia": { label: "Red up, green down", short: "Red = up", hint: "Red up, green down (China, Taiwan, Japan)" },
 };
 
 export function isPnlMode(v: unknown): v is PnlMode {

@@ -23,7 +23,7 @@ export function EnableConfirmDialog({
           <Button variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={confirming}>
+          <Button variant="danger-solid" onClick={onConfirm} disabled={confirming}>
             {confirming ? "Enabling…" : "Enable real trading"}
           </Button>
         </>

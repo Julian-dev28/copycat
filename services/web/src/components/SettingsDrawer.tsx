@@ -31,7 +31,7 @@ export function SettingsDrawer() {
   }
 
   return (
-    <Drawer open={drawerOpen} onClose={closeDrawer} title="Settings">
+    <Drawer open={drawerOpen} onClose={closeDrawer} title="API token" closeLabel="Close API token">
       <div className="flex flex-col gap-5">
         <div>
           <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">API connection</h3>

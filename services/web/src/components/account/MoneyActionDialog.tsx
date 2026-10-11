@@ -184,7 +184,7 @@ export function MoneyActionDialog({
           <ErrorLine>{s.error?.message}</ErrorLine>
           <div className="flex justify-end gap-2">
             <Button onClick={close}>Cancel</Button>
-            <Button type="submit" variant={kind === "withdraw" ? "danger" : "primary"} disabled={Boolean(problem) || isBusy(s)}>
+            <Button type="submit" variant={kind === "withdraw" ? "danger-solid" : "primary"} disabled={Boolean(problem) || isBusy(s)}>
               {TITLE[kind].split(" ")[0]}{amt ? ` ${formatUsd(amt)}` : ""}
             </Button>
           </div>

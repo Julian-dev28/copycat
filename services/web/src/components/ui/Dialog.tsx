@@ -2,9 +2,13 @@
 
 /**
  * Built on the native <dialog> element: free focus trap, Esc-to-close, and
- * ::backdrop, instead of reimplementing a modal from scratch or pulling in
- * a dialog library for something the platform already does.
+ * ::backdrop, instead of reimplementing a modal or pulling in a library.
+ * DESIGN 5 Dialogs: glass e3, 16px radius, max 480px, 24px padding; the
+ * panel scales .98 -> 1 and the backdrop fades (globals.css `ui-dialog`).
+ * Destructive dialogs: put `autoFocus` on the Cancel button so focus starts
+ * there, and use <Button variant="danger-solid"> for the confirm.
  */
+import { clsx } from "clsx";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 export interface DialogProps {
@@ -14,9 +18,13 @@ export interface DialogProps {
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
+  /** max width: sm 400, md 480 (default), lg 640. */
+  size?: "sm" | "md" | "lg";
 }
 
-export function Dialog({ open, onClose, title, description, children, footer }: DialogProps) {
+const WIDTH = { sm: "w-[min(25rem,calc(100vw-2rem))]", md: "w-[min(30rem,calc(100vw-2rem))]", lg: "w-[min(40rem,calc(100vw-2rem))]" };
+
+export function Dialog({ open, onClose, title, description, children, footer, size = "md" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -32,20 +40,24 @@ export function Dialog({ open, onClose, title, description, children, footer }: 
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
+      // a click on the backdrop lands on the <dialog> itself: cancel
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       aria-labelledby={titleId}
-      className={[
-        "m-0 w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-0 text-foreground",
+      className={clsx(
+        "ui-dialog glass m-0 max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-border p-0 text-fg",
         "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
-        "backdrop:bg-black/60",
-      ].join(" ")}
+        WIDTH[size],
+      )}
     >
-      <div className="p-5">
-        <h2 id={titleId} className="text-base font-semibold">
+      <div className="p-6">
+        <h2 id={titleId} className="text-title text-fg">
           {title}
         </h2>
-        {description ? <div className="mt-2 text-sm text-muted">{description}</div> : null}
-        {children ? <div className="mt-4">{children}</div> : null}
-        {footer ? <div className="mt-5 flex justify-end gap-2">{footer}</div> : null}
+        {description ? <div className="mt-2 text-body text-muted">{description}</div> : null}
+        {children ? <div className="mt-4 text-body">{children}</div> : null}
+        {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
       </div>
     </dialog>
   );
