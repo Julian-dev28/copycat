@@ -82,7 +82,7 @@ export function YourWallets({
     <Panel className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-sm font-semibold">Your wallets</h2>
+          <h2 className="text-sm font-semibold">Your copies</h2>
           <div role="tablist" aria-label="Wallet status" className="flex gap-1">
             {LIFECYCLE_TABS.map((t) => (
               <button

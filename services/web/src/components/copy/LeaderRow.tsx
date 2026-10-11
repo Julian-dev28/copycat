@@ -79,7 +79,7 @@ export function LeaderRow({
       </div>
       {expanded ? (
         <div id={panelId} className="border-t border-border bg-surface-2/40 px-4 pb-3 sm:px-5 sm:pl-14">
-          <p className="pt-3 text-xs text-muted">Tick a setting to override it for this leader only. Unticked rows follow the book-wide value.</p>
+          <p className="pt-3 text-xs text-muted">Tick a setting to override it for this trader only. Unticked rows follow the global value.</p>
           <LeaderOverridePanel settings={settings} address={address} onChange={onOverrideChange} />
         </div>
       ) : null}

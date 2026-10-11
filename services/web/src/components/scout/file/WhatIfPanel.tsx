@@ -92,13 +92,13 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
         ) : null}
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button type="button" size="sm" onClick={save} disabled={!canSave || book.savingOverride || !book.ready}>
-            {book.savingOverride ? "Saving…" : "Save as this leader's override"}
+            {book.savingOverride ? "Saving…" : "Save as this trader's override"}
           </Button>
           <AddToBookButton address={a} book={book} inBook={book.inBook(a)} />
           {saved ? <span className="text-xs text-success">Override saved.</span> : null}
           {book.saveError ? <span className="text-xs text-danger">{book.saveError.message}</span> : null}
         </div>
-        <p className="text-[11px] text-muted">Equity is only for the sim; an override stores sizing, leverage, margin and entry limits for this leader.</p>
+        <p className="text-[11px] text-muted">Equity is only for the sim; an override stores sizing, leverage, margin and entry limits for this trader.</p>
       </form>
     </Panel>
   );

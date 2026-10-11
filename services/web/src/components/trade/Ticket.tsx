@@ -76,11 +76,11 @@ export function Ticket({
     const terms = body.settings_source === "global"
       ? "with your global settings"
       : `${formatUsd(body.allocation_usd)}${body.exposure_mode === "target" ? ` at ${body.target_leverage}x` : ", following his leverage"}`;
-    copy.mutate({ address, body }, { onSuccess: () => setDone(`${verb} ${label}: ${terms}. See it in Your wallets below.`) });
+    copy.mutate({ address, body }, { onSuccess: () => setDone(`${verb} ${label}: ${terms}. See it in Your copies below.`) });
   }
 
   const cta = t.action === "copy"
-    ? copy.isPending ? "Copying…" : custom ? (t.eff.direction === "counter" ? "Counter wallet" : "Copy wallet") : "Copy with global settings"
+    ? copy.isPending ? "Copying…" : custom ? (t.eff.direction === "counter" ? "Counter trader" : "Copy trader") : "Copy with global settings"
     : t.action === "update" ? (copy.isPending ? "Updating…" : t.switching ? (custom ? "Switch to custom terms" : "Switch to global settings") : "Update") : "No changes";
 
   return (
@@ -108,7 +108,7 @@ export function Ticket({
       </div>
       {lifeStatus === "paused" ? (
         <p className="flex items-start gap-1.5 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
-          <PauseCircle size={13} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> Paused: no new copies; exits still followed. Resume it from Your wallets.
+          <PauseCircle size={13} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> Paused: no new copies; exits still followed. Resume it from Your copies.
         </p>
       ) : null}
 

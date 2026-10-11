@@ -7,7 +7,7 @@ import { Panel, PanelHeader } from "@/components/ui/Panel";
 
 const COLUMNS: { label: string; numeric?: boolean }[] = [
   { label: "Coin" },
-  { label: "Leader" },
+  { label: "Trader" },
   { label: "Side" },
   { label: "Size", numeric: true },
   { label: "Entry", numeric: true },
@@ -39,9 +39,9 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
         </div>
       ) : positions.length === 0 ? (
         <p className="border-t border-border px-5 py-10 text-center text-sm text-muted">
-          No open copies. When a leader opens a position, the copy shows up here within one cycle.{" "}
+          No open copies. When a trader you copy opens a position, the copy shows up here within one cycle.{" "}
           <Link href="/copy" className="text-accent underline-offset-2 hover:underline">
-            Check your leaders
+            Check your copies
           </Link>
         </p>
       ) : (

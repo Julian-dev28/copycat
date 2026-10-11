@@ -58,7 +58,7 @@ export function Workspace({
           </p>
         ) : prof.error && row === null && apiProblem(prof.error) === "too_old" ? (
           <p className="py-16 text-center text-sm text-muted">
-            Scout has no file for this wallet yet, so there is no chart. The ticket still previews what you would copy from his live book.
+            Scout has no file for this wallet yet, so there is no chart. The ticket still previews what you would copy from their live positions.
           </p>
         ) : prof.error ? (
           <p className="py-16 text-center text-sm text-danger">{problemText(prof.error, "trader file")}</p>

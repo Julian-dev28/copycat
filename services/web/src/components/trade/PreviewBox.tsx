@@ -91,7 +91,7 @@ export function PreviewBox({
       )}
       {showFull ? (
         <button type="button" onClick={() => onUseFullBook?.(Math.ceil(p.fullBookUsd!))} className="text-left text-accent hover:underline">
-          Invest {money(Math.ceil(p.fullBookUsd!))} to copy their full book
+          Invest {money(Math.ceil(p.fullBookUsd!))} to copy all their positions
         </button>
       ) : null}
       {p.liquidityCapped ? (

@@ -12,7 +12,7 @@ import type { TraderRow } from "@/lib/scout/types";
 import { MarketRow } from "./MarketRow";
 
 const TABS: { id: MarketTab; label: string }[] = [
-  { id: "mine", label: "My wallets" },
+  { id: "mine", label: "My copies" },
   { id: "top", label: "Top" },
   { id: "all", label: "All" },
 ];
@@ -130,7 +130,7 @@ export function MarketsPanel({
               selected={m.address === selected}
               change={change}
               onSelect={(a) => {
-                // Pin the tab the user picked from, so copying a wallet doesn't flip the list to "My wallets".
+                // Pin the tab the user picked from, so copying a wallet doesn't flip the list to "My copies".
                 if (tabChoice === null) setTab(tab);
                 onSelect(a);
               }}

@@ -29,7 +29,7 @@ export function sizingText(s: TradeSettings): string {
 
 export function leverageText(s: TradeSettings): string {
   const cap = s.max_position_leverage;
-  if (s.sizing_mode === "allocation" && s.exposure_mode === "target") return `${s.target_leverage ?? 5}x on his book (cap ${cap}x)`;
+  if (s.sizing_mode === "allocation" && s.exposure_mode === "target") return `${s.target_leverage ?? 5}x on their positions (cap ${cap}x)`;
   if (s.leverage_mode === "match") return `Follow theirs, cap ${cap}x`;
   if (s.leverage_mode === "fixed") return `Fixed ${Math.min(s.leverage, cap)}x`;
   return `Each coin's max, cap ${cap}x`;

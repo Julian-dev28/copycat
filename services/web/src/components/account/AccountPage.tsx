@@ -42,10 +42,10 @@ function NoAccount({ any }: { any: boolean }) {
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button variant="primary" onClick={() => setManagerView({ view: "create" })}>
-            <Plus size={15} aria-hidden="true" /> Create a new wallet
+            <Plus size={15} aria-hidden="true" /> Create a new account
           </Button>
           <Button onClick={() => setManagerView({ view: "connect" })}>
-            <Link2 size={15} aria-hidden="true" /> Connect an existing wallet
+            <Link2 size={15} aria-hidden="true" /> Connect an existing account
           </Button>
         </div>
       )}

@@ -43,7 +43,7 @@ export function TradeDemoBanner({ acct, hrefFor }: { acct: DemoAccount; hrefFor:
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-accent/40 bg-accent-soft/40 px-3 py-1.5 text-xs text-muted">
       <FlaskConical size={13} className="text-accent" aria-hidden="true" />
       <span>
-        <span className="font-semibold text-foreground">Demo.</span> Sample wallets and an in-memory book: nothing leaves this tab.
+        <span className="font-semibold text-foreground">Demo.</span> Sample traders and in-memory copies: nothing leaves this tab.
       </span>
       <span className="ml-auto flex items-center gap-1">
         Account:

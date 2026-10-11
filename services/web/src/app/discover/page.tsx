@@ -99,7 +99,7 @@ function DiscoverPageContent() {
       ) : null}
 
       {addLeader.isError ? (
-        <Notice tone="danger" title="Couldn't add that leader">
+        <Notice tone="danger" title="Couldn't copy that trader">
           {addLeader.error.message}
         </Notice>
       ) : null}

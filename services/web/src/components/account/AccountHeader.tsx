@@ -37,7 +37,7 @@ export function AccountHeader({ summary }: { summary: AccountSummary }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => openWalletManager()}>
-            <Wallet size={14} aria-hidden="true" /> Wallets
+            <Wallet size={14} aria-hidden="true" /> Accounts
           </Button>
         </div>
       </div>

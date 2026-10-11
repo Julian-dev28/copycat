@@ -101,7 +101,7 @@ export function TraderTable({
                       <Link href={href} className="max-w-[10rem] truncate font-medium hover:text-accent">
                         {row.display_name}
                       </Link>
-                      {inBook ? <BookMarked size={12} className="text-accent" aria-label="In your book" /> : null}
+                      {inBook ? <BookMarked size={12} className="text-accent" aria-label="Copying" /> : null}
                     </div>
                   ) : null}
                   <div className="flex items-center gap-1">
@@ -111,7 +111,7 @@ export function TraderTable({
                         <Link href={href} aria-label="Open trader file" title="Open trader file" className="rounded p-1 text-muted hover:bg-surface-2 hover:text-accent">
                           <ChevronRight size={13} aria-hidden="true" />
                         </Link>
-                        {inBook ? <BookMarked size={12} className="text-accent" aria-label="In your book" /> : null}
+                        {inBook ? <BookMarked size={12} className="text-accent" aria-label="Copying" /> : null}
                       </>
                     ) : null}
                   </div>

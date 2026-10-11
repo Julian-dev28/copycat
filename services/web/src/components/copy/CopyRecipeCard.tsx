@@ -32,7 +32,7 @@ export function CopyRecipeCard({ settings, status }: { settings: Settings; statu
   } else if (r.sizingMode === "fixed_notional") {
     headline = `${formatUsd(r.notionalUsd)} per copy at ${lev}`;
   } else {
-    headline = `Sized like the leader, ${Math.round(settings.sleeve_frac * 100)}% of equity x ${settings.size_multiplier}, at ${lev}`;
+    headline = `Sized like the trader, ${Math.round(settings.sleeve_frac * 100)}% of equity x ${settings.size_multiplier}, at ${lev}`;
   }
 
   return (
@@ -71,7 +71,7 @@ export function CopyRecipeCard({ settings, status }: { settings: Settings; statu
           ) : null}
         </div>
         <dl className="grid flex-shrink-0 grid-cols-3 gap-2 sm:gap-3">
-          <Stat icon={<Users size={14} aria-hidden="true" />} label="Leaders" value={`${settings.leaders.length}/${MAX_LEADERS}`} />
+          <Stat icon={<Users size={14} aria-hidden="true" />} label="Copies" value={`${settings.leaders.length}/${MAX_LEADERS}`} />
           <Stat icon={<Wallet size={14} aria-hidden="true" />} label="Equity" value={formatUsd(status?.equity_usd, true)} />
           <Stat
             icon={<Flame size={14} aria-hidden="true" />}

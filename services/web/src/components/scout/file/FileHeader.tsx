@@ -26,7 +26,7 @@ export function FileHeader({ profile, book, demo, nowMs }: { profile: TraderProf
           <div className="flex flex-wrap items-center gap-2">
             {row.display_name ? <h1 className="text-lg font-semibold">{row.display_name}</h1> : <h1 className="sr-only">Trader {row.address}</h1>}
             <AddressChip address={row.address} strong={!row.display_name} />
-            {inBook ? <Badge tone="success">In your book</Badge> : null}
+            {inBook ? <Badge tone="success">Copying</Badge> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
             <StyleTag style={row.style} />

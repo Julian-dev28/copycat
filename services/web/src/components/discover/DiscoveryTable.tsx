@@ -295,7 +295,7 @@ export function DiscoveryTable({
       </div>
       {atCap ? (
         <p className="border-t border-border px-5 py-2 text-xs text-muted">
-          You&apos;re at the {MAX_LEADERS}-leader cap. Remove one on /copy to add another.
+          You&apos;re at the {MAX_LEADERS}-copy cap. Remove one on /copy to add another.
         </p>
       ) : null}
     </Panel>

@@ -147,7 +147,7 @@ export function useScoutBook(): ScoutBook {
   const addDemo = useMutation<Settings, Error, string>({
     mutationFn: async (address) => {
       const cur = qc.getQueryData<Settings>(DEMO_SETTINGS_KEY) ?? fixtureSettings(demoNowMs());
-      if (cur.leaders.length >= MAX_LEADERS) throw new Error(`the book is full (${MAX_LEADERS} leaders)`);
+      if (cur.leaders.length >= MAX_LEADERS) throw new Error(`you already copy ${MAX_LEADERS} traders, the most allowed`);
       const next = { ...cur, leaders: [...new Set([...cur.leaders, normAddr(address)])] };
       await new Promise((r) => setTimeout(r, 250));
       return next;

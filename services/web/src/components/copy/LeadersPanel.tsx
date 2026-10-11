@@ -40,8 +40,8 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
   return (
     <Panel>
       <PanelHeader
-        title={`Leaders (${settings.leaders.length}/${MAX_LEADERS})`}
-        description="Wallets to mirror. Expand a row to override any book-wide setting for just that leader."
+        title={`Copies (${settings.leaders.length}/${MAX_LEADERS})`}
+        description="Traders you copy. Expand a row to override any global setting for just that trader."
       />
       <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-start sm:px-5">
         <div className="flex-1">
@@ -56,7 +56,7 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
               if (e.key === "Enter") handleAdd();
             }}
             disabled={atCap}
-            aria-label="Leader wallet address"
+            aria-label="Trader address"
             aria-invalid={Boolean(formError)}
             aria-describedby={formError ? "add-leader-error" : undefined}
           />
@@ -65,7 +65,7 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
               {formError}
             </p>
           ) : atCap ? (
-            <p className="mt-1 text-xs text-muted">Max {MAX_LEADERS} leaders. Remove one to add another.</p>
+            <p className="mt-1 text-xs text-muted">Max {MAX_LEADERS} copies. Remove one to add another.</p>
           ) : null}
         </div>
         <Button variant="primary" onClick={handleAdd} disabled={atCap || !addressDraft.trim() || addLeader.isPending}>
@@ -75,7 +75,7 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
 
       {settings.leaders.length === 0 ? (
         <p className="border-t border-border px-4 py-6 text-center text-sm text-muted sm:px-5">
-          No leaders yet. Add an address above, or find one on{" "}
+          No copies yet. Add a trader's address above, or find one on{" "}
           <a href={demo ? "/discover?demo=1" : "/discover"} className="text-accent underline-offset-2 hover:underline">
             Discover
           </a>

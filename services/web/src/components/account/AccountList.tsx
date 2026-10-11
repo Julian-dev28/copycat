@@ -37,7 +37,7 @@ export function AccountList() {
       {q.isPending && !q.isError ? <div className="h-24 animate-pulse rounded-xl bg-surface-2" role="status" aria-label="Loading accounts" /> : null}
       {q.isSuccess && !accounts.length ? (
         <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted">
-          No trading accounts yet. Create a fresh wallet, or connect one you already use on Hyperliquid.
+          No accounts yet. Create a fresh one, or connect one you already use on Hyperliquid.
         </p>
       ) : null}
       {accounts.length ? (
@@ -48,8 +48,8 @@ export function AccountList() {
         </ul>
       ) : null}
       <div className="flex flex-col gap-2 sm:flex-row">
-        <AddCard icon={<Plus size={16} />} title="Create a new wallet" body="copycat makes one for you. Back up the key, deposit, trade." onClick={() => openWalletManager({ view: "create" })} />
-        <AddCard icon={<Link2 size={16} />} title="Connect an existing wallet" body="Sign with MetaMask or Rabby, or paste an API wallet key." onClick={() => openWalletManager({ view: "connect" })} />
+        <AddCard icon={<Plus size={16} />} title="Create a new account" body="copycat makes one for you. Back up the key, deposit, trade." onClick={() => openWalletManager({ view: "create" })} />
+        <AddCard icon={<Link2 size={16} />} title="Connect an existing account" body="Sign with MetaMask or Rabby, or paste an API wallet key." onClick={() => openWalletManager({ view: "connect" })} />
       </div>
       <AgentBanner />
     </div>

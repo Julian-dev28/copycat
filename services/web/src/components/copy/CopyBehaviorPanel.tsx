@@ -30,7 +30,7 @@ export function CopyBehaviorPanel({
 
   return (
     <Panel>
-      <PanelHeader title="Copy behavior" description="How closely each copy tracks the leader." />
+      <PanelHeader title="Copy behavior" description="How closely each copy tracks the trader." />
       <SettingRow
         title="Maximum position leverage"
         description="Caps the leverage any single copied position can open at, across every sizing mode."
@@ -56,7 +56,7 @@ export function CopyBehaviorPanel({
       </SettingRow>
       <SettingRow
         title="Include spot & staked assets"
-        description="Count spot balances and staked HYPE toward the leader's equity when sizing proportional copies."
+        description="Count spot balances and staked HYPE toward the trader's equity when sizing proportional copies."
         htmlFor="include_spot_staked"
         inline
       >
@@ -71,7 +71,7 @@ export function CopyBehaviorPanel({
       </SettingRow>
       <SettingRow
         title="Only copy newly opened positions"
-        description="Ignore a leader's positions that were already open when you started following them."
+        description="Ignore a trader's positions that were already open when you started following them."
         htmlFor="only_new_positions"
         inline
       >
@@ -86,7 +86,7 @@ export function CopyBehaviorPanel({
       </SettingRow>
       <SettingRow
         title="Max worse entry"
-        description="Skip a copy if your entry would land this much worse than the leader's, vs. mid at signal time."
+        description="Skip a copy if your entry would land this much worse than the trader's, vs. mid at signal time."
         htmlFor="max_worse_entry_pct"
       >
         <Slider

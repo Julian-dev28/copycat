@@ -115,7 +115,7 @@ function TradeInner() {
         onAdjust={(a) => select(a, "ticket")}
         nowMs={nowMs}
         sparks={Object.fromEntries(rows.map((r) => [normAddr(r.address), rowQuote(r).spark]))}
-        empty={<p className="text-sm text-muted">Nothing invested yet. Pick a wallet, set an amount, press Copy wallet: it shows up here like an open position.</p>}
+        empty={<p className="text-sm text-muted">Nothing invested yet. Pick a trader, set an amount, press Copy trader: it shows up here like an open position.</p>}
       />
     </div>
   );

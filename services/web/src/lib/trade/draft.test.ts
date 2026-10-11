@@ -117,7 +117,7 @@ describe("global summary", () => {
     expect(v8.slice(-3)).toEqual([
       { label: "Direction", value: "Counter (opposite side)" }, { label: "Only these coins", value: "BTC" }, { label: "Never these coins", value: "DOGE, xyz:TSLA" },
     ]);
-    expect(leverageText({ ...s, sizing_mode: "allocation", exposure_mode: "target", target_leverage: 7 })).toBe("7x on his book (cap 20x)");
+    expect(leverageText({ ...s, sizing_mode: "allocation", exposure_mode: "target", target_leverage: 7 })).toBe("7x on their positions (cap 20x)");
   });
 });
 

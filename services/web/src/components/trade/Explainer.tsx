@@ -4,7 +4,7 @@ import { Telescope } from "lucide-react";
 const STEPS = [
   { n: 1, title: "Pick a wallet", text: "Each wallet is a market. Its index tracks how its trading did, with deposits and withdrawals removed." },
   { n: 2, title: "Invest $ with your leverage", text: "Follow their leverage, or set yours. The preview shows exactly which of their positions you'd hold." },
-  { n: 3, title: "Watch it in Your wallets", text: "copycat mirrors every trade they make. Adjust the size any time, or stop and close." },
+  { n: 3, title: "Watch it in Your copies", text: "copycat mirrors every trade they make. Adjust the size any time, or stop and close." },
 ];
 
 /** First-run card: what this page does, in three steps, plus a pointer to Scout. */

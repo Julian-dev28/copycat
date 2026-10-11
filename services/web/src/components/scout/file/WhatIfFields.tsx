@@ -31,7 +31,7 @@ function Num({ f, label, draft, set, errors, placeholder }: { f: WhatIfField; la
         inputMode="decimal"
         className={INPUT}
         value={draft[f]}
-        placeholder={placeholder ?? "book default"}
+        placeholder={placeholder ?? "global default"}
         aria-invalid={Boolean(errors[f])}
         aria-describedby={errors[f] ? `${id}-err` : undefined}
         onChange={(e) => set(f, e.target.value)}
@@ -45,7 +45,7 @@ function Pick({ f, label, options, draft, set }: { f: WhatIfField; label: string
   return (
     <Field id={id} label={label}>
       <select id={id} className={INPUT} value={draft[f]} onChange={(e) => set(f, e.target.value)}>
-        <option value="">Book default</option>
+        <option value="">Global default</option>
         {options.map(([v, l]) => (
           <option key={v} value={v}>
             {l}

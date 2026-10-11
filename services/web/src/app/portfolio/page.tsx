@@ -72,7 +72,7 @@ function Portfolio() {
         error={wallets.error ? problemText(wallets.error, "wallets") : null}
         onAdjust={open}
         nowMs={nowMs}
-        empty={<p className="text-sm text-muted">No wallets yet. Copy one from the Trade page.</p>}
+        empty={<p className="text-sm text-muted">No copies yet. Copy a trader from the Trade page.</p>}
       />
       <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} />
       {!demo ? <EventFeed /> : null}

@@ -164,7 +164,7 @@ function ScoutBoard() {
       ) : null}
 
       {book.addError ? (
-        <Notice tone="danger" title="Couldn't add that trader to your book">
+        <Notice tone="danger" title="Couldn't add that trader to your copies">
           {book.addError.message}
         </Notice>
       ) : null}

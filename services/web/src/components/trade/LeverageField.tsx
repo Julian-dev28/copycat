@@ -72,12 +72,12 @@ export function LeverageField({
               </p>
             ) : null}
             <p className="font-num mt-1 text-xs text-muted">{formatLiquidationHint(cap.effective, marginMode)}</p>
-            <p className="mt-1 text-xs text-muted">His book in his proportions, at your leverage. A coin with a lower max opens at its max.</p>
+            <p className="mt-1 text-xs text-muted">Their positions in their proportions, at your leverage. A coin with a lower max opens at its max.</p>
           </div>
         ) : (
           <p className="text-xs text-muted">
             Each copy opens at his leverage on that coin
-            {hisLeverage !== null ? <> (his whole book runs at <span className="font-num text-foreground">{hisLeverage.toFixed(1)}x</span> now)</> : null}.
+            {hisLeverage !== null ? <> (their whole account runs at <span className="font-num text-foreground">{hisLeverage.toFixed(1)}x</span> now)</> : null}.
           </p>
         )}
       </div>

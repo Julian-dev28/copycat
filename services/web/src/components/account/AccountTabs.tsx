@@ -38,10 +38,10 @@ function Copytrade({ summary }: { summary: AccountSummary }) {
       <p className="text-muted">
         {active
           ? <>copycat has <span className="font-num font-semibold text-foreground">{formatUsd(summary.balances.copytrade_usd)}</span> of margin in copies on this account.</>
-          : "copycat only copies on the active account. Activate this one from the wallet manager to copy with it."}
+          : "copycat only copies on the active account. Activate this one from Accounts to copy with it."}
       </p>
       <Link href={`/portfolio${demo ? "?demo=1" : ""}`} className="inline-flex w-fit items-center gap-1 font-medium text-accent hover:underline">
-        Your wallets and copies in Portfolio <ArrowRight size={14} aria-hidden="true" />
+        Your copies in Portfolio <ArrowRight size={14} aria-hidden="true" />
       </Link>
     </div>
   );

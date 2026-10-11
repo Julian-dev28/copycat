@@ -77,9 +77,9 @@ export function AddToBookButton({
   const adding = book.adding === address.toLowerCase();
   if (inBook) {
     return (
-      <Button size={size} variant="secondary" disabled className={clsx("!opacity-100", className)} aria-label="Already in your book">
+      <Button size={size} variant="secondary" disabled className={clsx("!opacity-100", className)} aria-label="Already copying">
         <Check size={13} className="text-success" aria-hidden="true" />
-        In book
+        Copying
       </Button>
     );
   }
@@ -90,14 +90,14 @@ export function AddToBookButton({
       variant="primary"
       className={className}
       disabled={!book.ready || full || adding}
-      title={full ? `Your book is full (${MAX_LEADERS} leaders). Remove one on /copy first.` : undefined}
+      title={full ? `You copy ${MAX_LEADERS} traders, the most allowed. Remove one on /copy first.` : undefined}
       onClick={(e) => {
         e.stopPropagation();
         book.add(address);
       }}
     >
       {adding ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />}
-      {full ? "Book full" : adding ? "Adding…" : "Add to book"}
+      {full ? "Copies full" : adding ? "Adding…" : "Add to copies"}
     </Button>
   );
 }
@@ -181,7 +181,7 @@ export function DemoBanner() {
     <div className="flex items-center gap-2 rounded-lg border border-dashed border-accent/40 bg-accent-soft/40 px-3 py-1.5 text-xs text-muted">
       <ServerCrash size={13} className="text-accent" aria-hidden="true" />
       <span>
-        <span className="font-semibold text-foreground">Demo data.</span> Sample traders, no api calls. Add to book only changes this tab.
+        <span className="font-semibold text-foreground">Demo data.</span> Sample traders, no api calls. Add to copies only changes this tab.
       </span>
     </div>
   );

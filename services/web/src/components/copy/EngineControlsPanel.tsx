@@ -25,7 +25,7 @@ const SIZING_OPTIONS = [
 ];
 const LEVERAGE_MODE_OPTIONS = [
   { value: "max" as const, label: "Max" },
-  { value: "match" as const, label: "Match leader" },
+  { value: "match" as const, label: "Match trader" },
   { value: "fixed" as const, label: "Fixed" },
 ];
 const MARGIN_MODE_OPTIONS = [
@@ -163,7 +163,7 @@ export function EngineControlsPanel({
           </SettingRow>
           <SettingRow
             title="Equity sleeve"
-            description="Share of your equity available to split across leaders in proportional mode."
+            description="Share of your equity available to split across your copies in proportional mode."
           >
             <Slider
               min={0}
@@ -259,7 +259,7 @@ export function EngineControlsPanel({
         </div>
       </SettingRow>
 
-      <SettingRow title="Max open copies" description="Caps how many positions can be open across all leaders at once." htmlFor="max_open_copies">
+      <SettingRow title="Max open copies" description="Caps how many positions can be open across all your copies at once." htmlFor="max_open_copies">
         <Input
           id="max_open_copies"
           type="number"

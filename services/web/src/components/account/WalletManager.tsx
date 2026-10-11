@@ -15,7 +15,7 @@ import { ModalShell } from "./ModalShell";
 import { RefreshAgentForm } from "./RefreshAgentForm";
 
 const TITLES: Record<ManagerView["view"], string> = {
-  closed: "", list: "Trading accounts", create: "Create a wallet", connect: "Connect a wallet", refresh: "Refresh trading agent",
+  closed: "", list: "Accounts", create: "Create an account", connect: "Connect an account", refresh: "Refresh trading agent",
 };
 
 /**

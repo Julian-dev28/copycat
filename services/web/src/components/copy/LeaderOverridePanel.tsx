@@ -18,7 +18,7 @@ const SIZING_OPTIONS = [
 ];
 const LEVERAGE_MODE_OPTIONS = [
   { value: "max" as const, label: "Max" },
-  { value: "match" as const, label: "Match leader" },
+  { value: "match" as const, label: "Match trader" },
   { value: "fixed" as const, label: "Fixed" },
 ];
 const MARGIN_MODE_OPTIONS = [

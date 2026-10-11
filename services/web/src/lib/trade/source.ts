@@ -146,7 +146,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
   const setPaused = (address: string, paused: boolean) => {
     const b = book(acct);
     const a = normAddr(address);
-    if (!b.settings.leaders.includes(a)) return Promise.reject(new Error("not in the book"));
+    if (!b.settings.leaders.includes(a)) return Promise.reject(new Error("not one of your copies"));
     const prev = b.settings.leader_overrides[a] ?? {};
     b.settings.leader_overrides = { ...b.settings.leader_overrides, [a]: { ...prev, paused } };
     logEvent(b, a, { ts_ms: demoNowMs(), action: paused ? "halt" : "resume", reason: paused ? "wallet paused: no new copies; exits still followed" : "wallet resumed" });
@@ -161,7 +161,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       const a = normAddr(address);
       const s = b.settings;
       const prev = s.leader_overrides[a];
-      if (!s.leaders.includes(a) && s.leaders.length >= 25) return Promise.reject(new Error("the book is full (25 wallets)"));
+      if (!s.leaders.includes(a) && s.leaders.length >= 25) return Promise.reject(new Error("you already copy 25 traders, the most allowed"));
       s.leaders = s.leaders.includes(a) ? s.leaders : [...s.leaders, a];
       // global: the Settings tab as-is, any override cleared (we keep only when it was first invested, and a pause).
       const terms: TradeOverride = body.settings_source === "global"

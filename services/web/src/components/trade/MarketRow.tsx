@@ -55,7 +55,7 @@ export function MarketRow({
           <span className="min-w-0">
             <span className="flex items-center gap-1">
               <span className={clsx("truncate text-sm font-medium", !m.name && "font-num")}>{m.name ?? shortenAddress(m.address, 4, 4)}</span>
-              {m.inBook ? <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" title="In your book" aria-label="In your book" /> : null}
+              {m.inBook ? <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" title="Copying" aria-label="Copying" /> : null}
             </span>
             {m.name ? <span className="font-num block truncate text-[11px] text-muted">{shortenAddress(m.address, 4, 4)}</span> : null}
           </span>

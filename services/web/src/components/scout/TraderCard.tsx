@@ -58,7 +58,7 @@ export function TraderCard({
         {inBook ? (
           <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
             <BookMarked size={11} aria-hidden="true" />
-            In your book
+            Copying
           </span>
         ) : null}
       </header>

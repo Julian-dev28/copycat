@@ -51,7 +51,7 @@ function SettingsContent({ demo }: { demo: boolean }) {
           <h1 className="text-xl font-bold tracking-tight">Settings</h1>
           <p className="text-sm text-muted">
             {demo
-              ? "Demo settings: they change the demo book in this tab only, never your account."
+              ? "Demo settings: they change the demo copies in this tab only, never your account."
               : "Applies to every wallet you copy. Changes save as you go."}
           </p>
         </div>

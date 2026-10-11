@@ -20,7 +20,7 @@ export function WalletHeader({ address, row, nowMs, fileHref, inBook, onScout = 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-lg font-bold tracking-tight">{row?.display_name ?? shortenAddress(address)}</h1>
-            {inBook ? <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">In your book</span> : null}
+            {inBook ? <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">Copying</span> : null}
             {!onScout ? <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted" title="Opened from a pasted address">Not on Scout</span> : null}
           </div>
           <AddressChip address={address} />
