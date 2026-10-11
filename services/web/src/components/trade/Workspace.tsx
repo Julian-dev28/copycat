@@ -3,7 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { useScoutProfile } from "@/hooks/useScout";
-import { problemText } from "@/lib/trade/apiState";
+import { apiProblem, problemText } from "@/lib/trade/apiState";
 import type { TraderRow } from "@/lib/scout/types";
 import type { TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
 import { IndexChart } from "./IndexChart";
@@ -55,6 +55,10 @@ export function Workspace({
         ) : prof.data?.kind === "building" ? (
           <p className="flex items-center gap-2 py-16 text-sm text-muted">
             <Loader2 size={14} className="animate-spin" aria-hidden="true" /> Building this wallet&apos;s file from Hyperliquid. Usually under a minute.
+          </p>
+        ) : prof.error && row === null && apiProblem(prof.error) === "too_old" ? (
+          <p className="py-16 text-center text-sm text-muted">
+            Scout has no file for this wallet yet, so there is no chart. The ticket still previews what you would copy from his live book.
           </p>
         ) : prof.error ? (
           <p className="py-16 text-center text-sm text-danger">{problemText(prof.error, "trader file")}</p>

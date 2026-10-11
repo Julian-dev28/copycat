@@ -103,9 +103,9 @@ function EventRow({ e }: { e: EngineEvent }) {
   const k = eventKind(e);
   return (
     <li className="flex flex-col gap-0.5 px-4 py-2 text-sm">
-      <span className="flex items-center gap-2">
+      <span className="flex items-start gap-2">
         <span className={clsx("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase", KIND_TONE[k])}>{e.action}</span>
-        <span className={clsx("min-w-0 flex-1 truncate", k === "skip" && "text-muted")} title={eventLine(e)}>{eventLine(e)}</span>
+        <span className={clsx("min-w-0 flex-1 break-words", k === "skip" && "text-muted")}>{eventLine(e)}</span>
         <span className="font-num text-[11px] whitespace-nowrap text-muted" title={new Date(e.ts_ms).toISOString()}>{formatAgo(e.ts_ms)}</span>
       </span>
       {k !== "skip" && (e.notional_usd || e.leverage || e.reason) ? (
