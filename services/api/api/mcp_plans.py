@@ -119,14 +119,30 @@ def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
     )
 
 
-def book_fingerprint(book: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
+def planned_coins(preview: WalletPreview) -> List[str]:
+    """Coins the plan would actually open (not skipped)."""
+    return sorted({s.coin for s in preview.slices if s.status != "skip"})
+
+
+def book_fingerprint(book: List[Dict[str, Any]],
+                     coins: Optional[List[str]] = None) -> Tuple[str, List[str]]:
     """sha256 over his positions (coin, side, |size| x entry to the cent),
     sorted by coin, plus a human summary sorted by size. `book` is
     `engine.public.leader_book` (one account read). Entry-based, so a mark
-    move does not change it; an open, add, reduce, close or flip does."""
-    rows = sorted((str(b["coin"]), str(b["side"]), round(float(b["notional_usd"]), 2)) for b in book)
+    move does not change it; an open, add, reduce, close or flip does.
+
+    `coins`: hash only these (the ones the plan copies), plus whether each is
+    still held. A very active trader changing a coin we are NOT copying no
+    longer voids the plan; any change to a planned coin (size, side, closed)
+    still does. The summary always covers his whole book."""
+    all_rows = sorted((str(b["coin"]), str(b["side"]), round(float(b["notional_usd"]), 2)) for b in book)
+    if coins is None:
+        rows = all_rows
+    else:
+        held = {r[0]: r for r in all_rows}
+        rows = [held.get(c, (c, "flat", 0.0)) for c in sorted(set(coins))]
     digest = hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode()).hexdigest()
-    summary = [f"{c} {side} ${n:,.0f}" for c, side, n in sorted(rows, key=lambda r: -r[2])]
+    summary = [f"{c} {side} ${n:,.0f}" for c, side, n in sorted(all_rows, key=lambda r: -r[2])]
     return digest, summary
 
 
@@ -341,7 +357,7 @@ def audit_terms(req: CopyPlanRequest) -> Dict[str, Any]:
 def new_plan(req: CopyPlanRequest, preview: WalletPreview, projection: Optional[WalletProjection],
              settings: Settings, warnings: List[str], executable: bool, now_ms: int,
              book: List[Dict[str, Any]]) -> CopyPlan:
-    fp, summary = book_fingerprint(book)
+    fp, summary = book_fingerprint(book, planned_coins(preview))
     return CopyPlan(
         plan_id="plan_" + secrets.token_hex(8), confirm_code=new_confirm_code(),
         created_ms=now_ms, expires_ms=now_ms + MCP_PLAN_TTL_S * 1000,

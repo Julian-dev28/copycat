@@ -736,7 +736,7 @@ class WalletPreview(BaseModel):
 # settings write as the Trade page, behind an env flag, a single-use confirm
 # code, a dollar cap and a check that his book did not change.
 
-MCP_PLAN_TTL_S = 120
+MCP_PLAN_TTL_S = 300   # a busy wallet's plan takes ~40 s to build; leave time to read it
 MCP_CONFIRM_CODE_LEN = 6
 MCP_MAX_DEVIATION_PCT = 50.0
 

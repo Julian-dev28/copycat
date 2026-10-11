@@ -160,10 +160,11 @@ def execute_plan(plan_id: str, body: CopyPlanExecuteRequest,
             settings = store.load()
             mp.check_caps(plan, settings, mp.max_usd())
             addr = plan.request.address
-            now_fp, _ = mp.book_fingerprint(_book(engine, addr))
+            now_fp, _ = mp.book_fingerprint(_book(engine, addr), mp.planned_coins(plan.preview))
             if now_fp != plan.book_fingerprint:
-                raise mp.PlanRefused(409, "book_changed", "his book changed since the plan was made: "
-                                                          "make a new plan with copy_plan", burn=True)
+                raise mp.PlanRefused(409, "book_changed", "the positions this plan copies changed since "
+                                                          "it was made: make a new plan with copy_plan",
+                                     burn=True)
             mp.check_book_room(plan, store.load())
         except mp.PlanRefused as e:
             if plan is not None and (e.outcome == "bad_code" or e.burn):

@@ -111,7 +111,7 @@ def test_plan_maps_terms_through_the_engine_preview(client, auth_headers, engine
     assert req.max_worse_entry_pct == 1.5 and req.trade_direction.value == "counter"
     assert req.only_new_positions is False and req.one_shot is True and req.leverage_mode is None
     assert len(p["confirm_code"]) == 6 and p["confirm_code"].isalnum()
-    assert p["expires_ms"] - p["created_ms"] == 120_000
+    assert p["expires_ms"] - p["created_ms"] == mp.MCP_PLAN_TTL_S * 1000
     assert p["book_summary"] == ["BTC long $50,000", "ETH short $30,000"]
     assert p["trading_live"] is False and p["projection"] is not None
 
@@ -252,7 +252,7 @@ def test_b_single_use_410(client, auth_headers, engine, plans, allow):
 
 def test_b_expired_410(client, auth_headers, engine, plans, allow, clock, data_dir):
     p = make_plan(client, auth_headers)
-    clock.t += 120
+    clock.t += mp.MCP_PLAN_TTL_S
     r = execute(client, auth_headers, p)
     assert r.status_code == 410 and "expired" in r.json()["detail"]
     assert not (data_dir / "settings.json").exists()
@@ -260,7 +260,7 @@ def test_b_expired_410(client, auth_headers, engine, plans, allow, clock, data_d
 
 def test_expired_plans_are_pruned(client, auth_headers, engine, plans, clock, data_dir):
     old = make_plan(client, auth_headers)
-    clock.t += mp.PRUNE_GRACE_S + 121
+    clock.t += mp.PRUNE_GRACE_S + mp.MCP_PLAN_TTL_S + 1
     make_plan(client, auth_headers)
     stored = json.loads((data_dir / mp.PLANS_FILE).read_text())
     assert old["plan_id"] not in stored and len(stored) == 1
@@ -304,7 +304,7 @@ def test_e_his_book_changed_409_and_burns(client, auth_headers, fake_engine, pla
     p = make_plan(client, auth_headers)
     fake_engine.preview_result = preview(slice_(), slice_("ETH", "short", 31_000.0))   # he added
     r = execute(client, auth_headers, p)
-    assert r.status_code == 409 and "his book changed" in r.json()["detail"]
+    assert r.status_code == 409 and "positions this plan copies changed" in r.json()["detail"]
     fake_engine.preview_result = preview()
     assert execute(client, auth_headers, p).status_code == 410
     assert not (data_dir / "settings.json").exists()
@@ -421,3 +421,18 @@ def test_projection_building_address_still_plans(client, auth_headers, fake_engi
     fake_engine.preview_result = preview(addr=ADDR_BUILDING)
     p = make_plan(client, auth_headers, address=ADDR_BUILDING)
     assert p["request"]["address"] == ADDR_BUILDING
+
+
+def test_fingerprint_ignores_changes_to_coins_the_plan_does_not_copy():
+    from api import mcp_plans as mp
+    book = [{"coin": "BTC", "side": "long", "notional_usd": 1000.0},
+            {"coin": "DOGE", "side": "short", "notional_usd": 20.0}]
+    fp, _ = mp.book_fingerprint(book, ["BTC"])
+    churned = [{"coin": "BTC", "side": "long", "notional_usd": 1000.0},
+               {"coin": "DOGE", "side": "short", "notional_usd": 55.0},       # he adds to an uncopied coin
+               {"coin": "PEPE", "side": "long", "notional_usd": 12.0}]        # and opens another
+    assert mp.book_fingerprint(churned, ["BTC"])[0] == fp
+    added = [{"coin": "BTC", "side": "long", "notional_usd": 1500.0}]         # a planned coin changed
+    assert mp.book_fingerprint(added, ["BTC"])[0] != fp
+    closed = [{"coin": "DOGE", "side": "short", "notional_usd": 20.0}]        # a planned coin closed
+    assert mp.book_fingerprint(closed, ["BTC"])[0] != fp
