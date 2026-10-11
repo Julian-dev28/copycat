@@ -253,9 +253,21 @@ def bump(notional: float, settings: Settings) -> float:
     return notional
 
 
-def liq_distance_pct(leverage: int, is_cross: bool, maint_frac: float) -> float:
-    """Approximate adverse price-move percent, from entry, before liquidation:
-    `(1/leverage - maint_frac) * 100`. At 40x isolated with a 1.25% maintenance
+def liq_distance_pct(leverage: int, is_cross: bool, maint_frac: float,
+                     side: Optional[str] = None) -> float:
+    """Adverse price-move percent, from entry, before liquidation.
+
+    `side` given ("long" / "short"): HL's isolated formula (docs,
+    "Liquidations": liq = entry - side x margin_available / size / (1 - m x side),
+    margin_available = entry margin - maintenance), i.e.
+    long `(1/L - m) / (1 - m)`, short `(1/L - m) / (1 + m)`. Maintenance is
+    charged on the CURRENT notional, which shrinks as a long falls and grows
+    as a short rises: a 1x long can never be liquidated (100%), a 1x short
+    on a 3x-max coin is liquidated after +71%, not +83%.
+    Regression: the discovery sim used the side-blind estimate below and
+    liquidated 1x longs on low-max coins after an 83-90% drop.
+
+    `side` None: the side-blind estimate `(1/leverage - maint_frac) * 100`. At 40x isolated with a 1.25% maintenance
     fraction that is 1.25% -- this product has no stop anywhere, so this
     number IS the real distance to forced closure for an isolated position.
 
@@ -269,7 +281,12 @@ def liq_distance_pct(leverage: int, is_cross: bool, maint_frac: float) -> float:
     elsewhere on the account. Treat the cross case as "at least this close,
     possibly closer," never as exact.
     """
-    return max(0.0, (1.0 / leverage - maint_frac) * 100.0)
+    base = 1.0 / leverage - maint_frac
+    if side == "long":
+        base /= (1.0 - maint_frac)
+    elif side == "short":
+        base /= (1.0 + maint_frac)
+    return max(0.0, base * 100.0)
 
 
 # Hyperliquid account abstraction modes in which ONE spot balance per asset

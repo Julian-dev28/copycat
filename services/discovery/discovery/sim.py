@@ -13,7 +13,7 @@ Pure: no I/O. The runner hands in pre-built price series
                  our_current_notional, his_frac_added) -> float
     worse_entry_ok(side, mid, entry, pct) -> bool
     bump(notional, settings) -> float      (caller skips if still < HL_MIN_ORDER_USD)
-    liq_distance_pct(leverage, is_cross, maint_frac) -> float
+    liq_distance_pct(leverage, is_cross, maint_frac, side=our side) -> float  (HL isolated formula)
 maint_frac = 1 / (2 * coin_max_leverage), HL's maintenance margin rule.
 n_leaders = 1: each candidate is scored as if copied alone.
 
@@ -345,7 +345,7 @@ def simulate_wallet(
             fee = ntl * TAKER_FEE_RATE
             st.cash -= fee
             st.fees += fee
-            dist = sizing.liq_distance_pct(lev, is_cross, 1.0 / (2.0 * coin_max))
+            dist = sizing.liq_distance_pct(lev, is_cross, 1.0 / (2.0 * coin_max), side=our_side)
             nb = bisect_left(s.t, e.time_ms) if s is not None else 0
             fixed_margin = (settings.fixed_margin_usd if settings.sizing_mode == SizingMode.fixed_margin
                             else settings.fixed_notional_usd / lev)
@@ -398,7 +398,8 @@ def simulate_wallet(
             cp.entry_px = (cp.entry_px * cp.notional_usd + px * add) / new_ntl
             cp.notional_usd = new_ntl
             cp.margin_usd += add_margin
-            dist = sizing.liq_distance_pct(cp.leverage, is_cross, 1.0 / (2.0 * int(coin_max_lev[e.coin])))
+            dist = sizing.liq_distance_pct(cp.leverage, is_cross, 1.0 / (2.0 * int(coin_max_lev[e.coin])),
+                                           side=cp.side)
             cp.liq_px = _liq_px(cp.entry_px, cp.side, dist)
             if trace:
                 trace(f"  {e.time_ms} ADD   {e.coin} +${add:.2f} (his +{frac * 100:.0f}%) -> ntl=${new_ntl:.2f} "

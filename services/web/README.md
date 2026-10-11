@@ -33,8 +33,8 @@ deposit, move, send and withdraw all run against the in-memory store with real
 EIP-712 signatures and ERC-20 calldata; a demo deposit is "credited" ~3 s later.
 `/settings?demo=1` edits the Trade demo book (`components/copy/settingsSource.ts`);
 `/discover?demo=1` runs canned scans over the Scout demo board
-(`components/discover/source.ts`). Every route shows a demo strip
-(`components/DemoStrip.tsx`, or the page's own banner).
+(`components/discover/source.ts`). Every route shows the demo strip
+(`components/DemoStrip.tsx`), pinned in the sticky header.
 
 Hard guard: while `?demo=1` is on the URL, `apiFetch` and `secretFetch` throw
 "demo mode: writes are disabled" for any non-GET request before it reaches
@@ -59,10 +59,14 @@ query string.
 ## Layout
 
 ```
-src/app/          routes (one folder per page)
+src/app/          routes (one folder per page), globals.css (design tokens), fonts/
 src/components/   UI by area: trade/, scout/, account/, copy/ (settings panels),
-                  positions/, discover/, ui/ (shared primitives), TopNav, CatLogo
-src/lib/          pure logic + tests by area: trade/, scout/, account/, api/
+                  positions/, discover/, ui/ (shared primitives), shell/ (bottom
+                  tab bar, account menu, main container), settings/ (Display),
+                  TopNav, CatLogo
+src/lib/          pure logic + tests by area: trade/, scout/, account/, api/,
+                  display/ (PnL mode, motion, contrast, toasts), shell/ (nav,
+                  container), labels.ts (glossary)
 src/hooks/        TanStack Query hooks and small React hooks
 src/context/      AuthContext (api token)
 ```

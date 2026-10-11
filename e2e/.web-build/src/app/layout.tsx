@@ -64,7 +64,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <a
             href="#main"
-            className="sr-only z-[60] rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+            className="sr-only z-[60] rounded-full bg-accent text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:px-4 focus:py-2"
           >
             Skip to content
           </a>
