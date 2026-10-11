@@ -7,9 +7,10 @@
  *   - any other 401            -> re-checked through apiFetch on a GET (so the
  *                                 token prompt still appears), never resending
  *                                 the secret body
- * Everything else matches apiFetch (base URL, bearer token, error detail).
+ * Everything else matches apiFetch (base URL, bearer token, error detail, the
+ * demo write guard).
  */
-import { ApiError, apiFetch, getApiBase } from "@/lib/api/client";
+import { ApiError, DemoWriteError, apiFetch, getApiBase, isDemoMode } from "@/lib/api/client";
 import { getStoredToken } from "@/lib/api/token";
 
 export const INVALID_PASSPHRASE = "invalid passphrase";
@@ -25,6 +26,8 @@ async function detailOf(res: Response): Promise<{ detail: string | null; body: u
 }
 
 export async function secretFetch<T>(path: string, body: unknown, fetchImpl: typeof fetch = fetch): Promise<T> {
+  // Every route here is a write: the demo guard applies like in apiFetch (UX audit #1).
+  if (isDemoMode()) throw new DemoWriteError();
   const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
   const token = getStoredToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);

@@ -603,3 +603,18 @@ def test_both_prompts_are_listed():
     assert set(p) == {"write_thesis", "copy_trader"}
     assert [a.name for a in p["copy_trader"].arguments] == ["address", "amount_usd"]
     assert all(a.required for a in p["copy_trader"].arguments)
+
+
+def test_plan_calls_get_the_long_timeout():
+    seen = []
+
+    def handler(req):
+        seen.append(req.extensions.get("timeout", {}).get("read"))
+        return httpx.Response(200, json=PLAN if req.url.path == "/api/mcp/plans" else {"executed": True})
+    fake = FakeApi(routes={("POST", "/api/mcp/plans"): handler,
+                           ("POST", f"/api/mcp/plans/{PLAN_ID}/execute"): handler})
+    s = make_server(fake, allow_trading=True)
+    call(s, "copy_plan", {"address": ADDR, "amount_usd": 5})
+    call(s, "execute_copy_plan", {"plan_id": PLAN_ID, "confirm_code": "ABC234"})
+    from copycat_mcp.server import PLAN_TIMEOUT_S
+    assert seen == [PLAN_TIMEOUT_S, PLAN_TIMEOUT_S]

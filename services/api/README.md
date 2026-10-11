@@ -55,6 +55,8 @@ are dropped.
 | GET | /accounts/{id}/funding-info | `FundingInfo` (bridge, USDC, min deposit, withdraw fee, live limits) |
 | POST | /accounts/{id}/action/prepare, /accounts/{id}/action/submit, /accounts/{id}/action | spot<->perps, usdSend, withdraw3 (browser-signed / passphrase) -> `UserActionResult` |
 | GET | /market/candles?coin=&interval=&start_ms=&end_ms= | candle bars, <= 5000, 422 on bad interval/range |
+| POST | /mcp/plans | `CopyPlanRequest` -> `CopyPlan` (read-only on the book; stored 120 s) |
+| POST | /mcp/plans/{plan_id}/execute | `{confirm_code}` -> `CopyPlanResult`; 403 off / bad code / over cap, 404, 409 his book changed / book full, 410 used / expired, 429 |
 
 ## Auth
 
@@ -242,6 +244,33 @@ Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
 `exposure_mode`, `target_leverage`, `invested_ms`, `small_account_mode`,
 `max_order_volume_pct`, `max_slippage_pct`) and the v8 ones
 (`trade_direction`, `coin_allowlist`, `coin_blocklist`, `paused`).
+
+## MCP copy plans (`/api/mcp`, contract v9)
+
+`api/mcp_plans.py` (guards, store, warnings) and `api/routes/mcp_plans.py`.
+The copycat MCP server's `copy_plan` / `execute_copy_plan`. A plan is the
+engine preview at custom terms (allocation = amount; leverage L: exposure
+target L, unset: exposure match + leverage_mode match; `max_worse_entry_pct` =
+the entry deviation; `only_new_positions` false; `one_shot` = not follow), the
+cached projection, warnings (execution off, over cap, over max leverage, own
+account, full book, already in the book / paused, trading not live, algo or
+scalp style, his liquidation < 5%, copies above 20x, slices under the minimum,
+no projection) and a sha256 of his positions (coin, side, size x entry).
+
+Execute guards, in order: (a) `COPYCAT_MCP_ALLOW_TRADING=1` in the api env
+(403 with how to enable); rate limit 10/hour counted from the audit log (429);
+(b) unknown plan 404, used or expired 410; (c) constant-time confirm code, 403,
+the 3rd wrong code voids the plan; (d) `amount_usd <= COPYCAT_MCP_MAX_USD`
+(default 100) and leverage <= `max_position_leverage`, 403; (e) his positions
+still hash to `book_fingerprint`, else 409 and the plan is void; (f) room in
+the book, 409. Then `SettingsStore.copy_wallet` + `clear_stop`, exactly like
+POST /wallets/{a}/copy. `enabled` / `dry_run` are never written. The whole
+check-and-write runs under the plan store's flock, so a plan executes once.
+
+Files: `data/mcp_plans.json` (0600, atomic, pruned 10 min after expiry),
+`data/mcp_audit.jsonl` (0600, append; terms and outcomes only, never the code
+or the token). Env vars are read per request, so tests monkeypatch them and a
+change needs an api restart only when it comes from `.env`.
 
 ## Trading accounts (`/api/accounts`)
 

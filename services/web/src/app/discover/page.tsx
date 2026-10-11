@@ -1,19 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { RequireToken } from "@/components/RequireToken";
 import { DiscoveryForm } from "@/components/discover/DiscoveryForm";
 import { DiscoveryProgress } from "@/components/discover/DiscoveryProgress";
 import { DiscoveryTable } from "@/components/discover/DiscoveryTable";
 import { Panel } from "@/components/ui/Panel";
 import { Notice } from "@/components/ui/Notice";
-import { LoadError } from "@/components/PageStates";
+import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { ApiError } from "@/lib/api/client";
 import { Radar } from "lucide-react";
-import { useDiscoveryRun, useLatestDiscoveryRun, useStartDiscoveryRun } from "@/hooks/useDiscovery";
-import { useAddLeader, useSettings } from "@/hooks/useSettings";
+import { useDiscoveryMode, useLatestRun, useRun, useStartRun } from "@/components/discover/hooks";
+import { useModeAddLeader, useModeSettings } from "@/components/copy/hooks";
 
 export default function DiscoverPage() {
+  return (
+    <Suspense fallback={<PageSkeleton label="Loading discover" />}>
+      <DiscoverGate />
+    </Suspense>
+  );
+}
+
+/** Demo (`?demo=1`): canned runs and the demo book, no token, no api writes. */
+function DiscoverGate() {
+  const { demo } = useDiscoveryMode();
+  if (demo) return <DiscoverPageContent />;
   return (
     <RequireToken>
       <DiscoverPageContent />
@@ -23,13 +34,13 @@ export default function DiscoverPage() {
 
 function DiscoverPageContent() {
   const [startedRunId, setRunId] = useState<string | null>(null);
-  const { data: latest, isLoading: latestLoading, error: latestError } = useLatestDiscoveryRun();
+  const { data: latest, isLoading: latestLoading, error: latestError } = useLatestRun();
   // Resume whatever run was last started (survives a page refresh) until a new one starts.
   const runId = startedRunId ?? latest?.run_id ?? null;
-  const run = useDiscoveryRun(runId);
-  const startRun = useStartDiscoveryRun();
-  const { data: settings } = useSettings();
-  const addLeader = useAddLeader();
+  const run = useRun(runId);
+  const startRun = useStartRun();
+  const { data: settings } = useModeSettings();
+  const addLeader = useModeAddLeader();
   const [copyingAddress, setCopyingAddress] = useState<string | null>(null);
 
   const activeRun = run.data ?? latest;

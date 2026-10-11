@@ -13,6 +13,7 @@ import stat
 import pytest
 from api import mcp_plans as mp
 from api_fakes import ADDR_A, ADDR_BUILDING, OUR_ADDRESS
+
 TOKEN = "test-token-0123456789abcdef0123456789"   # conftest.TOKEN (conftest is not importable by name)
 
 from contracts.models import (

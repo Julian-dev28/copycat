@@ -4,7 +4,6 @@ import { clsx } from "clsx";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useState, type KeyboardEvent } from "react";
-import { PositionsTable } from "@/components/scout/file/PositionsTable";
 import { TripsTable } from "@/components/scout/file/TripsTable";
 import { useFileProfile } from "@/components/scout/file/hooks";
 import { Panel } from "@/components/ui/Panel";
@@ -13,18 +12,22 @@ import type { AccountSummary, TradingAccount } from "@/lib/account/types";
 import { formatUsd } from "@/lib/format";
 import { BalancesHistory, FillsHistory, OrdersHistory, TransfersHistory } from "./HistoryTables";
 import { useAccountMode } from "./hooks";
+import { AccountPositions } from "./AccountPositions";
 
 const TABS = ["Positions", "Balances", "Orders", "Fills", "Trades", "Transfers", "Copytrade"] as const;
 type Tab = (typeof TABS)[number];
 
-/** Positions and round trips come from the Scout file for this address (same reconstruction Scout shows for leaders). */
+/** Positions and round trips come from the Scout file for this address (same reconstruction Scout shows for leaders); Positions adds copycat's copies. */
 function FromFile({ account, what }: { account: TradingAccount; what: "positions" | "trades" }) {
   const q = useFileProfile(account.address);
+  const { demo } = useAccountMode();
   if (q.isError) return <p role="alert" className="p-4 text-sm text-danger">{accountErrorText(q.error, what)}</p>;
   if (!q.data) return <p className="p-4 text-sm text-muted">Loading {what}…</p>;
   if (q.data.kind === "building") return <p className="p-4 text-sm text-muted">Reading this account from Hyperliquid… ({q.data.status.done}/{q.data.status.total})</p>;
   const p = q.data.profile;
-  return what === "positions" ? <PositionsTable positions={p.positions} asOfMs={p.positions_as_of_ms} /> : <TripsTable trips={p.recent_trips} />;
+  return what === "positions"
+    ? <AccountPositions account={account} own={p.positions} asOfMs={p.positions_as_of_ms} demo={demo} />
+    : <TripsTable trips={p.recent_trips} />;
 }
 
 function Copytrade({ summary }: { summary: AccountSummary }) {

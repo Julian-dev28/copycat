@@ -202,6 +202,15 @@ he goes flat; a liquidity catch-up waits); exits always mirror. Pausing is
 not stopping: the wallet stays in the book and its copies keep following him
 out.
 
+**One-shot (v9, `one_shot`, set by an MCP copy plan with follow=false)**: the
+first cycle that sees it for this `invested_ms` records his held coins and sides
+(kv `one_shot`, event `baseline` "one-shot: ..."). Only a first open of one of
+those, same side, is allowed, including a pending `max_worse_entry_pct` retry and
+a liquidity catch-up. An add ("one-shot: adds not copied"), a flip's new side, a
+reopen after he closed, or a new coin ("one-shot: only the positions he held
+when copied") is skipped and ignored until he goes flat. Exits always mirror.
+Turning it off drops the record. The engine never writes settings.
+
 **Skip events carry their leader** (v8): a coin's skip reason is logged (once,
 when it first appears or changes) with the leader being diffed, so
 `leader_events` shows one wallet why its moves were not copied.

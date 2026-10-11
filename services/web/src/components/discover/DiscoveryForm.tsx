@@ -60,7 +60,7 @@ export function DiscoveryForm({
             onChange={(e) => setUseCurrentSettings(e.target.checked)}
             className="h-4 w-4 rounded border-border accent-[var(--accent)]"
           />
-          Simulate with my current /copy settings (sizing, leverage, margin mode)
+          Simulate with my Settings (sizing, leverage, margin mode)
         </label>
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         <div>

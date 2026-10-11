@@ -134,12 +134,24 @@ Every trader in Scout gets a deterministic TA fingerprint and thesis (no AI).
 For a deeper written thesis, let your own Claude Code do the research:
 
 ```
-make mcp-install RUN=1        # registers the copycat MCP server + /copycat-thesis
+make mcp-install RUN=1        # registers the copycat MCP server + /copycat-thesis + /copycat-copy
 # then in Claude Code:
 /copycat-thesis 0x<trader address>
+/copycat-copy 0x<trader address> 50     # strategy + thesis at $50, then a copy plan
 ```
 
 Claude Code pulls the fingerprint, trades and candles through copycat, writes
 the thesis and saves it; it shows on the trader's Strategy tab. The MCP server
-can read and add leaders, but can never enable trading, change leverage or close
-positions. See services/mcp/README.md.
+can read and add leaders, but can never enable trading, change global settings
+or close positions.
+
+`/copycat-copy` explains the trader's strategy at your amount, asks for your
+leverage, entry deviation, copy/counter and follow/one-shot, and builds a copy
+plan (engine preview, warnings, a 6-character confirm code, valid 120 s, single
+use). Executing it is OFF by default. To allow it, set
+`COPYCAT_MCP_ALLOW_TRADING=1` in BOTH the api's env (or `.env`, then restart the
+api) and the MCP server's env (`claude mcp add copycat -s user -e
+COPYCAT_MCP_ALLOW_TRADING=1 -- .../run.sh`); `COPYCAT_MCP_MAX_USD` caps each plan
+(default $100). Execution writes the same per-wallet terms as the Trade page;
+the engine places orders only if trading is enabled and not dry-run. See
+services/mcp/README.md.

@@ -66,7 +66,9 @@ class CopycatApi:
                                  transport=self._transport)
 
     async def request(self, method: str, path: str, *, params: Optional[Dict[str, Any]] = None,
-                      json: Any = None) -> Any:
+                      json: Any = None, timeout_s: Optional[float] = None) -> Any:
+        """`timeout_s` overrides the config timeout for one slow call (a copy
+        plan's live preview reads every coin he holds: ~40 s for 60+ coins)."""
         token = self.config.token()
         if not token:
             raise ApiError(f"No copycat api token found (looked at COPYCAT_API_TOKEN and "
@@ -76,7 +78,8 @@ class CopycatApi:
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         try:
             async with self._client() as client:
-                resp = await client.request(method, path, params=params, json=json, headers=headers)
+                resp = await client.request(method, path, params=params, json=json, headers=headers,
+                                            timeout=timeout_s or self.config.timeout_s)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise ApiError(f"copycat api is not reachable at {self.config.api_url} ({type(e).__name__}). "
                            f"{START_HINT}") from e
