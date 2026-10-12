@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from contracts import build as build_mod
 from contracts.models import (
     EngineEvent,
     EngineStatus,
@@ -212,7 +213,8 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             "status": status.model_dump(mode="json"),
             "poll_interval_s": summary["poll_interval_s"],
         })
-        switch.write_status(data_dir, status.model_dump(mode="json"), summary["poll_interval_s"])
+        switch.write_status(data_dir, status.model_dump(mode="json"), summary["poll_interval_s"],
+                            build=build_mod.record("engine"))
 
         logger.info(
             "cycle ts=%d duration_ms=%d leaders=%d/%d opened=%d added=%d reduced=%d closed=%d "
@@ -240,7 +242,8 @@ def _idle_cycle(now_ms: int, t0: float) -> dict:
     status = EngineStatus(running=True, enabled=settings.enabled, dry_run=settings.dry_run,
                           last_cycle_ms=now_ms, cycle_ms=duration_ms, our_address=None,
                           halted_reason="no active trading account")
-    switch.write_status(_data_dir(), status.model_dump(mode="json"), settings.poll_interval_s)
+    switch.write_status(_data_dir(), status.model_dump(mode="json"), settings.poll_interval_s,
+                        build=build_mod.record("engine"))
     logger.info("cycle ts=%d idle: no active trading account", now_ms)
     return {"opened": [], "added": [], "reduced": [], "closed": [], "skipped": {"all": "no active trading account"},
             "vanished": [], "split": [], "leaders_ok": 0, "leaders_total": 0, "equity_usd": None,
@@ -378,6 +381,18 @@ def status(address: Optional[str] = None) -> EngineStatus:
     return st
 
 
+def process_build() -> Optional[Dict[str, Any]]:
+    """The running engine's build info (contracts.build) from its status
+    file, plus `alive` (last cycle recent, as `status().running`). None when
+    the engine never wrote one (not started, or started on code older than
+    the version-skew guard: treat as unknown/old)."""
+    raw = switch.read_status(_data_dir())
+    if not raw or not isinstance(raw.get("build"), dict):
+        return None
+    st = EngineStatus.model_validate(raw["status"])
+    return {**raw["build"], "alive": _is_running(st.last_cycle_ms, float(raw.get("poll_interval_s", 5.0)))}
+
+
 def _is_running(last_cycle_ms: Optional[int], poll_interval_s: float) -> bool:
     if last_cycle_ms is None:
         return False
@@ -482,7 +497,7 @@ def _apply_v8_to_plan(plan: Dict[str, Any], es: Settings, notes: List[str]) -> N
     for r in plan["slices"]:
         if counter:
             r["side"] = "short" if r["side"] == "long" else "long"
-        if r["status"] != "skip" and not sizing.coin_allowed(es, r["coin"]):
+        if r["status"] not in sizing.NOT_COPIED and not sizing.coin_allowed(es, r["coin"]):
             r.update(status="skip", notional_usd=0.0, margin_usd=0.0, fill_cycles=1,
                      reason=f"filtered: {r['coin']}")
             changed = True
@@ -491,7 +506,7 @@ def _apply_v8_to_plan(plan: Dict[str, Any], es: Settings, notes: List[str]) -> N
     if es.paused:
         notes.append("paused: nothing opens until the wallet is resumed")
     if changed:
-        live = [r for r in plan["slices"] if r["status"] != "skip"]
+        live = [r for r in plan["slices"] if r["status"] not in sizing.NOT_COPIED]
         plan.update(planned_notional_usd=round(sum(r["notional_usd"] for r in live), 6),
                     planned_margin_usd=round(sum(r["margin_usd"] for r in live), 6),
                     copied=[r["coin"] for r in live],
@@ -558,6 +573,7 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
         coin_max[c] = m
         levs[c] = sizing.exchange_leverage(es, float(p.get("lev") or 1.0), m)
     liq: Dict[str, Optional[float]] = {}
+    mids: Dict[str, float] = {}
     for c, p in positions.items():
         try:
             stats = venue.market_stats(c)
@@ -568,6 +584,23 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
             stats, depth = None, None
         vol = (stats or {}).get("day_volume_usd") if stats else None
         liq[c] = sizing.liquidity_cap(vol, depth, es.max_order_volume_pct)
+        try:
+            mids[c] = float((stats or {}).get("mid_px") or 0.0) or float(venue.mid(c) or 0.0)
+        except Exception:
+            mids[c] = 0.0
+
+    # Engine gates that run before sizing (core._diff_coin), in its order:
+    # coin filter, then max_worse_entry_pct against HIS entry on OUR side.
+    pre_skip: Dict[str, str] = {c: f"filtered: {c}" for c in positions if not sizing.coin_allowed(es, c)}
+    wait: Dict[str, str] = {}
+    for c, p in positions.items():
+        if c in pre_skip:
+            continue
+        why = sizing.entry_wait_reason(sizing.our_is_long(float(p.get("szi") or 0.0), es.trade_direction),
+                                       mids.get(c, 0.0), float(p.get("entry_px") or 0.0),
+                                       es.max_worse_entry_pct)
+        if why:
+            wait[c] = why
 
     held: List[str] = []
     margin_used = 0.0
@@ -595,26 +628,32 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
         plan = sizing.plan_allocation(
             positions, his_equity, es.allocation_usd, es.exposure_mode, es.target_leverage,
             es.small_account_mode, coin_max, lev_by_coin=levs, held=held, liq_cap=liq,
-            margin_used_usd=margin_used, max_position_leverage=es.max_position_leverage)
+            margin_used_usd=margin_used, max_position_leverage=es.max_position_leverage,
+            pre_skip={**{c: f"owned by wallet {w}" for c, w in taken.items()}, **pre_skip}, wait=wait,
+            max_open_copies=es.max_open_copies, open_copies=open_copies)
     else:
         n_leaders = len(settings.leaders) + (0 if address in settings.leaders else 1)
         plan = sizing.plan_copy(
             es, {c: p for c, p in positions.items() if c not in held}, his_equity, coin_max,
             our_equity=our_equity, n_leaders=n_leaders, lev_by_coin=levs, liq_cap=liq,
-            open_copies=open_copies, taken=taken)
+            open_copies=open_copies, taken=taken, pre_skip=pre_skip, wait=wait)
         notes.append(f"Settings tab sizing: {es.sizing_mode.value}, leverage {es.leverage_mode.value}")
     if es.only_new_positions and not known and positions:
         # first sight is a baseline: what he holds now is never copied
         for r in plan["slices"]:
-            if r["status"] != "skip":
+            if r["status"] != "skip":     # incl. "wait": his current book is never copied
                 r.update(status="skip", notional_usd=0.0, margin_usd=0.0, fill_cycles=1,
                          reason="only_new_positions: his current positions are not copied")
-        plan.update(planned_notional_usd=0.0, planned_margin_usd=0.0, copied=[],
+        plan.update(planned_notional_usd=0.0, planned_margin_usd=0.0, copied=[], waiting=[],
                     skipped=[r["coin"] for r in plan["slices"]], multi_cycle=False)
         notes.append("only_new_positions: only positions he opens from now on are copied")
     _apply_v8_to_plan(plan, es, notes)
     if not positions:
         notes.append("he holds no positions now: nothing opens until he does")
+    if plan.get("waiting"):
+        notes.append(f"waiting on price: {', '.join(plan['waiting'])} (mid is more than "
+                     f"{es.max_worse_entry_pct:g}% past his entry; the engine opens it only once price "
+                     f"comes back, not counted in the totals)")
     if plan["multi_cycle"]:
         notes.append("some slices exceed the liquidity cap and fill over several cycles")
     if available is not None and plan["planned_margin_usd"] > available:
@@ -629,6 +668,6 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
         slices=[WalletPreviewSlice(**r) for r in plan["slices"]],
         planned_notional_usd=plan["planned_notional_usd"],
         planned_margin_usd=plan["planned_margin_usd"], copied=len(plan["copied"]),
-        skipped=len(plan["skipped"]),
+        skipped=len(plan["skipped"]), waiting=len(plan.get("waiting") or []),
         min_allocation_for_full_book=plan["min_allocation_for_full_book"],
         multi_cycle=plan["multi_cycle"], margin_already_used_usd=margin_used, notes=notes)

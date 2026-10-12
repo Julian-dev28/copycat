@@ -71,6 +71,8 @@ def allow(monkeypatch):
 def _no_flag_by_default(monkeypatch):
     monkeypatch.delenv(mp.ALLOW_ENV, raising=False)
     monkeypatch.delenv(mp.MAX_USD_ENV, raising=False)
+    monkeypatch.delenv(mp.MAX_USD_DAY_ENV, raising=False)
+    monkeypatch.delenv(mp.NOTIFY_ENV, raising=False)
 
 
 @pytest.fixture
@@ -80,10 +82,16 @@ def engine(fake_engine):
 
 
 def make_plan(client, headers, **body):
+    """POST a plan. The response never has the code (audit H2); like the human, read it
+    from the web's pending list and carry it in the returned dict for execute()."""
     body = {"address": A, "amount_usd": 50.0, **body}
     r = client.post("/api/mcp/plans", headers=headers, json=body)
     assert r.status_code == 200, r.text
-    return r.json()
+    plan = r.json()
+    assert plan["confirm_code"] is None
+    pend = client.get("/api/mcp/plans/pending", headers=headers).json()
+    plan["confirm_code"] = next(x["confirm_code"] for x in pend if x["plan_id"] == plan["plan_id"])
+    return plan
 
 
 def execute(client, headers, plan, code=None):
@@ -122,6 +130,17 @@ def test_plan_without_leverage_follows_his(client, auth_headers, engine, plans):
     assert req.exposure_mode.value == "match" and req.target_leverage is None
     assert req.leverage_mode.value == "match" and req.one_shot is False
     assert req.max_worse_entry_pct == 2.0 and req.trade_direction.value == "copy"
+
+
+def test_plan_projection_runs_at_the_plans_own_terms(client, auth_headers, engine, fake_scout, plans):
+    """Regression: the projection replayed only direction / exposure / target
+    leverage, so a 'follow his leverage, 2% entry' plan was simulated at the
+    saved leverage_mode (max) and 10% entry: its liquidation count described
+    terms the plan would never run."""
+    make_plan(client, auth_headers, entry_deviation_pct=2.0)
+    _, _, _, override = fake_scout.what_if_calls[-1]
+    assert override.leverage_mode.value == "match" and override.max_worse_entry_pct == 2.0
+    assert override.exposure_mode.value == "match" and override.allocation_usd == 50.0
 
 
 @pytest.mark.parametrize("body", [

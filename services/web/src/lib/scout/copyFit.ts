@@ -19,8 +19,8 @@ export const PART_META: Record<string, { label: string; hint: string }> = {
   consistency: { label: "Green days", hint: "Share of profitable days in 30d, ranked" },
   sample: { label: "Sample size", hint: "Round trips in 30d; full marks at 50" },
   win_rate: { label: "Win rate", hint: "Share of winning round trips in 30d, ranked" },
-  capacity: { label: "Copy capacity", hint: "Share of his opens the sim could execute at your size" },
-  recency: { label: "Recency", hint: "Full marks if he traded in the last 24h, zero at 7 days" },
+  capacity: { label: "Copy capacity", hint: "Share of their opens the sim could execute at your size" },
+  recency: { label: "Recency", hint: "Full marks if they traded in the last 24h, zero at 7 days" },
 };
 
 /** Caps in the order discovery applies them, with the ceiling each imposes. */
@@ -30,7 +30,7 @@ export const CAP_RULES: { flag: string; ceiling: number | null; text: string }[]
   { flag: "too_few_trades", ceiling: 40, text: "Fewer than 5 copies in the sim: capped at 40" },
   { flag: "hft", ceiling: 50, text: "Trades too fast for a 5s poll: capped at 50" },
   { flag: "vault", ceiling: 50, text: "A vault, PnL is pooled: capped at 50" },
-  { flag: "fills_truncated", ceiling: null, text: "Only his latest 10,000 fills are visible, trade stats may undercount" },
+  { flag: "fills_truncated", ceiling: null, text: "Only their latest 10,000 fills are visible, trade stats may undercount" },
 ];
 
 export interface FitSegment {
@@ -96,4 +96,31 @@ export function fitGrade(value: number | null | undefined): FitGrade {
 /** The three parts that added the most points, for the card's one-line "why". */
 export function topParts(fit: Pick<CopyFit, "parts" | "weights">, n = 3): FitSegment[] {
   return [...fitSegments(fit)].sort((a, b) => b.points - a.points || a.key.localeCompare(b.key)).slice(0, n);
+}
+
+/**
+ * Copy Fit bucket for the single-hue accent ramp (DESIGN 3.4): 90+, 70 to 89,
+ * 50 to 69, below 50. A score is a ranking, not money, so it never uses
+ * up/down colors. 3 = strongest; null = not scored.
+ */
+export type FitTier = 0 | 1 | 2 | 3;
+
+export function fitTier(value: number | null | undefined): FitTier | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  if (value >= 90) return 3;
+  if (value >= 70) return 2;
+  if (value >= 50) return 1;
+  return 0;
+}
+
+/**
+ * The card's one-line "why", worded as score points so it can't be read as
+ * a return (UX audit: "Your copy +37" looked like +37%):
+ *   "Points: Your copy 37 · Sharpe 15 · Green days 10 (of 100)"
+ */
+export function fitPartsLine(fit: Pick<CopyFit, "parts" | "weights">, n = 3): string {
+  const parts = topParts(fit, n).filter((p) => p.points >= 0.5);
+  if (!parts.length) return "No part scored above zero";
+  const words = parts.map((p) => `${p.label} ${Math.round(p.points)}`);
+  return `Points: ${words.join(" · ")} (of 100)`;
 }

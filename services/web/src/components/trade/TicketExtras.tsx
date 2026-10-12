@@ -35,7 +35,7 @@ export function DirectionSwitch({
         Direction
         {!globalSource && supported ? <Inherit set={set} onReset={onReset} label="direction" /> : null}
       </span>
-      <div role="radiogroup" aria-label="Copy or counter this wallet" className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-surface-2 p-1">
+      <div role="radiogroup" aria-label="Copy or counter this trader" className="grid grid-cols-2 gap-1 rounded-full border border-border bg-surface-2 p-1">
         {opts.map(({ v, icon: Icon }) => {
           const on = v === value;
           return (
@@ -47,8 +47,9 @@ export function DirectionSwitch({
               disabled={!supported}
               onClick={() => onChange(v)}
               className={clsx(
-                "flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                on ? (v === "counter" ? "bg-danger text-white shadow-sm" : "bg-accent text-accent-foreground shadow-sm") : "text-muted hover:text-foreground",
+                "flex items-center justify-center gap-1.5 rounded-full py-1.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-base)] ease-in-out disabled:cursor-not-allowed disabled:opacity-50",
+                // Not accent-filled (DESIGN 5 Segmented): the accent belongs to the primary action.
+                on ? "bg-surface text-fg shadow-e1 dark:bg-surface-3" : "text-muted hover:text-fg",
               )}
             >
               <Icon size={14} aria-hidden="true" /> {DIRECTION_META[v].label}
@@ -57,8 +58,8 @@ export function DirectionSwitch({
         })}
       </div>
       <p className="text-xs text-muted">{DIRECTION_META[value].line}</p>
-      {!supported ? <p className="text-[11px] text-warning">Your api predates counter-trading (contract v8): wallets are copied as-is.</p> : null}
-      {supported && globalSource ? <p className="text-[11px] text-muted">Picking a side gives this wallet its own terms.</p> : null}
+      {!supported ? <p className="text-[11px] text-warn">Your api predates counter-trading (contract v8): traders are copied as-is.</p> : null}
+      {supported && globalSource ? <p className="text-[11px] text-muted">Picking a side gives this trader its own terms.</p> : null}
     </div>
   );
 }
@@ -104,17 +105,17 @@ export function CoinFilterFields({
         <CoinChips label="Never these coins" value={block} onChange={onBlock} hisCoins={hisCoins} allCoins={allCoins} placeholder="None" tone="danger" disabled={!supported} />
       </div>
       <p className="text-[11px] text-muted">Filters stop new copies and adds only. Exits are always followed.</p>
-      {!supported ? <p className="text-[11px] text-warning">Your api predates coin filters (contract v8).</p> : null}
+      {!supported ? <p className="text-[11px] text-warn">Your api predates coin filters (contract v8).</p> : null}
     </div>
   );
 }
 
 export function AlgoWarning({ text }: { text: string }) {
   return (
-    <div role="alert" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs">
-      <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-warning" aria-hidden="true" />
+    <div role="alert" className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn-soft p-3 text-xs">
+      <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-warn" aria-hidden="true" />
       <p>
-        <b className="block text-foreground">Fast trader</b>
+        <b className="block text-fg">Fast trader</b>
         <span className="text-muted">{text}</span>
       </p>
     </div>

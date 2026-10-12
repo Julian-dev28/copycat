@@ -53,6 +53,42 @@ def test_activate_refuses_to_strand_open_copies_unless_forced(client, auth_heade
     assert r.status_code == 200 and r.json()["active"] is True
 
 
+def _one_copy(addr):
+    return EngineStatus(running=True, enabled=True, dry_run=False, our_address=addr, positions=[{
+        "coin": "BTC", "leader": "0x" + "9" * 40, "side": "long", "size": 1, "entry_px": 1, "mark_px": 1,
+        "notional_usd": 1, "leverage": 1, "is_cross": False, "unrealized_pnl_usd": 0, "opened_ms": 1,
+        "sizing_mode": "fixed_margin"}])
+
+
+def test_delete_refuses_to_strand_open_copies_unless_forced(client, auth_headers, hlfake, backend):
+    """Audit H6: deleting the active account with copies open 409s like activate; force
+    deletes it and leaves no active account (the engine goes idle, trading is off for it)."""
+    a = _connected(client, auth_headers, hlfake, 0x10, "A")
+    client.post(f"/api/accounts/{a['id']}/activate", headers=auth_headers)
+    backend.engine[a["address"]] = _one_copy(a["address"])
+    r = client.delete(f"/api/accounts/{a['id']}", headers=auth_headers)
+    assert r.status_code == 409 and "1 copies open" in r.json()["detail"]
+    assert "delete with force=true" in r.json()["detail"]
+    rows = client.get("/api/accounts", headers=auth_headers).json()
+    assert [x["active"] for x in rows] == [True]                     # untouched
+    r = client.delete(f"/api/accounts/{a['id']}?force=true", headers=auth_headers)
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    assert client.get("/api/accounts", headers=auth_headers).json() == []
+    from vault import public as vault_public
+    assert vault_public.active_address() is None
+
+
+def test_delete_inactive_account_with_copies_also_409s(client, auth_headers, hlfake, backend):
+    """Audit M11: copies left on an inactive account (forced switch) need its agent key."""
+    a = _connected(client, auth_headers, hlfake, 0x10, "A")
+    b = _connected(client, auth_headers, hlfake, 0x20, "B")
+    client.post(f"/api/accounts/{b['id']}/activate", headers=auth_headers)
+    backend.engine[a["address"]] = _one_copy(a["address"])
+    assert client.delete(f"/api/accounts/{a['id']}", headers=auth_headers).status_code == 409
+    backend.engine[a["address"]] = _one_copy(a["address"]).model_copy(update={"positions": []})
+    assert client.delete(f"/api/accounts/{a['id']}", headers=auth_headers).status_code == 200
+
+
 def test_refresh_agent_statuses(client, auth_headers, hlfake, backend):
     a = _connected(client, auth_headers, hlfake, 0x10)
     r = client.post(f"/api/accounts/{a['id']}/refresh-agent", json={}, headers=auth_headers)

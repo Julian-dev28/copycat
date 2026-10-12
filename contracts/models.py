@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 9   # v9: MCP copy plans (CopyPlan*), one_shot wallets
+CONTRACT_VERSION = 11  # v11: CopyPlan.confirm_code never in api responses (None), McpPendingPlan,
+#                        HealthResponse.contract_version; Settings.contract_version server-set
+# v10: WalletPreviewSlice.status "wait" (+ WalletPreview.waiting)
+# v9: MCP copy plans (CopyPlan*), one_shot wallets
 # v8: account funding (FundingInfo, usdClassTransfer/usdSend/withdraw3) + TradeDirection, coin lists, pause, WalletProjection
 # v7: WalletCopyRequest.settings_source global|custom, per-wallet only_new_positions
 # v6: v6: TradingAccount, create/connect wallets, agent approval, AccountSummary
@@ -110,6 +113,9 @@ class Settings(BaseModel):
     """The whole user-editable configuration. Stored at data/settings.json,
     owned by the api service (the only writer), read by the engine every cycle."""
     model_config = ConfigDict(extra="ignore")
+    # Server-set (audit H4): always the running CONTRACT_VERSION, whatever an old
+    # settings.json or a client sent. A stored v6 used to be echoed back and made the
+    # web hide v7+ terms ("follow their leverage" then traded at the global max).
     contract_version: int = CONTRACT_VERSION
     enabled: bool = False                       # real money: ships OFF
     dry_run: bool = True                        # engine reads for real, writes nothing, logs intent
@@ -147,6 +153,11 @@ class Settings(BaseModel):
     # depth within the slippage cap; the rest fills over the next cycles.
     max_order_volume_pct: float = Field(0.5, gt=0, le=100)
     max_slippage_pct: float = Field(1.0, gt=0, le=10)
+
+    @field_validator("contract_version", mode="before")
+    @classmethod
+    def _contract_version(cls, v: Any) -> int:
+        return CONTRACT_VERSION
 
     @field_validator("leaders")
     @classmethod
@@ -701,8 +712,10 @@ class WalletPreviewSlice(BaseModel):
     leverage: int                              # the exchange leverage our copy would use
     notional_usd: float                        # what we would open now (0 when skipped)
     margin_usd: float
-    status: Literal["copy", "trimmed", "bump", "skip"]
-    reason: Optional[str] = None               # why skipped
+    # v10 "wait": mid is more than max_worse_entry_pct past HIS entry (on our side); the
+    # engine opens it only once price comes back, so nothing is copied now (0 notional)
+    status: Literal["copy", "trimmed", "bump", "skip", "wait"]
+    reason: Optional[str] = None               # why skipped / waiting
     liquidity_cap_usd: Optional[float] = None  # largest single order now; None = unknown
     fill_cycles: int = 1                       # > 1: the order is split and fills over N cycles
 
@@ -724,6 +737,7 @@ class WalletPreview(BaseModel):
     planned_margin_usd: float = 0.0
     copied: int = 0
     skipped: int = 0
+    waiting: int = 0                           # v10: slices with status "wait" (not in the totals)
     min_allocation_for_full_book: Optional[float] = None   # copies every position without concentrating
     multi_cycle: bool = False                  # some slice fills over more than one cycle
     margin_already_used_usd: float = 0.0       # our existing copies of him (re-invest / adjust)
@@ -767,7 +781,11 @@ class CopyPlanRequest(BaseModel):
 
 class CopyPlan(BaseModel):
     plan_id: str
-    confirm_code: str = Field(min_length=MCP_CONFIRM_CODE_LEN, max_length=MCP_CONFIRM_CODE_LEN)
+    # v11 (audit H2): stored server-side only. POST /api/mcp/plans returns None: the model
+    # never sees the code; the human reads it in the web (GET /api/mcp/plans/pending, admin
+    # token only) or a desktop notification, and types it back.
+    confirm_code: Optional[str] = Field(None, min_length=MCP_CONFIRM_CODE_LEN,
+                                        max_length=MCP_CONFIRM_CODE_LEN)
     created_ms: int
     expires_ms: int
     request: CopyPlanRequest
@@ -780,6 +798,27 @@ class CopyPlan(BaseModel):
     book_fingerprint: str                      # sha256 of his positions (coin, side, |size| x entry)
     book_summary: List[str] = Field(default_factory=list)   # "BTC long $12,345", sorted by size
     used_ms: Optional[int] = None
+
+
+class McpPendingPlan(BaseModel):
+    """v11: one live (unused, unexpired) MCP plan as the web's "Pending MCP plans" panel
+    shows it, WITH its confirm code. Served only to the admin token."""
+    plan_id: str
+    confirm_code: str
+    created_ms: int
+    expires_ms: int
+    address: str
+    amount_usd: float
+    leverage: Optional[int] = None             # None: follows his
+    entry_deviation_pct: float
+    trade_direction: TradeDirection
+    follow: bool
+    executable: bool
+    trading_live: bool
+    planned_notional_usd: float = 0.0
+    planned_margin_usd: float = 0.0
+    copied: int = 0
+    warnings: List[str] = Field(default_factory=list)
 
 
 class CopyPlanExecuteRequest(BaseModel):

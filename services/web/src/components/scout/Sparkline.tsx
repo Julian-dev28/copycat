@@ -1,16 +1,18 @@
 "use client";
 
 import { useId } from "react";
+import { CHART } from "@/components/ui/chartStyle";
 import { buildDualSparkline } from "@/lib/scout/spark";
 import type { CurvePoint } from "@/lib/scout/types";
 import { formatSignedUsdCompact } from "@/lib/scout/window";
 
 /**
- * 30d sparkline: his PnL (neutral line, green/red fill to zero) and, when
- * given, your copy-sim equity (accent line). Both rebased to 0 at the window
- * start and each scaled to its own largest move (see buildDualSparkline): a
- * shape glyph for "did the copy track him", not a chart. Exact numbers live
- * on the trader file.
+ * 30d sparkline in the shared chart style (DESIGN 5 Charts): their PnL as a
+ * thin --fg-soft line with the up/down area to zero, and, when given, your
+ * copy-sim equity as the thicker --accent line. Both rebased to 0 at the
+ * window start and each scaled to its own largest move (buildDualSparkline):
+ * a shape glyph for "did the copy track them", not a chart. Exact numbers
+ * live on the trader page.
  */
 export function Sparkline({
   points,
@@ -32,27 +34,18 @@ export function Sparkline({
   if (!s) {
     return (
       <div className={className} style={{ height }}>
-        <div className="flex h-full items-center justify-center rounded-md border border-dashed border-border text-[11px] text-muted">
-          no curve yet
-        </div>
+        <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border text-[11px] text-muted">no curve yet</div>
       </div>
     );
   }
   const up = `${id}-up`;
   const down = `${id}-down`;
   const aria =
-    `${label}: his PnL ${formatSignedUsdCompact(s.his.change)}` +
+    `${label}: their PnL ${formatSignedUsdCompact(s.his.change)}` +
     (s.sim ? `, your copy ${formatSignedUsdCompact(s.sim.change)}` : "") +
     " over the window. Lines show shape, each on its own scale.";
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      className={className}
-      style={{ height }}
-      role="img"
-      aria-label={aria}
-    >
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={className} style={{ height }} role="img" aria-label={aria}>
       <title>{aria}</title>
       <defs>
         <clipPath id={up}>
@@ -62,28 +55,30 @@ export function Sparkline({
           <rect x="0" y={s.zeroY} width={width} height={Math.max(0, height - s.zeroY)} />
         </clipPath>
       </defs>
-      <line x1="0" x2={width} y1={s.zeroY} y2={s.zeroY} stroke="var(--faint)" strokeOpacity="0.5" strokeWidth="1" strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
-      <path d={s.his.area} fill="var(--up)" opacity="0.14" clipPath={`url(#${up})`} />
-      <path d={s.his.area} fill="var(--down)" opacity="0.14" clipPath={`url(#${down})`} />
-      <path d={s.his.path} fill="none" stroke="var(--fg-soft)" strokeOpacity="0.8" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      {s.sim ? (
-        <path d={s.sim.path} fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      ) : null}
+      <line x1="0" x2={width} y1={s.zeroY} y2={s.zeroY} {...CHART.zero} />
+      <path d={s.his.area} {...CHART.areaUp} clipPath={`url(#${up})`} />
+      <path d={s.his.area} {...CHART.areaDown} clipPath={`url(#${down})`} />
+      <path d={s.his.path} {...CHART.theirLine} />
+      {s.sim ? <path d={s.sim.path} {...CHART.yourLine} /> : null}
     </svg>
   );
 }
 
-/** Two-swatch key for the card sparkline. */
+/** Two-swatch key for the card sparkline, drawn with the same strokes as the lines. */
 export function SparkLegend({ hasSim }: { hasSim: boolean }) {
   return (
-    <div className="flex items-center gap-3 text-[10px] text-muted">
-      <span className="inline-flex items-center gap-1">
-        <span className="h-0.5 w-3 rounded bg-muted" aria-hidden="true" />
-        his PnL
+    <div className="flex items-center gap-3 text-[11px] text-muted">
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="14" height="4" aria-hidden="true">
+          <line x1="1" x2="13" y1="2" y2="2" {...CHART.theirLine} />
+        </svg>
+        their PnL
       </span>
       {hasSim ? (
-        <span className="inline-flex items-center gap-1">
-          <span className="h-0.5 w-3 rounded bg-accent" aria-hidden="true" />
+        <span className="inline-flex items-center gap-1.5">
+          <svg width="14" height="4" aria-hidden="true">
+            <line x1="1" x2="13" y1="2" y2="2" {...CHART.yourLine} />
+          </svg>
           your copy
         </span>
       ) : null}

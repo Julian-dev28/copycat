@@ -77,7 +77,7 @@ async function freePort(preferred?: number): Promise<number> {
 }
 
 /** Hash of every file the web build depends on, plus the baked api URL. */
-function webSourceHash(apiURL: string): string {
+function webSourceHash(apiURL: string, srcDir: string): string {
   const h = createHash("sha256");
   h.update(apiURL);
   const walk = (dir: string) => {
@@ -86,12 +86,12 @@ function webSourceHash(apiURL: string): string {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
       else if (e.isFile()) {
-        h.update(path.relative(WEB_SRC, p));
+        h.update(path.relative(srcDir, p));
         h.update(fs.readFileSync(p));
       }
     }
   };
-  walk(WEB_SRC);
+  walk(srcDir);
   return h.digest("hex");
 }
 
@@ -117,7 +117,18 @@ export function buildWeb(apiURL: string, logsDir: string): void {
   if (!fs.existsSync(path.join(WEB_SRC, "node_modules"))) {
     throw new Error("services/web/node_modules is missing: run `make install` (or npm ci in services/web) first");
   }
-  const hash = webSourceHash(apiURL);
+  // E2E_WEB_REF=HEAD (or any git ref) builds the committed web instead of the working
+  // tree: use it while another session has half-done edits in services/web.
+  let srcDir = WEB_SRC;
+  const ref = process.env.E2E_WEB_REF;
+  if (ref) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "copycat-e2e-src-"));
+    const r = spawnSync("bash", ["-c", `git -C "${REPO}" archive "${ref}" services/web | tar -x -C "${tmp}"`]);
+    if (r.status !== 0) throw new Error(`git archive ${ref} failed: ${r.stderr}`);
+    srcDir = path.join(tmp, "services/web");
+    log(`web source: git ${ref}`);
+  }
+  const hash = webSourceHash(apiURL, srcDir);
   const stamp = path.join(WEB_BUILD, ".e2e-build-hash");
   const logFile = path.join(logsDir, "web-build.log");
   if (process.env.E2E_REBUILD !== "1" && fs.existsSync(stamp) && fs.readFileSync(stamp, "utf8") === hash
@@ -128,7 +139,7 @@ export function buildWeb(apiURL: string, logsDir: string): void {
   const t0 = Date.now();
   fs.mkdirSync(WEB_BUILD, { recursive: true });
   run("rsync", ["-a", "--delete", "--exclude", "node_modules", "--exclude", ".next", "--exclude", ".e2e-build-hash",
-    "--exclude", "tsconfig.tsbuildinfo", "--exclude", "next-env.d.ts", `${WEB_SRC}/`, `${WEB_BUILD}/`],
+    "--exclude", "tsconfig.tsbuildinfo", "--exclude", "next-env.d.ts", `${srcDir}/`, `${WEB_BUILD}/`],
     { cwd: REPO, logFile });
   // Turbopack refuses a node_modules symlink that leaves its root, so the copy's
   // root is the repo (which contains services/web/node_modules). The copy's own

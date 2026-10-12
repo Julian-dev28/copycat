@@ -227,6 +227,43 @@ export function countActiveFilters(s: BoardState): number {
   return n;
 }
 
+export interface FilterChip {
+  key: string;
+  label: string;
+  /** The patch that removes just this filter. */
+  clear: Partial<BoardState>;
+}
+
+const compactUsd = (v: number) => {
+  const a = Math.abs(v);
+  const t = a >= 1e6 ? `${Number((a / 1e6).toFixed(1))}M` : a >= 1e3 ? `${Number((a / 1e3).toFixed(1))}k` : `${Number(a.toFixed(0))}`;
+  return `${v < 0 ? "-" : ""}$${t}`;
+};
+
+function range(lo: number | null, hi: number | null, fmt: (v: number) => string): string {
+  if (lo !== null && hi !== null) return `${fmt(lo)} to ${fmt(hi)}`;
+  return lo !== null ? `at least ${fmt(lo)}` : `at most ${fmt(hi as number)}`;
+}
+
+/**
+ * One removable chip per active filter, in the same order and grouping as
+ * countActiveFilters (so the chip count equals the "Filters (n)" badge).
+ */
+export function activeFilterChips(s: BoardState, styleLabel: (st: TradingStyle) => string = (st) => st): FilterChip[] {
+  const out: FilterChip[] = [];
+  if (s.minAv !== null || s.maxAv !== null) out.push({ key: "av", label: `Account ${range(s.minAv, s.maxAv, compactUsd)}`, clear: { minAv: null, maxAv: null } });
+  if (s.minPnl !== null || s.maxPnl !== null) out.push({ key: "pnl", label: `PnL ${range(s.minPnl, s.maxPnl, compactUsd)}`, clear: { minPnl: null, maxPnl: null } });
+  if (s.styles.length) out.push({ key: "styles", label: s.styles.map(styleLabel).join(", "), clear: { styles: [] } });
+  if (s.minFit > 0 || s.maxFit < 100) out.push({ key: "fit", label: `Copy Fit ${s.minFit} to ${s.maxFit}`, clear: { minFit: 0, maxFit: 100 } });
+  if (s.maxDd !== null) out.push({ key: "dd", label: `Max DD at most ${s.maxDd}%`, clear: { maxDd: null } });
+  if (s.minTrips !== null) out.push({ key: "trips", label: `${s.minTrips}+ trips`, clear: { minTrips: null } });
+  if (s.activeWithinH !== null) out.push({ key: "active", label: `Active in ${s.activeWithinH >= 48 ? `${Math.round(s.activeWithinH / 24)}d` : `${s.activeWithinH}h`}`, clear: { activeWithinH: null } });
+  if (s.hideFlagged) out.push({ key: "flagged", label: "Hide flagged", clear: { hideFlagged: false } });
+  if (s.coins.length) out.push({ key: "coins", label: `Trades ${s.coins.join(", ")}`, clear: { coins: [] } });
+  if (s.q) out.push({ key: "q", label: `"${s.q}"`, clear: { q: "" } });
+  return out;
+}
+
 /** Clears filters, keeps window, sort, preset and the UI toggles. */
 export function clearFilters(s: BoardState): BoardState {
   return {

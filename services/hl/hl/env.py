@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Tuple
 from urllib.parse import urlsplit
@@ -123,6 +124,38 @@ def credentials() -> Tuple[str, str]:
         return (creds[0], creds[1]) if creds else ("", "")
     return ((os.environ.get("COPYCAT_ACCOUNT_ADDRESS") or "").strip(),
             (os.environ.get("COPYCAT_AGENT_KEY") or "").strip())
+
+
+@dataclass(frozen=True)
+class Credentials:
+    """Write credentials pinned for one engine cycle (audit B2).
+
+    `pin_credentials()` resolves them ONCE; every write of that cycle passes
+    this object back to the venue, which signs with exactly these (never the
+    active account re-resolved per call) and refuses the write when the active
+    account is no longer `account`. Frozen: nothing can swap the account or the
+    key mid-cycle. The key never shows up in repr/logs."""
+    account: str                                   # main account, lowercase
+    agent_key: str = field(repr=False)
+
+
+def pin_credentials() -> Optional[Credentials]:
+    """The active (account, agent key) as an immutable Credentials, or None when
+    either part is missing."""
+    account, key = credentials()
+    if not (account and key):
+        return None
+    return Credentials(account.strip().lower(), key)
+
+
+def account_changed(creds: Credentials) -> Optional[str]:
+    """None while `creds.account` is still the active account, else the error a
+    pinned write returns instead of sending. Keyless (no decrypt)."""
+    active = (account_address() or "").strip().lower()
+    if active == creds.account:
+        return None
+    return (f"active account changed since the cycle started (pinned {creds.account}, "
+            f"active {active or 'none'}): write refused")
 
 
 def agent_key() -> str:

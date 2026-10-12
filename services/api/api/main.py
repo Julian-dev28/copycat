@@ -18,6 +18,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from contracts import build as build_mod
+
 from .auth import BearerAuth
 from .config import API_VERSION, Config
 from .discovery_client import RealDiscoveryClient
@@ -59,8 +61,11 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
 
     app = FastAPI(title="copycat api", version=API_VERSION)
     app.state.config = config
+    # version-skew guard: this process's build, compared with the engine's and
+    # scout's in GET /api/health (contracts.build)
+    app.state.build = build_mod.record("api")
     app.state.store = SettingsStore(config.data_dir, config.our_address)
-    app.state.auth = BearerAuth(config.api_token)
+    app.state.auth = BearerAuth(config.api_token, config.mcp_token)
     # factories, not instances: each request gets a fresh client so a
     # lazily-imported engine/discovery module reload is picked up.
     app.state.engine_client_factory = RealEngineClient

@@ -315,10 +315,11 @@ def test_allocation_cap_holds_total_margin_across_coins():
     ser = {"BTC": series(flat_candles(0, 180_000, 100.0)), "ETH": series(flat_candles(0, 180_000, 1000.0))}
     r = run(ev, ser, s, equity=1000.0, end_ms=180_000, his_equity=200_000.0)
     # engine.core order: ETH's $200 slice is trimmed to the $10 of room left under $102 (x 5),
-    # then bumped to $10.50. (plan_allocation would skip it instead: it only bumps if the bump
-    # fits the cap. The sim follows core, which is what trades.)
-    assert r.sim_copies == 2
-    assert r.sim_fees_usd == pytest.approx((500.0 + HL_MIN_ORDER_USD) * TAKER_FEE_RATE, rel=1e-9)
+    # bumped to $10.50, then SKIPPED: "allocation full: bumping to $10.50 would exceed the
+    # allocation" (core._execute_entry; checked against a real core cycle). Regression: this
+    # test used to assert the sim opened it, so the sim held more than allocation x 1.02.
+    assert r.sim_copies == 1 and "margin_room:ETH" in r.flags
+    assert r.sim_fees_usd == pytest.approx(500.0 * TAKER_FEE_RATE, rel=1e-9)
 
 
 def test_liq_price_at_1x_is_near_zero_for_a_long_and_double_for_a_short():
@@ -327,3 +328,20 @@ def test_liq_price_at_1x_is_near_zero_for_a_long_and_double_for_a_short():
     d = liq_distance_pct(1, False, 0.0125)
     assert _liq_px(100.0, "long", d) <= 5.0          # a long at 1x survives a 95% drop
     assert _liq_px(100.0, "short", d) >= 195.0       # a short at 1x survives a 95% rise
+
+
+def test_regression_1x_long_on_a_low_max_coin_survives_an_85pct_drop():
+    """Regression (invariants audit 2026-10): the side-blind liq distance
+    (1/L - m) liquidated a 1x long on a 3x-max coin after a -83% move. HL's
+    isolated formula puts a 1x long's liquidation at a price of 0; a 1x short
+    on the same coin liquidates at +(1 - m)/(1 + m) = +71.4%."""
+    rows = flat_candles(0, 300_000, 100.0)
+    rows[2].update(l=15.0, c=15.0)
+    ev = [evt("BTC", 0, "open", "long", 1.0, 0.0, 1.0, 100.0)]
+    r = run(ev, {"BTC": series(rows)}, fixed(lev=1), end_ms=300_000, max_lev=3)
+    assert r.sim_liquidations == 0
+    rows = flat_candles(0, 300_000, 100.0)
+    rows[2].update(h=172.0)
+    ev = [evt("BTC", 0, "open", "short", 1.0, 0.0, -1.0, 100.0)]
+    r = run(ev, {"BTC": series(rows)}, fixed(lev=1), end_ms=300_000, max_lev=3)
+    assert r.sim_liquidations == 1

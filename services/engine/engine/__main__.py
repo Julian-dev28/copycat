@@ -50,7 +50,10 @@ def main() -> None:
 
     from .public import EngineAlreadyRunning, run_forever
 
-    logger.info("engine starting, account=%s", our_address or "none active (idle until one is activated)")
+    from contracts import build
+    b = build.record("engine")
+    logger.info("engine starting, account=%s, build %s (contract v%d)",
+                our_address or "none active (idle until one is activated)", b["build"], b["contract_version"])
     try:
         run_forever(HlVenue())
     except EngineAlreadyRunning as exc:

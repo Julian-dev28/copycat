@@ -42,8 +42,9 @@ def test_daily_returns_resample_and_av_floor():
     av = [(d0 + HOUR, 10_000.0), (d0 + DAY + HOUR, 11_000.0), (d0 + 2 * DAY + HOUR, 50.0),
           (d0 + 3 * DAY + HOUR, 60.0)]
     dr = M.daily_returns(pnl, av)
-    # day0 close is the LAST point of day 0 (999); day 3 skipped: prior AV 50 < 100
-    assert dr.returns == pytest.approx([1 / 10_000, -2000 / 11_000])
+    # day0 close is the LAST point of day 0 (999); day 3 skipped: prior AV 50 < 100.
+    # day 1: AV +1000 but PnL +1, so $999 was deposited and is at risk: 1 / (10_000 + 999)
+    assert dr.returns == pytest.approx([1 / 10_999, -2000 / 11_000])
     assert dr.days == [d0 + DAY, d0 + 2 * DAY]
 
 

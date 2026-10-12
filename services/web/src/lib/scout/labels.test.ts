@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
-import { biasLabel, coinLabel, FLAG_TEXT, formatHold, isStale, liqTone, normalizeOrders, STYLE_META } from "./labels";
+import { biasLabel, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liqTone, normalizeOrders, STYLE_META, visibleFlags } from "./labels";
 import { TRADING_STYLES } from "./types";
 
 describe("labels", () => {
@@ -71,5 +71,41 @@ describe("isApiTooOld", () => {
     expect(isApiTooOld(new ApiError(500, "x"))).toBe(false);
     expect(isApiTooOld(new ApiError(401, "x"))).toBe(false);
     expect(isApiTooOld(new Error("x"))).toBe(false);
+  });
+});
+
+describe("flagText (UX audit: raw enum keys never render)", () => {
+  // Every flag discovery can emit (services/discovery/README.md + scout/stats.py).
+  const API_FLAGS = [
+    "vault", "hft", "hft_not_simulated", "too_few_trades", "liquidated", "liquidated:BTC", "non_perp_ignored",
+    "max_leverage_unknown:ETH", "candles_partial:SOL", "error:fills_read_failed", "error:sim:ValueError",
+    "inactive", "fills_truncated", "stale",
+  ];
+  it("has words for every api flag, with no snake_case left", () => {
+    for (const f of API_FLAGS) {
+      const t = flagText(f);
+      expect(t, f).toBeTruthy();
+      expect(t, f).not.toMatch(/_/);
+    }
+  });
+  it("labels non_perp_ignored in plain words", () => {
+    expect(flagText("non_perp_ignored")).toBe(FLAG_TEXT.non_perp_ignored);
+    expect(FLAG_TEXT.non_perp_ignored).toMatch(/spot/);
+  });
+  it("keeps the coin of a prefixed flag and hides error internals", () => {
+    expect(flagText("liquidated:BTC")).toBe(`${FLAG_TEXT.liquidated} (BTC)`);
+    expect(flagText("error:sim:ValueError")).toBe(FLAG_TEXT.error);
+  });
+  it("turns an unknown key into words", () => {
+    expect(flagText("brand_new_flag")).toBe("brand new flag");
+  });
+  it("visibleFlags drops fills_truncated and repeats of one key", () => {
+    expect(visibleFlags(["liquidated:BTC", "liquidated:ETH", "fills_truncated", "hft"])).toEqual(["liquidated:BTC", "hft"]);
+  });
+  it("dexHint explains the HIP-3 prefix", () => {
+    expect(dexHint("xyz")).toBe("HIP-3 market (xyz deployer)");
+  });
+  it("flag texts use they/their, not he/his", () => {
+    for (const t of Object.values(FLAG_TEXT)) expect(t).not.toMatch(/\b(he|his|him)\b/i);
   });
 });

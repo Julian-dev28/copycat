@@ -7,6 +7,7 @@ import { MAX_LEVERAGE_CAP } from "@/lib/api/types";
 import { formatLiquidationHint } from "@/lib/liquidation";
 import type { TargetLeverageCap } from "@/lib/trade/form";
 import type { ExposureMode, MarginMode } from "@/lib/trade/types";
+import { effectiveLeverageText } from "@/lib/trade/ticketView";
 import { Inherit } from "./Inherit";
 
 const MODE_OPTIONS = [
@@ -67,17 +68,18 @@ export function LeverageField({
               ))}
             </div>
             {cap.capped ? (
-              <p data-testid="ticket-leverage-capped" className="mt-1 text-xs font-medium text-warning">
-                Capped at {cap.cap}x by Maximum position leverage (Settings): you set {cap.set}x, copies open at {cap.effective}x.
+              <p data-testid="ticket-leverage-capped" className="mt-1 text-xs text-warn">
+                <span className="num font-medium">{effectiveLeverageText(cap.set, cap.cap)}</span>: Maximum position leverage in Settings caps it, so copies open at{" "}
+                <span className="num">{cap.effective}x</span>.
               </p>
             ) : null}
-            <p className="font-num mt-1 text-xs text-muted">{formatLiquidationHint(cap.effective, marginMode)}</p>
+            <p className="num-sm mt-1 text-muted">{formatLiquidationHint(cap.effective, marginMode)}</p>
             <p className="mt-1 text-xs text-muted">Their positions in their proportions, at your leverage. A coin with a lower max opens at its max.</p>
           </div>
         ) : (
           <p className="text-xs text-muted">
-            Each copy opens at his leverage on that coin
-            {hisLeverage !== null ? <> (their whole account runs at <span className="font-num text-foreground">{hisLeverage.toFixed(1)}x</span> now)</> : null}.
+            Each copy opens at their leverage on that coin
+            {hisLeverage !== null ? <> (their whole account runs at <span className="num text-fg">{hisLeverage.toFixed(1)}x</span> now)</> : null}.
           </p>
         )}
       </div>

@@ -269,17 +269,31 @@ def wallet_projection(request: Request, address: str,
 def build_projection(scout: ScoutClient, addr: str, settings: Settings, allocation_usd: float,
                      trade_direction: Optional[TradeDirection] = None,
                      exposure_mode: Optional[ExposureMode] = None,
-                     target_leverage: Optional[int] = None) -> WalletProjection:
+                     target_leverage: Optional[int] = None,
+                     copy_request: Optional[WalletCopyRequest] = None) -> WalletProjection:
     """The projection itself, shared with the MCP copy plan (api.mcp_plans).
-    Unset terms come from the wallet's current settings. Raises LookupError
-    (no cached data), ScoutBusy, ScoutUnavailable; the caller holds the
-    what-if lock."""
+    Unset terms come from the wallet's current settings. `copy_request`: the
+    exact Trade-ticket terms a plan writes; every field it sets (leverage
+    mode, leverage, margin mode, entry deviation, small-account mode, coin
+    lists) is replayed too, so the projection runs at the plan's terms.
+    Regression: the MCP plan's projection used only direction / exposure /
+    target leverage, so a "follow his leverage, 2% entry" plan was replayed at
+    the saved leverage_mode (max) and 10% entry. Raises LookupError (no
+    cached data), ScoutBusy, ScoutUnavailable; the caller holds the what-if
+    lock."""
     eff = settings.for_leader(addr)
     direction = trade_direction or eff.trade_direction
+    extra: Dict[str, Any] = {}
+    if copy_request is not None:
+        for k in ("margin_mode", "max_worse_entry_pct", "small_account_mode", "leverage_mode", "leverage",
+                  "coin_allowlist", "coin_blocklist"):
+            v = getattr(copy_request, k)
+            if v is not None:
+                extra[k] = v
     patch = LeaderOverride(sizing_mode=SizingMode.allocation, allocation_usd=allocation_usd,
                            trade_direction=direction,
                            exposure_mode=exposure_mode or eff.exposure_mode,
-                           target_leverage=target_leverage or eff.target_leverage)
+                           target_leverage=target_leverage or eff.target_leverage, **extra)
     res = scout.what_if(addr, settings, allocation_usd, patch)
     sc = res.score
     note = "his last 30 days on cached data"

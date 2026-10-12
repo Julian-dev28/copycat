@@ -63,10 +63,45 @@ export const FLAG_TEXT: Record<string, string> = {
   liquidated: "a copy got liquidated in the sim",
   too_few_trades: "too few trades to trust",
   hft: "trades too fast to copy",
+  hft_not_simulated: "too fast to copy, not simulated",
   vault: "a vault, PnL is pooled",
   fills_truncated: "only the latest 10k fills are visible",
   stale: "stats could not be refreshed last cycle",
+  non_perp_ignored: "spot / HIP-3 holdings ignored by the sim",
+  max_leverage_unknown: "max leverage unknown for a coin",
+  candles_partial: "some price history missing",
+  error: "the sim hit a data error",
 };
+
+/**
+ * Plain words for any flag the api sends, including the prefixed ones
+ * (`liquidated:BTC`, `max_leverage_unknown:ETH`, `error:sim:ValueError`).
+ * Never returns a raw enum key: an unknown flag becomes words, not snake_case.
+ */
+export function flagText(flag: string): string {
+  const [key, ...rest] = flag.split(":");
+  const base = FLAG_TEXT[key] ?? key.replaceAll("_", " ").trim();
+  const detail = key === "error" ? "" : rest.join(":");
+  return detail ? `${base} (${detail})` : base;
+}
+
+/** Flags worth showing on a card or header: one entry per flag key, the 10k-fills note dropped. */
+export function visibleFlags(flags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const f of flags) {
+    const key = f.split(":")[0];
+    if (key === "fills_truncated" || seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
+}
+
+/** Tooltip for a HIP-3 coin's dex chip (UX audit: unexplained "XYZ"). */
+export function dexHint(dex: string): string {
+  return `HIP-3 market (${dex} deployer)`;
+}
 
 export interface OpenOrderView {
   oid: number;

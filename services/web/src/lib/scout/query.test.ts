@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fixtureRows } from "./fixtures";
 import {
-  applyBoardQuery, boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT,
+  activeFilterChips, applyBoardQuery, boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT,
   normalizePresets, parseAmount, parseBoardState,
 } from "./query";
 
@@ -157,5 +157,32 @@ describe("applyBoardQuery (demo mirror of the server)", () => {
     const { rows: out, total } = applyBoardQuery(rows, { ...DEFAULT_BOARD, limit: 5 }, NOW);
     expect(out).toHaveLength(5);
     expect(total).toBe(rows.length);
+  });
+});
+
+describe("activeFilterChips", () => {
+  const busy = {
+    ...DEFAULT_BOARD, minAv: 10_000, maxPnl: 2_500_000, styles: ["swing" as const, "position" as const], minFit: 60, maxDd: 20,
+    minTrips: 5, activeWithinH: 72, hideFlagged: true, coins: ["BTC"], q: "whale",
+  };
+
+  it("one chip per counted filter, so the badge and the chips agree", () => {
+    expect(activeFilterChips(busy)).toHaveLength(countActiveFilters(busy));
+    expect(activeFilterChips(DEFAULT_BOARD)).toEqual([]);
+  });
+
+  it("each chip's patch clears exactly its own filter", () => {
+    for (const chip of activeFilterChips(busy)) {
+      const next = { ...busy, ...chip.clear };
+      expect(countActiveFilters(next), chip.key).toBe(countActiveFilters(busy) - 1);
+    }
+  });
+
+  it("reads in words", () => {
+    const labels = activeFilterChips(busy, (st) => st.toUpperCase()).map((c) => c.label);
+    expect(labels).toContain("Account at least $10k");
+    expect(labels).toContain("PnL at most $2.5M");
+    expect(labels).toContain("SWING, POSITION");
+    expect(labels).toContain("Active in 3d");
   });
 });

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildCalendar } from "../calendar";
+import { buildCalendar, rampIndex } from "../calendar";
 import { fixtureProfile } from "../fixtures";
 import { linePath, linearScale } from "../spark";
 import { chartData } from "../window";
-import { buildWhatIfRequest, draftFromOverride, overrideSettingsPatch } from "../whatIf";
+import { buildWhatIfRequest, changedFields, draftFromOverride, draftStale, overrideSettingsPatch } from "../whatIf";
 import { demoFileRow, fixtureFingerprint } from "./fixtures";
-import { heatLevel, hourWeekdayGrid } from "./strategy";
+import { realGrid } from "../../../components/scout/file/StrategyHeatmapGrid";
+import { heatLevel, keyNumbers } from "./strategy";
 
 const NOW = Date.UTC(2026, 9, 4, 12, 0);
 const DAY = 86_400_000;
@@ -70,33 +71,33 @@ describe("calendar buckets", () => {
   });
 });
 
-describe("hour x weekday heatmap", () => {
-  it("cells sum to the trip total and peak where both marginals peak", () => {
-    const hours = Array(24).fill(0);
-    hours[14] = 6;
-    hours[2] = 2;
-    const g = hourWeekdayGrid({ hour_hist_utc: hours, weekday_hist: [4, 4, 0, 0, 0, 0, 0] });
-    const sum = g.cells.flat().reduce((a, b) => a + b, 0);
-    expect(sum).toBeCloseTo(8, 9);
-    expect(g.peakHour).toBe(14);
-    expect(g.peakWeekday).toBe(0);
-    expect(g.cells[0][14]).toBe(g.max);
-    expect(heatLevel(g.max, g.max)).toBe(1);
+describe("strategy fingerprint (demo)", () => {
+  it("carries a real 7x24 matrix whose sums are the two histograms", () => {
+    const fp = fixtureFingerprint(ADDR, NOW);
+    const g = realGrid(fp.entries_by_dow_hour);
+    expect(g).not.toBeNull();
+    expect(g?.weekdays).toEqual(fp.weekday_hist);
+    expect(g?.hours).toEqual(fp.hour_hist_utc);
+    expect(g?.total).toBe(fp.trips_analyzed);
   });
 
-  it("tolerates short, empty or negative histograms", () => {
-    const g = hourWeekdayGrid({ hour_hist_utc: [1, -3], weekday_hist: [] });
-    expect(g.cells).toHaveLength(7);
-    expect(g.cells[0]).toHaveLength(24);
-    expect(g.max).toBe(0);
-    expect(g.peakWeekday).toBeNull();
+  it("heatLevel is 0..1 and 0 on an empty grid", () => {
+    expect(heatLevel(5, 10)).toBe(0.5);
+    expect(heatLevel(20, 10)).toBe(1);
     expect(heatLevel(5, 0)).toBe(0);
   });
 
-  it("the demo fingerprint fills a 7x24 grid", () => {
-    const g = hourWeekdayGrid(fixtureFingerprint(ADDR, NOW));
-    expect(g.total).toBeGreaterThan(0);
-    expect(g.max).toBeGreaterThan(0);
+  it("names trade leverage so it can't be confused with account leverage", () => {
+    const labels = keyNumbers(fixtureFingerprint(ADDR, NOW)).map((k) => k.label);
+    expect(labels).toContain("Avg trade leverage");
+    expect(labels).not.toContain("Leverage");
+  });
+});
+
+describe("calendar ramp", () => {
+  it("maps -4..4 onto the 5-step diverging ramp with flat in the middle", () => {
+    expect([-4, -3, -2, -1, 0, 1, 2, 3, 4].map(rampIndex)).toEqual([0, 0, 1, 1, 2, 3, 3, 4, 4]);
+    expect(rampIndex(Number.NaN)).toBe(2);
   });
 });
 
@@ -115,5 +116,28 @@ describe("what-if request", () => {
 
   it("saving an empty override clears it", () => {
     expect(overrideSettingsPatch(ADDR.toUpperCase().replace("0X", "0x"), {})).toEqual({ leader_overrides: { [ADDR]: null } });
+  });
+});
+
+describe("what-if changed fields", () => {
+  const saved = draftFromOverride({ leverage_mode: "fixed", leverage: 10 }, 1000);
+
+  it("nothing changed right after seeding", () => {
+    expect(changedFields(saved, saved)).toEqual([]);
+  });
+
+  it("lists changed inputs in form order and treats 10 and 10.0 as equal", () => {
+    const d = { ...saved, leverage: "10.0", equity: "5000", margin_mode: "isolated" as const };
+    expect(changedFields(d, saved)).toEqual(["equity", "margin_mode"]);
+  });
+
+  it("clearing a saved value back to inherit counts as a change", () => {
+    expect(changedFields({ ...saved, leverage: "" }, saved)).toEqual(["leverage"]);
+  });
+
+  it("a result goes stale once the form moves away from what ran", () => {
+    expect(draftStale(saved, null)).toBe(false);
+    expect(draftStale(saved, saved)).toBe(false);
+    expect(draftStale({ ...saved, equity: "2000" }, saved)).toBe(true);
   });
 });

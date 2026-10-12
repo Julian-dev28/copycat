@@ -5,7 +5,11 @@
                                              account still has engine copies open (they would
                                              stop being managed), unless force=true
   PATCH  /api/accounts/{id}                  {label} -> TradingAccount
-  DELETE /api/accounts/{id}                  {ok}. Removing the active account stops trading
+  DELETE /api/accounts/{id}?force=          {ok}. 409 while that account still has engine copies
+                                             open (deleting it drops its agent key, so nothing
+                                             could manage or close them), unless force=true.
+                                             Removing the active account stops trading (no
+                                             active account, the engine goes idle)
   POST   /api/accounts/{id}/refresh-agent    RefreshAgentRequest -> TradingAccount
   POST   /api/accounts/transfer              TransferRequest -> TransferResult (usdSend)
   GET    /api/accounts/{id}/summary          AccountSummary
@@ -58,12 +62,18 @@ def activate(account_id: str, force: bool = False,
     target = vault_call(vault.get_account, account_id)
     current = vault.active_address()
     if current and current != target.address and not force:
-        st = backend.engine_status(current)
-        n = len(st.positions) if st is not None else 0
-        if n:
-            raise HTTPException(409, f"{current} still has {n} copies open. Close them first (Close all), "
-                                     f"or activate with force=true to leave them unmanaged.")
+        _refuse_if_copies_open(backend, current, "activate")
     return vault_call(vault.set_active, account_id)
+
+
+def _refuse_if_copies_open(backend: AccountsBackend, address: str, verb: str) -> None:
+    """409 when `address` still holds engine copies: after `verb` nothing manages them
+    (no exits followed, stops never hit). force=true is the explicit override."""
+    st = backend.engine_status(address)
+    n = len(st.positions) if st is not None else 0
+    if n:
+        raise HTTPException(409, f"{address} still has {n} copies open. Close them first (Close all), "
+                                 f"or {verb} with force=true to leave them unmanaged.")
 
 
 @router.patch("/{account_id}", response_model=TradingAccount)
@@ -73,8 +83,16 @@ def rename(account_id: str, body: LabelPatch,
 
 
 @router.delete("/{account_id}")
-def remove(account_id: str, backend: AccountsBackend = Depends(get_accounts_backend)) -> Dict[str, bool]:
-    vault_call(backend.vault().remove, account_id)
+def remove(account_id: str, force: bool = False,
+           backend: AccountsBackend = Depends(get_accounts_backend)) -> Dict[str, bool]:
+    """Audit H6/M11: same guard as activate. Deleting an account drops its agent key, so
+    any copy still open on it (active or not) could never be followed or closed again.
+    The vault clears active_id when the active one goes: the engine goes idle."""
+    vault = backend.vault()
+    target = vault_call(vault.get_account, account_id)
+    if not force:
+        _refuse_if_copies_open(backend, target.address, "delete")
+    vault_call(vault.remove, account_id)
     return {"ok": True}
 
 

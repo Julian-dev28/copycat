@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from contracts.models import CONTRACT_VERSION
+
 from ..config import API_VERSION
 from ..schemas import HealthResponse
 
@@ -13,4 +15,4 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return HealthResponse(ok=True, version=API_VERSION)
+    return HealthResponse(ok=True, version=API_VERSION, contract_version=CONTRACT_VERSION)

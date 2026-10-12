@@ -55,8 +55,17 @@ function example(r: () => number, nowMs: number, i: number, why: string, win: bo
 
 export function fixtureFingerprint(address: string, nowMs: number): StrategyFingerprint {
   const r = rng(hash(normAddr(address)));
-  const hour = Array.from({ length: 24 }, (_, h) => Math.round((h >= 12 && h <= 20 ? 9 : 2) + r() * 5));
-  const weekday = [14, 17, 15, 18, 13, 5, 4].map((v) => Math.round(v + r() * 3));
+  // A real 7 x 24 entry matrix (US-session weekdays busiest); the two
+  // histograms are its exact row and column sums, as the api guarantees.
+  const dayWeight = [1, 1.2, 1.05, 1.25, 0.95, 0.35, 0.3];
+  const byDowHour = dayWeight.map((dw) =>
+    Array.from({ length: 24 }, (_, h) => {
+      const hw = h >= 13 && h <= 20 ? 1.6 : h >= 7 && h <= 11 ? 0.6 : 0.15;
+      return Math.max(0, Math.round(dw * hw * 1.6 + (r() - 0.55) * 1.4));
+    }),
+  );
+  const hour = Array.from({ length: 24 }, (_, h) => byDowHour.reduce((a, row) => a + row[h], 0));
+  const weekday = byDowHour.map((row) => row.reduce((a, b) => a + b, 0));
   const examples = [
     example(r, nowMs, 0, "Largest win in the window", true),
     example(r, nowMs, 1, "Typical pullback entry (median return)", true),
@@ -92,6 +101,7 @@ export function fixtureFingerprint(address: string, nowMs: number): StrategyFing
     pnl_from_top_coin_pct: 46,
     hour_hist_utc: hour,
     weekday_hist: weekday,
+    entries_by_dow_hour: byDowHour,
     top_coins: [
       { coin: "BTC", volume_usd: 8_400_000, pnl_usd: 41_200, trips: 61 },
       { coin: "ETH", volume_usd: 3_100_000, pnl_usd: 12_900, trips: 34 },
@@ -136,11 +146,11 @@ export function fixtureTheses(address: string, nowMs: number, withClaude = true)
     markdown: [
       "## Thesis",
       "",
-      "He buys strength in BTC and ETH during the US session and lets winners run with adds.",
+      "They buy strength in BTC and ETH during the US session and let winners run with adds.",
       "",
       "### Copy risks",
       "",
-      "1. He sits in losers too long; a copy at higher leverage feels that first.",
+      "1. They sit in losers too long; a copy at higher leverage feels that first.",
       "2. Most PnL is BTC; if BTC chops, expect a flat month.",
       "",
       "| Check | Value |",

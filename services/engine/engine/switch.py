@@ -76,8 +76,14 @@ def note_account(data_dir: Path, address: str, now_ms: int,
     return prev or ""
 
 
-def write_status(data_dir: Path, status: Dict[str, Any], poll_interval_s: float) -> None:
-    _write_json(data_dir / STATUS_FILE, {"status": status, "poll_interval_s": poll_interval_s})
+def write_status(data_dir: Path, status: Dict[str, Any], poll_interval_s: float,
+                 build: Optional[Dict[str, Any]] = None) -> None:
+    """`build`: this engine process's contracts.build info (version-skew guard:
+    GET /api/health shows it next to the api's own build)."""
+    body: Dict[str, Any] = {"status": status, "poll_interval_s": poll_interval_s}
+    if build is not None:
+        body["build"] = build
+    _write_json(data_dir / STATUS_FILE, body)
 
 
 def read_status(data_dir: Path) -> Optional[Dict[str, Any]]:

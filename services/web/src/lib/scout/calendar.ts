@@ -95,3 +95,16 @@ export function buildCalendar(daily: CurvePoint[], days = 182, endMs?: number): 
   }
   return { weeks, months, scale, total, green, red, best, worst };
 }
+
+/**
+ * Map a -4..4 level onto the 5-step DIVERGING_RAMP (components/ui/chartStyle):
+ *   -4,-3 -> 0 (strong loss)  -2,-1 -> 1  0 -> 2 (flat)  1,2 -> 3  3,4 -> 4 (strong gain)
+ * The ramp is built from --up / --down, so it follows the PnL color mode.
+ */
+export function rampIndex(level: number): 0 | 1 | 2 | 3 | 4 {
+  if (!Number.isFinite(level) || level === 0) return 2;
+  if (level <= -3) return 0;
+  if (level < 0) return 1;
+  if (level >= 3) return 4;
+  return 3;
+}

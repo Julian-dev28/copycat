@@ -101,7 +101,7 @@ def _build_exchange(key: str, account: str) -> Exchange:
     return ex
 
 
-def get_exchange() -> Exchange:
+def get_exchange(creds: Optional["env.Credentials"] = None) -> Exchange:
     """The shared Exchange for the active credentials and network.
 
     Credentials come from `env.credentials()` (vault active account, else
@@ -120,9 +120,14 @@ def get_exchange() -> Exchange:
     them would stall every other writer thread behind a slow HL. Two
     threads racing a cold start may both build one; the first stored for
     the same key wins and the other is dropped, which is harmless.
+
+    `creds` (audit B2): credentials pinned by the engine at cycle start. The
+    Exchange is built for exactly those, never re-resolved, so an order of a
+    cycle that started on account A is signed for A even if B became active
+    since (venue.py refuses such a write before it gets here).
     """
     global _exchange, _exchange_key
-    account, key = env.credentials()
+    account, key = (creds.account, creds.agent_key) if creds is not None else env.credentials()
     if not (key and account):
         raise RuntimeError("COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set")
     err = check_agent_key(key, account)

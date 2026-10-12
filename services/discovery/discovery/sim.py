@@ -329,9 +329,15 @@ def simulate_wallet(
             raw = sizing.open_notional(settings, his_added, leader_equity_usd, st.equity(), N_LEADERS,
                                        lev, his_gross) * scale
             ntl = min(raw, room_ntl(lev))
-            if allocation:
-                ntl = min(ntl, alloc_room(lev))
+            a_room = alloc_room(lev) if allocation else None
+            if a_room is not None:
+                ntl = min(ntl, a_room)
             ntl = sizing.bump(ntl, settings)
+            if a_room is not None and ntl > a_room + 1e-9:
+                # engine: "allocation full: bumping would exceed the allocation" (regression:
+                # the sim bumped past the cap, so an allocation wallet held > allocation x 1.02)
+                st.flags.append(f"margin_room:{e.coin}")
+                continue
             if ntl < HL_MIN_ORDER_USD:
                 if raw >= HL_MIN_ORDER_USD or sizing.bump(raw, settings) >= HL_MIN_ORDER_USD:
                     st.flags.append(f"margin_room:{e.coin}")
@@ -339,7 +345,7 @@ def simulate_wallet(
                     st.skipped_min += 1
                 continue
             margin = ntl / lev
-            if margin > st.available_margin(is_cross) + 1e-9:
+            if ntl > room_ntl(lev) + 1e-9:     # engine: the bump passed available x lev x 0.95
                 st.flags.append(f"margin_room:{e.coin}")
                 continue
             fee = ntl * TAKER_FEE_RATE
@@ -371,13 +377,17 @@ def simulate_wallet(
             raw = sizing.add_notional(settings, his_added, leader_equity_usd, st.equity(), N_LEADERS,
                                       our_ntl_now, frac, his_gross, cp.leverage) * scale
             add = min(raw, room_ntl(cp.leverage))
-            if allocation:
-                add = min(add, alloc_room(cp.leverage))
+            a_room = alloc_room(cp.leverage) if allocation else None
+            if a_room is not None:
+                add = min(add, a_room)
             cap_room = None
             if fixed_mode:
                 cap_room = max(0.0, cp.cap_margin - cp.margin_usd) * cp.leverage
                 add = min(add, cap_room)
             add = sizing.bump(add, settings)
+            if a_room is not None and add > a_room + 1e-9:
+                st.flags.append(f"margin_room:{e.coin}")
+                continue
             if cap_room is not None and add > cap_room + 1e-9:
                 st.flags.append(f"add_capped:{e.coin}")
                 continue
@@ -388,7 +398,7 @@ def simulate_wallet(
                     st.skipped_min += 1
                 continue
             add_margin = add / cp.leverage
-            if add_margin > st.available_margin(is_cross) + 1e-9:
+            if add > room_ntl(cp.leverage) + 1e-9:
                 st.flags.append(f"margin_room:{e.coin}")
                 continue
             fee = add * TAKER_FEE_RATE

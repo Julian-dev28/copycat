@@ -303,6 +303,8 @@ export interface StrategyFingerprint {
   pnl_from_top_coin_pct?: number | null;
   hour_hist_utc: number[];
   weekday_hist: number[];
+  /** 7 x 24 trip-entry counts, [weekday][hour], UTC, Monday first. Empty or missing on fingerprints cached before it existed. */
+  entries_by_dow_hour?: number[][] | null;
   top_coins: CoinStat[];
   tags: string[];
   summary: string;

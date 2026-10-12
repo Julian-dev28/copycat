@@ -1,0 +1,14 @@
+import { chromium } from "@playwright/test";
+import * as fs from "node:fs";
+const st = JSON.parse(fs.readFileSync("/Users/julian_dev/Documents/code/copycat/e2e/.stack.json","utf8"));
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const snap = async (n: string) => { await page.waitForTimeout(900); fs.writeFileSync(`/tmp/x-${n}.yml`, await page.getByRole("dialog").last().ariaSnapshot()); };
+await page.goto(st.webURL + "/account?demo=1");
+await page.getByRole("button", { name: "Accounts", exact: true }).click();
+await page.getByRole("button", { name: /^Create a new account/ }).click(); await snap("create1");
+await page.goto(st.webURL + "/account?demo=1");
+await page.getByRole("button", { name: "Accounts", exact: true }).click();
+await page.getByRole("button", { name: /^Connect an existing account/ }).click(); await snap("connect1");
+await page.getByRole("group", { name: "Funding" }).getByRole("button", { name: "Move" }).click({ force: true }).catch(() => {});
+await browser.close();

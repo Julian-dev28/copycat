@@ -109,6 +109,9 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     if argv and argv[0] == "worker":
         logging.getLogger("discovery").setLevel(logging.INFO)
+        logging.getLogger("contracts.build").setLevel(logging.INFO)
+        from contracts import build
+        build.record("discovery_worker")
         return _worker(argv[1:])
     if argv and argv[0] == "trace":
         return _trace(argv[1:])

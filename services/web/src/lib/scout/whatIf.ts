@@ -110,3 +110,43 @@ export function overrideDiffers(draftOverride: LeaderOverride, stored: LeaderOve
   for (const k of keys) if ((a as Record<string, unknown>)[k] !== (b as Record<string, unknown>)[k]) return true;
   return false;
 }
+
+/** Short field names for the "changed from saved" chips. */
+export const WHATIF_FIELD_LABEL: Record<WhatIfField, string> = {
+  equity: "Equity",
+  sizing_mode: "Sizing",
+  size_multiplier: "Multiplier",
+  fixed_margin_usd: "Margin per trade",
+  fixed_notional_usd: "Notional per trade",
+  leverage_mode: "Leverage",
+  leverage: "Leverage x",
+  margin_mode: "Margin mode",
+  max_worse_entry_pct: "Max worse entry",
+};
+
+const FIELD_ORDER = Object.keys(WHATIF_FIELD_LABEL) as WhatIfField[];
+
+function same(a: string, b: string): boolean {
+  const x = a.trim();
+  const y = b.trim();
+  if (x === y) return true;
+  // "10" and "10.0" are the same number; "" (inherit) never equals a number
+  if (x === "" || y === "") return false;
+  const nx = Number(x);
+  const ny = Number(y);
+  return Number.isFinite(nx) && Number.isFinite(ny) && nx === ny;
+}
+
+/**
+ * Inputs where the draft differs from the saved settings it was seeded from
+ * (the stored override plus the default sim equity), in form order. Drives
+ * the "changed" marks on the what-if form and the chips on its result line.
+ */
+export function changedFields(draft: WhatIfDraft, saved: WhatIfDraft): WhatIfField[] {
+  return FIELD_ORDER.filter((f) => !same(draft[f], saved[f]));
+}
+
+/** True when the draft no longer matches the draft a result was computed from. */
+export function draftStale(draft: WhatIfDraft, ran: WhatIfDraft | null): boolean {
+  return ran !== null && changedFields(draft, ran).length > 0;
+}

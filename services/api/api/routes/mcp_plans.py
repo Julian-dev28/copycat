@@ -1,7 +1,11 @@
 """MCP copy plans (contract v9), the "thesis + trade" flow of the copycat MCP server.
 
   POST /api/mcp/plans                 CopyPlanRequest -> CopyPlan (read-only: preview,
-                                      cached projection, warnings; stored 120 s)
+                                      cached projection, warnings; stored MCP_PLAN_TTL_S).
+                                      confirm_code is ALWAYS null here (audit H2)
+  GET  /api/mcp/plans/pending         McpPendingPlan[] WITH the confirm codes, for the
+                                      web's "Pending MCP plans" panel. Admin token only:
+                                      the scoped MCP token gets 403 (api.auth.MCP_SCOPE)
   POST /api/mcp/plans/{id}/execute    CopyPlanExecuteRequest -> CopyPlanResult
 
 Execute writes the plan's custom terms through `SettingsStore.copy_wallet`
@@ -11,7 +15,7 @@ api.mcp_plans. Sync `def`s: the preview's live HL reads run on the threadpool.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -20,6 +24,7 @@ from contracts.models import (
     CopyPlanExecuteRequest,
     CopyPlanRequest,
     CopyPlanResult,
+    McpPendingPlan,
     TraderProfile,
     TradingStyle,
     WalletPosition,
@@ -75,7 +80,7 @@ def _projection(request: Request, scout: ScoutClient, addr: str, settings, body:
     try:
         return wallet_routes.build_projection(scout, addr, settings, body.amount_usd,
                                               body.trade_direction, creq.exposure_mode,
-                                              creq.target_leverage)
+                                              creq.target_leverage, copy_request=creq)
     except Exception:
         return None
     finally:
@@ -110,7 +115,9 @@ def create_plan(request: Request, body: CopyPlanRequest,
     """Build a copy plan for `address` at `amount_usd`: the engine's own
     preview at these custom terms, the cached 30-day projection if any, and
     the warnings to read before approving. Read-only on the book: stored
-    for 120 s, used once by execute. 502/503 when the live preview fails."""
+    for MCP_PLAN_TTL_S, used once by execute. 502/503 when the live preview
+    fails. The response never carries the confirm code (audit H2): the human
+    reads it in the web (GET /api/mcp/plans/pending) or a notification."""
     addr = body.address
     creq = mp.copy_request_for(body)
     preview = _preview(engine, store, addr, creq)
@@ -120,14 +127,23 @@ def create_plan(request: Request, body: CopyPlanRequest,
     own = addr in store.own_addresses()
     warnings, executable = mp.plan_warnings(
         body, preview, projection, settings, _style(scout, addr), _his_liq_pct(scout, addr),
-        own, mp.trading_allowed(), mp.max_usd())
+        own, mp.trading_allowed(), mp.max_usd(), mp.max_usd_per_day(), plans.executed_usd_today())
     plan = mp.new_plan(body, preview, projection, settings, warnings, executable, plans.now_ms(),
                        book)
     plans.put(plan)
     plans.audit("plan", plan_id=plan.plan_id, outcome="created", executable=executable,
                 trading_live=plan.trading_live, book_fingerprint=plan.book_fingerprint,
                 positions=len(preview.slices), copied=preview.copied, **mp.audit_terms(body))
-    return plan
+    if executable:
+        mp.notify(plan)
+    return plan.model_copy(update={"confirm_code": None})
+
+
+@router.get("/plans/pending", response_model=List[McpPendingPlan])
+def pending_plans(plans: mp.PlanStore = Depends(get_plan_store)) -> List[McpPendingPlan]:
+    """Live plans (unused, unexpired), newest first, WITH their confirm codes, so the
+    human can read the code in copycat and type it to Claude. Admin token only."""
+    return [mp.pending_view(p) for p in plans.pending()]
 
 
 @router.post("/plans/{plan_id}/execute", response_model=CopyPlanResult,
@@ -158,7 +174,8 @@ def execute_plan(plan_id: str, body: CopyPlanExecuteRequest,
         try:
             plan, bad = mp.check_plan(found, plan_id, body.confirm_code, plans.now_ms())
             settings = store.load()
-            mp.check_caps(plan, settings, mp.max_usd())
+            mp.check_caps(plan, settings, mp.max_usd(), mp.max_usd_per_day(),
+                          plans.executed_usd_today())
             addr = plan.request.address
             now_fp, _ = mp.book_fingerprint(_book(engine, addr), mp.planned_coins(plan.preview))
             if now_fp != plan.book_fingerprint:

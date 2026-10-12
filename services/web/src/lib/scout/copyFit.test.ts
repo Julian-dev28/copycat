@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blendedFit, capLines, fitGrade, fitSegments, PART_ORDER, topParts } from "./copyFit";
+import { blendedFit, CAP_RULES, capLines, fitGrade, fitPartsLine, fitSegments, fitTier, PART_META, PART_ORDER, topParts } from "./copyFit";
 import { FIT_WEIGHTS } from "./fixtures";
 import type { CopyFit } from "./types";
 
@@ -80,5 +80,38 @@ describe("fitGrade / topParts", () => {
     expect(top).toHaveLength(3);
     expect(top[0].key).toBe("sim");
     for (let i = 1; i < top.length; i++) expect(top[i - 1].points).toBeGreaterThanOrEqual(top[i].points);
+  });
+});
+
+describe("fitTier (DESIGN 3.4 accent ramp buckets)", () => {
+  it("buckets at 90 / 70 / 50", () => {
+    expect([95, 90, 89.9, 70, 69, 50, 49.9, 0].map(fitTier)).toEqual([3, 3, 2, 2, 1, 1, 0, 0]);
+  });
+  it("null for not scored", () => {
+    expect(fitTier(null)).toBeNull();
+    expect(fitTier(Number.NaN)).toBeNull();
+  });
+});
+
+describe("fitPartsLine", () => {
+  it("speaks in points of 100, never a signed return", () => {
+    const line = fitPartsLine(fit(allHalf));
+    expect(line).toMatch(/^Points: /);
+    expect(line).toMatch(/\(of 100\)$/);
+    expect(line).not.toMatch(/\+/);
+  });
+  it("lists the top parts by points", () => {
+    const line = fitPartsLine(fit({ sim: 1, sharpe: 1 }));
+    expect(line.startsWith("Points: Your copy")).toBe(true);
+  });
+  it("says so when nothing scored", () => {
+    expect(fitPartsLine(fit({}))).toBe("No part scored above zero");
+  });
+});
+
+describe("copy text uses they/their, not he/his", () => {
+  it("part hints and cap texts", () => {
+    const texts = [...Object.values(PART_META).map((m) => `${m.label} ${m.hint}`), ...CAP_RULES.map((c) => c.text)];
+    for (const t of texts) expect(t).not.toMatch(/\b(he|his|him)\b/i);
   });
 });

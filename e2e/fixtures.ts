@@ -40,7 +40,7 @@ export const ROUTES = ["/", "/scout", "/portfolio", "/account", "/settings", "/d
 export async function gotoDemo(page: Page, route: string, extra = ""): Promise<void> {
   const sep = route.includes("?") ? "&" : "?";
   await page.goto(`${route}${sep}demo=1${extra}`);
-  await page.waitForLoadState("networkidle");
+  await page.locator("main").waitFor();
 }
 
 /** Collect uncaught page errors (hydration crashes, render throws). */

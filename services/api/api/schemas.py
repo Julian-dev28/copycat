@@ -98,6 +98,9 @@ class DiscoveryRunResponse(BaseModel):
 class HealthResponse(BaseModel):
     ok: bool
     version: str
+    # the running contracts.models.CONTRACT_VERSION (audit H4): the web's feature caps
+    # read this, never a value stored in settings.json
+    contract_version: int
 
 
 class CloseAllResponse(BaseModel):

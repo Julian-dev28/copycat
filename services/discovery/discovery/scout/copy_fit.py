@@ -16,6 +16,13 @@ Gates and caps, after the blend, in this order (each adds its flag to caps):
     fills truncated                            no cap           fills_truncated (warning only)
 A cap's flag is listed whenever its condition holds, even when the blend
 was already under the cap: the page explains the ceiling either way.
+
+Band, after the caps: a too_few_trades wallet never outranks a real copier
+(an active wallet with >= 5 sim copies, liquidated or not): its fit is
+also capped at the lowest real copier's fit in the cohort. The flat 40 cap
+alone let a 2-trade wallet with good percentiles sit above a real copier
+at 30 on the default sort (scoring.py already bands the sim score the same
+way).
 """
 from __future__ import annotations
 
@@ -143,4 +150,12 @@ def compute(cohort: Sequence[FitInput], now_ms: int) -> Dict[str, CopyFit]:
             caps.append("fills_truncated")
         out[c.address] = CopyFit(value=round(fit, 2), parts={k: round(v, 6) for k, v in parts.items()},
                                  weights=dict(WEIGHTS), caps=caps, cohort_size=n)
+    real = [out[c.address].value for c in cohort
+            if c.sim_copies >= MIN_COPIES and "inactive" not in out[c.address].caps]
+    if real:
+        floor = min(real)
+        for c in cohort:
+            f = out[c.address]
+            if c.sim_copies < MIN_COPIES and f.value > floor:
+                f.value = floor
     return out

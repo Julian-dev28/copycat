@@ -18,7 +18,10 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     config = McpConfig.from_env()
     token_src = "COPYCAT_API_TOKEN" if config.env_token else str(config.token_file)
-    print(f"copycat-mcp: api {config.api_url}, token from {token_src}", file=sys.stderr)
+    from contracts import build
+    b = build.record("mcp")
+    print(f"copycat-mcp: api {config.api_url}, token from {token_src}, build {b['build']} "
+          f"(contract v{b['contract_version']})", file=sys.stderr)
 
     from .server import build_server
     build_server(config).run("stdio")

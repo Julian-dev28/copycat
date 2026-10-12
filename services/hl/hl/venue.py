@@ -63,6 +63,8 @@ def _order_result(result: Any, requested_sz: Optional[float] = None,
             out["filled_sz"] = float(f["totalSz"])
             if "avgPx" in f:
                 out["avg_px"] = float(f["avgPx"])
+            if f.get("oid") is not None:
+                out["oid"] = f["oid"]
         except (KeyError, TypeError, ValueError):
             # HL said "filled" but we cannot read how much. Unknown size is
             # exactly the ambiguous case: resolve with a fresh account read.
@@ -208,15 +210,28 @@ _active_dexes: Dict[str, List[str]] = {}
 _last_full_scan: Dict[str, float] = {}
 
 
-def _dexes_to_read(user: str) -> Tuple[List[str], bool]:
+def _dexes_to_read(user: str, also: Optional[List[str]] = None) -> Tuple[List[str], bool]:
+    """(dexes to read, full scan). `also`: dexes the caller needs read this time
+    whatever the cache says (audit B1: the engine passes every dex it holds,
+    has pending or may open a copy on, so a HIP-3 copy is never invisible to
+    our own read between full scans). Unknown names are dropped."""
     all_dexes = meta.dex_list()
     if os.environ.get("COPYCAT_HL_DEXES") is not None:
         return all_dexes, True
     known = _active_dexes.get(user)
     if known is None or time.time() - _last_full_scan.get(user, 0.0) >= ACTIVE_DEX_RESCAN_S:
         return all_dexes, True
-    keep = [d for d in all_dexes if d == "" or d in known]
+    want = set(also or ())
+    keep = [d for d in all_dexes if d == "" or d in known or d in want]
     return keep, False
+
+
+def note_active_dex(user: str, dex: str) -> None:
+    """A write just changed `user`'s position on `dex`: read that dex on every
+    later account_state until a full scan finds it empty (audit B1)."""
+    known = _active_dexes.get(user)
+    if known is not None and dex not in known:
+        known.append(dex)
 
 
 def _remember_active(user: str, active: List[str], full_scan: bool, read: List[str]) -> None:
@@ -267,6 +282,25 @@ def _spot_usdc_free(balances: List[Dict[str, Any]]) -> float:
     return max(0.0, free)
 
 
+def _write_guard(creds: Optional[env.Credentials]) -> Optional[Dict[str, Any]]:
+    """None when a write may go ahead, else the OrderResult to return instead.
+    Without `creds`: the active credentials must exist (legacy callers).
+    With pinned `creds` (audit B2): the active account must still be
+    `creds.account`; otherwise nothing is sent and the result carries
+    `account_changed: True` so the engine can abort the cycle's writes."""
+    if creds is None:
+        if not env.has_write_creds():
+            return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
+        return None
+    if not (creds.account and creds.agent_key):
+        return {"ok": False, "error": "pinned credentials incomplete", "ambiguous": False}
+    changed = env.account_changed(creds)
+    if changed:
+        logger.error(f"[hl.venue] {changed}")
+        return {"ok": False, "error": changed, "ambiguous": False, "account_changed": True}
+    return None
+
+
 class HlVenue:
     """Stateless wrapper over hl.http / hl.meta / hl.sdk -- every cache and
     rate limiter lives at module scope in those modules, so instantiating
@@ -275,18 +309,23 @@ class HlVenue:
 
     # ── reads ────────────────────────────────────────────────────────────
 
-    def account_state(self, user: str) -> Optional[Dict[str, Any]]:
+    def account_state(self, user: str,
+                      also_dexes: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """{"equity_perp_usd", "spot_usdc", "positions", "available",
-        "raw_positions"} -- see contracts.venue.AccountState. None if ANY
-        dex's clearinghouseState read (or the spot read) failed; a partial
-        read must never look like a flat account or zero equity."""
+        "raw_positions", "dexes_read"} -- see contracts.venue.AccountState.
+        None if ANY dex's clearinghouseState read (or the spot read) failed; a
+        partial read must never look like a flat account or zero equity.
+
+        `also_dexes`: always read these dexes too (audit B1). `dexes_read` says
+        which dexes this read covered: a coin on a dex NOT in it is unknown,
+        never "flat"."""
         try:
             equity = 0.0
             available: Dict[str, float] = {}
             positions: Dict[str, Dict[str, Any]] = {}
             raw_positions: Dict[str, Dict[str, Any]] = {}
 
-            dexes, full_scan = _dexes_to_read(user)
+            dexes, full_scan = _dexes_to_read(user, also_dexes)
             active: List[str] = []
             for dex in dexes:
                 st = http_post("/info", {"type": "clearinghouseState", "user": user, "dex": dex})
@@ -335,6 +374,7 @@ class HlVenue:
                 "positions": positions,
                 "available": available,
                 "raw_positions": raw_positions,
+                "dexes_read": list(dexes),
             }
             try:
                 abstraction = _user_abstraction(user)
@@ -576,6 +616,12 @@ class HlVenue:
                         "start_position": float(f.get("startPosition") or 0),
                         "closed_pnl": float(f.get("closedPnl") or 0),
                         "fee": float(f.get("fee") or 0),
+                        # S7: what the engine needs to book OUR fills exactly
+                        "cloid": f.get("cloid") or None,
+                        "oid": f.get("oid"),
+                        "tid": f.get("tid"),
+                        "hash": f.get("hash"),
+                        "liquidation": bool(f.get("liquidation")),
                     })
                 except (KeyError, TypeError, ValueError) as exc:
                     logger.warning(f"[hl.venue] fills: dropping unparseable fill for {user}: {exc}")
@@ -788,7 +834,12 @@ class HlVenue:
 
     # ── writes ───────────────────────────────────────────────────────────
 
-    def set_leverage(self, coin: str, leverage: int, is_cross: bool) -> Dict[str, Any]:
+    def pin_credentials(self) -> Optional[env.Credentials]:
+        """The active write credentials, frozen for one engine cycle (B2)."""
+        return env.pin_credentials()
+
+    def set_leverage(self, coin: str, leverage: int, is_cross: bool,
+                     creds: Optional[env.Credentials] = None) -> Dict[str, Any]:
         """Strict: ok is True only when HL's response body says
         status=="ok" -- update_leverage can return HTTP 200 with
         {"status": "err", "response": "<message>"}, and a non-strict
@@ -797,8 +848,9 @@ class HlVenue:
         request we know will no-op, and log the fallback (the caller can
         confirm what was actually applied via `is_isolated_only(coin)`).
         """
-        if not env.has_write_creds():
-            return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
+        blocked = _write_guard(creds)
+        if blocked:
+            return blocked
         if leverage < 1:
             return {"ok": False, "error": f"invalid leverage {leverage} (< 1)"}
 
@@ -808,7 +860,7 @@ class HlVenue:
             use_cross = False
 
         try:
-            exchange = sdk.get_exchange()
+            exchange = sdk.get_exchange(creds)
             result = exchange.update_leverage(leverage, coin, is_cross=use_cross)
         except Exception as exc:
             logger.error(f"[hl.venue] set_leverage({coin}, is_cross={use_cross}) failed: {exc}")
@@ -822,7 +874,8 @@ class HlVenue:
 
     def market(self, coin: str, is_buy: bool, size: float, mid: float,
                reduce_only: bool = False, cloid: Optional[str] = None,
-               max_slippage_pct: float = 1.0) -> Dict[str, Any]:
+               max_slippage_pct: float = 1.0,
+               creds: Optional[env.Credentials] = None) -> Dict[str, Any]:
         """IOC limit order capped at mid * (1 +/- max_slippage_pct/100).
 
         * Opens are bumped up to HL's $10.50 floor; reduce_only orders are
@@ -835,8 +888,9 @@ class HlVenue:
           filled_sz/avg_px set. A timeout or dropped connection on the
           /exchange POST returns ambiguous True: the order may be live.
         """
-        if not env.has_write_creds():
-            return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
+        blocked = _write_guard(creds)
+        if blocked:
+            return blocked
         if mid <= 0:
             return {"ok": False, "error": f"invalid mid price for {coin}"}
         if not (size > 0):
@@ -859,7 +913,7 @@ class HlVenue:
             price_str, err = _ioc_limit(coin, is_buy, mid, sz_dec, max_slippage_pct)
             if err:
                 return {"ok": False, "error": err, "ambiguous": False}
-            exchange = sdk.get_exchange()
+            exchange = sdk.get_exchange(creds)
         except Exception as exc:
             logger.error(f"[hl.venue] market({coin}) failed before send: {exc}")
             return {"ok": False, "error": str(exc), "ambiguous": False}
@@ -885,6 +939,11 @@ class HlVenue:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "ambiguous": amb}
 
         parsed = _order_result(result, requested_sz=send_sz, sz_dec=sz_dec)
+        if float(parsed.get("filled_sz") or 0.0) > 0 or parsed.get("ambiguous"):
+            # our position on this dex may have changed: read it every cycle (B1)
+            who = creds.account if creds is not None else env.account_address()
+            if who and ":" in coin:
+                note_active_dex(who, coin.split(":", 1)[0])
         if not parsed.get("ok"):
             logger.warning(
                 f"[hl.venue] market {coin} {side} size={send_sz} px={price_str} cloid={cloid} "
@@ -892,8 +951,10 @@ class HlVenue:
             )
         return parsed
 
-    def order_status(self, cloid: str) -> Optional[str]:
-        """Status of OUR order (COPYCAT_ACCOUNT_ADDRESS) by client order id.
+    def order_status(self, cloid: str, account: Optional[str] = None) -> Optional[str]:
+        """Status of OUR order by client order id. `account`: the account the
+        order was sent for (the engine passes its pinned cycle account, B2);
+        default the active account.
 
         /info {"type": "orderStatus", "user": ACCOUNT, "oid": "<cloid hex>"}:
         HL accepts either the numeric oid or the 0x cloid string in "oid"
@@ -901,7 +962,7 @@ class HlVenue:
         "filled" | "open" | "canceled" | "rejected" | "triggered" | other
         raw HL status, "unknown" when HL answers unknownOid, None when the
         read failed (no account set, bad cloid, network, bad shape)."""
-        account = env.account_address()
+        account = account or env.account_address()
         if not account:
             logger.error("[hl.venue] order_status: COPYCAT_ACCOUNT_ADDRESS not set")
             return None
@@ -924,10 +985,12 @@ class HlVenue:
         logger.error(f"[hl.venue] order_status: unexpected response for cloid={cloid}: {raw}")
         return None
 
-    def _own_szi(self, coin: str) -> Tuple[Optional[float], Optional[str]]:
+    def _own_szi(self, coin: str, account: Optional[str] = None) -> Tuple[Optional[float], Optional[str]]:
         """(signed size, None) of our own live position (0.0 when flat), or
-        (None, error) when the read failed."""
-        state = self.account_state(env.account_address())
+        (None, error) when the read failed. `account` default: the active one.
+        The coin's dex is always read (B1)."""
+        dex = coin.split(":", 1)[0] if ":" in coin else ""
+        state = self.account_state(account or env.account_address(), also_dexes=[dex] if dex else None)
         if state is None:
             return None, "account_state read failed"
         pos = state["raw_positions"].get(coin)
@@ -938,7 +1001,8 @@ class HlVenue:
         except (TypeError, ValueError):
             return None, "bad_szi"
 
-    def close(self, coin: str, cloid: Optional[str] = None) -> Dict[str, Any]:
+    def close(self, coin: str, cloid: Optional[str] = None,
+              creds: Optional[env.Credentials] = None) -> Dict[str, Any]:
         """Reduce-only full close at market (IOC), sized off our OWN live
         position (never a caller-supplied size), then confirmed with a
         FRESH read: ok True only if the position is now flat.
@@ -950,11 +1014,17 @@ class HlVenue:
           fields (filled_sz, ambiguous) are kept.
         Retrying is always safe: every call re-reads the size it closes, and
         reduce_only can never flip the position.
-        """
-        if not env.has_write_creds():
-            return {"ok": False, "error": "COPYCAT_AGENT_KEY/COPYCAT_ACCOUNT_ADDRESS not set"}
 
-        szi, err = self._own_szi(coin)
+        `creds` (B2): size, order and confirmation all use `creds.account`,
+        never the active account re-resolved mid-call; refused (nothing sent)
+        once the active account is no longer `creds.account`.
+        """
+        blocked = _write_guard(creds)
+        if blocked:
+            return blocked
+        account = creds.account if creds is not None else None
+
+        szi, err = self._own_szi(coin, account)
         if szi is None:
             return {"ok": False, "error": err}
         if szi == 0:
@@ -965,10 +1035,13 @@ class HlVenue:
             return {"ok": False, "error": f"invalid price for {coin}"}
         order = self.market(coin, is_buy=szi < 0, size=abs(szi), mid=mid_price,
                             reduce_only=True, cloid=cloid,
-                            max_slippage_pct=env.close_max_slippage_pct())
+                            max_slippage_pct=env.close_max_slippage_pct(), creds=creds)
+        if order.get("account_changed"):
+            return order
 
-        out: Dict[str, Any] = {k: v for k, v in order.items() if k in ("avg_px", "filled_sz", "ambiguous")}
-        after, read_err = self._own_szi(coin)
+        out: Dict[str, Any] = {k: v for k, v in order.items()
+                               if k in ("avg_px", "filled_sz", "ambiguous", "oid")}
+        after, read_err = self._own_szi(coin, account)
         if after is None:
             out.update(ok=False, error=f"close sent ({order.get('error') or 'ok'}) but post-close read failed: {read_err}")
             return out

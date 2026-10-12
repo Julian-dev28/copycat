@@ -48,7 +48,7 @@ from .refresh import ScoutBusy, run_scheduler, settings_hash
 
 __all__ = ["scout_page", "scout_profile", "scout_fills", "scout_orders", "scout_what_if", "scout_presets",
            "scout_status", "scout_refresh", "run_scheduler", "serve", "ScoutBusy", "ScoutQueryError",
-           "ScoutReadError", "settings_hash", "configure"]
+           "ScoutReadError", "settings_hash", "configure", "scout_build"]
 
 _ADDR = re.compile(r"^0x[0-9a-f]{40}$")
 
@@ -297,8 +297,21 @@ def scout_refresh() -> ScoutStatus:
 def serve(settings_provider: Callable[[], Settings], sim_equity_provider: Optional[Callable[[], float]] = None,
           stop: Optional[threading.Event] = None, tick_s: float = C.SCHEDULER_TICK_S) -> None:
     use_background_priority()
+    from contracts import build
+    store.meta_set(_conn(), {"scheduler_build": build.record("scout")})
     run_scheduler(settings_provider, venue=_default_venue(), sim_equity_provider=sim_equity_provider,
                   stop=stop, sizing=_cfg["sizing"], tick_s=tick_s, db_path=_cfg["db_path"])
+
+
+def scout_build() -> Optional[Dict[str, Any]]:
+    """The running `scout serve` process's build info (contracts.build), from
+    the scout meta it wrote at start, plus `alive` (scheduler heartbeat).
+    None when serve never recorded one (not started, or older code)."""
+    conn = _conn()
+    b = store.meta_get(conn, "scheduler_build")
+    if not isinstance(b, dict):
+        return None
+    return {**b, "alive": bool(R.scheduler_alive(conn))}
 
 
 # ── Account page ────────────────────────────────────────────────────────────

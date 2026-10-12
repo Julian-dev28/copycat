@@ -110,9 +110,19 @@ class DailyReturns:
 
 
 def daily_returns(pnl: Sequence[Point], av: Sequence[Point]) -> DailyReturns:
-    """#8. r_d = (P_d - P_prev) / AV_prev over consecutive observed day
+    """#8. r_d = (P_d - P_prev) / capital over consecutive observed day
     closes; skipped when AV_prev < MIN_AV_FOR_RETURN (the day is dropped,
-    the next return still starts from it)."""
+    the next return still starts from it).
+
+    capital = AV_prev + max(0, net deposits in the step), where net deposits
+    = (AV_d - AV_prev) - (P_d - P_prev): the account value change that PnL
+    does not explain. Money deposited during the step is at risk in it, so a
+    loss on it is measured against it, not against the (possibly tiny)
+    balance before the deposit. r is floored at -100%: an account cannot lose
+    more than the capital it had.
+    Regression: a +$61M trader showed "all-time max drawdown 100%" because a
+    loss on freshly deposited millions was divided by a ~$1k prior balance
+    (r = -2000%), which drove the drawdown index below zero."""
     p = day_closes(pnl)
     a = day_closes(av)
     out = DailyReturns([], [], [])
@@ -120,19 +130,23 @@ def daily_returns(pnl: Sequence[Point], av: Sequence[Point]) -> DailyReturns:
         av0 = _value_at(a, t0)
         if av0 is None or av0 < C.MIN_AV_FOR_RETURN:
             continue
+        av1 = _value_at(a, t1)
+        inflow = max(0.0, (av1 - av0) - (p1 - p0)) if av1 is not None else 0.0
         out.days.append(t1)
-        out.returns.append((p1 - p0) / av0)
+        out.returns.append(max(-1.0, (p1 - p0) / (av0 + inflow)))
         out.gaps.append((t1 - t0) / C.DAY_MS)
     return out
 
 
 def max_drawdown_pct(returns: Sequence[float]) -> Optional[float]:
-    """#9. I_0 = 1, I_d = I_{d-1}(1 + r_d); worst I_d / peak - 1, as a positive %."""
+    """#9. I_0 = 1, I_d = I_{d-1}(1 + r_d); worst I_d / peak - 1, as a positive %.
+    Always in [0, 100]: r is floored at -100% (an index below zero would read
+    as a drawdown past 100%)."""
     if not returns:
         return None
     idx, peak, worst = 1.0, 1.0, 0.0
     for r in returns:
-        idx *= (1.0 + r)
+        idx *= (1.0 + max(-1.0, r))
         peak = max(peak, idx)
         worst = min(worst, idx / peak - 1.0)
     return -worst * 100.0

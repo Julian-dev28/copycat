@@ -17,13 +17,22 @@ Execute guards, in this order (each one audit-logged with its outcome):
   (b) the plan exists (404), is not used and not expired (410)
   (c) the confirm code matches, constant-time (403); MAX_BAD_CODES wrong
       codes burn the plan
-  (d) amount_usd <= COPYCAT_MCP_MAX_USD (default 100) and leverage <=
-      settings.max_position_leverage (403)
+  (d) amount_usd <= COPYCAT_MCP_MAX_USD (default 100), leverage <=
+      settings.max_position_leverage, and today's executed MCP dollars (UTC
+      day, from the audit log) + this amount <= COPYCAT_MCP_MAX_USD_PER_DAY
+      (default = the per-plan cap) (403)
   (e) his positions now (one account read, `leader_book`) hash to the plan's
       book_fingerprint (409, plan burned)
   (f) the book has room (MAX_LEADERS) unless he is already in it (409)
 Then `copy_wallet` with the plan's custom terms. `enabled` and `dry_run` are
 never touched: whether anything is ordered stays the user's switch.
+
+Audit H2: the confirm code never goes back to the caller of POST /api/mcp/plans
+(the model). The human sees it in the web (GET /api/mcp/plans/pending, admin
+token only) and, with COPYCAT_MCP_NOTIFY=1 on macOS, as a desktop notification;
+they type it to Claude, which passes it to execute.
+Audit H5: MCP plans always copy with ISOLATED margin, so a plan can lose its
+allocation (its margin) and not the rest of the account.
 """
 from __future__ import annotations
 
@@ -48,6 +57,8 @@ from contracts.models import (
     CopyPlanRequest,
     ExposureMode,
     LeverageMode,
+    MarginMode,
+    McpPendingPlan,
     Settings,
     TradingStyle,
     WalletCopyRequest,
@@ -59,6 +70,9 @@ PLANS_FILE = "mcp_plans.json"
 AUDIT_FILE = "mcp_audit.jsonl"
 ALLOW_ENV = "COPYCAT_MCP_ALLOW_TRADING"
 MAX_USD_ENV = "COPYCAT_MCP_MAX_USD"
+MAX_USD_DAY_ENV = "COPYCAT_MCP_MAX_USD_PER_DAY"
+NOTIFY_ENV = "COPYCAT_MCP_NOTIFY"
+DAY_MS = 86_400_000
 DEFAULT_MAX_USD = 100.0
 RATE_LIMIT = 10                 # executes per RATE_WINDOW_S
 RATE_WINDOW_S = 3600
@@ -69,7 +83,8 @@ CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O, 1/I: read aloud, 
 ENABLE_HINT = (f"Execution from Claude Code is off. To allow it, the operator sets {ALLOW_ENV}=1 in "
                f"the copycat api's environment (or .env) and restarts the api, and sets the same "
                f"variable in the MCP server's env (claude mcp add ... -e {ALLOW_ENV}=1). "
-               f"{MAX_USD_ENV} caps the amount per plan (default ${DEFAULT_MAX_USD:.0f}).")
+               f"{MAX_USD_ENV} caps the amount per plan (default ${DEFAULT_MAX_USD:.0f}), "
+               f"{MAX_USD_DAY_ENV} the executed total per UTC day (default: the per-plan cap).")
 
 
 class PlanRefused(Exception):
@@ -100,6 +115,22 @@ def max_usd(environ: Optional[Dict[str, str]] = None) -> float:
     return v if v > 0 else DEFAULT_MAX_USD
 
 
+def max_usd_per_day(environ: Optional[Dict[str, str]] = None) -> float:
+    """Cumulative cap on executed MCP plan dollars per UTC day (audit H5).
+    Unset or invalid: the per-plan cap, so by default one full plan a day."""
+    env = os.environ if environ is None else environ
+    raw = (env.get(MAX_USD_DAY_ENV) or "").strip()
+    try:
+        v = float(raw) if raw else 0.0
+    except ValueError:
+        v = 0.0
+    return v if v > 0 else max_usd(env)
+
+
+def utc_day_start_ms(now_ms: int) -> int:
+    return now_ms - now_ms % DAY_MS
+
+
 # ── pure helpers ──────────────────────────────────────────────────────────
 
 def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
@@ -112,6 +143,7 @@ def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
         exposure_mode=ExposureMode.target if lev else ExposureMode.match,
         target_leverage=lev,
         leverage_mode=None if lev else LeverageMode.match,
+        margin_mode=MarginMode.isolated,     # H5: a plan's loss is bounded by its margin
         max_worse_entry_pct=req.entry_deviation_pct,
         trade_direction=req.trade_direction,
         only_new_positions=False,
@@ -121,7 +153,7 @@ def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
 
 def planned_coins(preview: WalletPreview) -> List[str]:
     """Coins the plan would actually open (not skipped)."""
-    return sorted({s.coin for s in preview.slices if s.status != "skip"})
+    return sorted({s.coin for s in preview.slices if s.status not in ("skip", "wait")})
 
 
 def book_fingerprint(book: List[Dict[str, Any]],
@@ -158,7 +190,9 @@ def codes_match(given: str, expected: str) -> bool:
 def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
                   projection: Optional[WalletProjection], settings: Settings,
                   style: Optional[TradingStyle], his_liq_pct: Optional[float],
-                  own: bool, allowed: bool, cap_usd: float) -> Tuple[List[str], bool]:
+                  own: bool, allowed: bool, cap_usd: float,
+                  day_cap_usd: Optional[float] = None,
+                  spent_today_usd: float = 0.0) -> Tuple[List[str], bool]:
     """Everything the user should read before saying yes, and whether a guard
     will refuse the plan outright (`executable` false)."""
     w: List[str] = []
@@ -172,6 +206,12 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
         executable = False
         w.append(f"${req.amount_usd:,.2f} is over the per-plan cap of ${cap_usd:,.2f} "
                  f"({MAX_USD_ENV}); execute will refuse it. Make a plan at or under the cap.")
+    if (day_cap_usd is not None and req.amount_usd <= cap_usd
+            and spent_today_usd + req.amount_usd > day_cap_usd + 1e-9):
+        executable = False
+        w.append(f"${spent_today_usd:,.2f} of MCP plans already executed today (UTC); this plan "
+                 f"would take it over the daily cap of ${day_cap_usd:,.2f} ({MAX_USD_DAY_ENV}). "
+                 f"Execute will refuse it.")
     if req.leverage is not None and req.leverage > settings.max_position_leverage:
         executable = False
         w.append(f"{req.leverage}x is over your max position leverage "
@@ -205,7 +245,7 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
     if his_liq_pct is not None and his_liq_pct < LIQ_WARN_PCT:
         w.append(f"His nearest liquidation is {his_liq_pct:.1f}% away: a small move against him "
                  f"liquidates that position (and your copy at the same leverage).")
-    hot = sorted({s.leverage for s in preview.slices if s.status != "skip" and s.leverage > 0
+    hot = sorted({s.leverage for s in preview.slices if s.status not in ("skip", "wait") and s.leverage > 0
                   and 100.0 / s.leverage < LIQ_WARN_PCT})
     if hot:
         w.append(f"Copies at {', '.join(f'{x}x' for x in hot)} liquidate on roughly a "
@@ -226,12 +266,19 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
     other = [s for s in preview.slices if s.status == "skip" and s not in under_min]
     if other:
         w.append("Also skipped: " + "; ".join(f"{s.coin} ({s.reason})" for s in other))
+    waiting = [s for s in preview.slices if s.status == "wait"]
+    if waiting:
+        w.append("Waiting on price, NOT copied now and not in the totals (the engine opens each only "
+                 "if price comes back near his entry): "
+                 + "; ".join(f"{s.coin} ({s.reason})" for s in waiting))
     if preview.copied == 0 and preview.slices:
         w.append("At this amount none of his current positions would be copied.")
     if projection is None:
         w.append("No cached 30-day projection for him yet (Scout is building it).")
     elif projection.liquidations:
         w.append(f"The 30-day replay at these terms hit {projection.liquidations} liquidation(s).")
+    w.append(f"Isolated margin: each copied position can lose its own margin, so this plan "
+             f"risks about ${req.amount_usd:,.2f} (its allocation), not the rest of your account.")
     if req.trade_direction.value == "counter":
         w.append("Counter: you take the opposite side of every position he opens.")
     w.append(f"Entries wait while price is more than {req.entry_deviation_pct:g}% worse than his "
@@ -348,6 +395,42 @@ class PlanStore:
         return n
 
 
+    def executed_usd_today(self) -> float:
+        """Sum of amount_usd over executes that went through ("executed") since
+        00:00 UTC today. The audit log is the source of truth (audit H5)."""
+        since = utc_day_start_ms(self.now_ms())
+        total = 0.0
+        try:
+            with self.audit_path.open("r", encoding="utf-8") as f:
+                for raw in f:
+                    try:
+                        e = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if (e.get("event") == "execute" and e.get("outcome") == "executed"
+                            and int(e.get("ts_ms") or 0) >= since):
+                        try:
+                            total += float(e.get("amount_usd") or 0.0)
+                        except (TypeError, ValueError):
+                            continue
+        except OSError:
+            return 0.0
+        return total
+
+    def pending(self) -> List[CopyPlan]:
+        """Unused, unexpired plans, newest first."""
+        now = self.now_ms()
+        out = []
+        for rec in self._load().values():
+            try:
+                p = CopyPlan.model_validate(rec["plan"])
+            except Exception:
+                continue
+            if p.used_ms is None and p.expires_ms > now:
+                out.append(p)
+        return sorted(out, key=lambda p: -p.created_ms)
+
+
 def audit_terms(req: CopyPlanRequest) -> Dict[str, Any]:
     return {"address": req.address, "amount_usd": req.amount_usd, "leverage": req.leverage,
             "entry_deviation_pct": req.entry_deviation_pct,
@@ -366,6 +449,47 @@ def new_plan(req: CopyPlanRequest, preview: WalletPreview, projection: Optional[
         executable=executable, warnings=warnings, book_fingerprint=fp, book_summary=summary)
 
 
+def pending_view(plan: CopyPlan) -> McpPendingPlan:
+    r, pv = plan.request, plan.preview
+    return McpPendingPlan(
+        plan_id=plan.plan_id, confirm_code=plan.confirm_code or "", created_ms=plan.created_ms,
+        expires_ms=plan.expires_ms, address=r.address, amount_usd=r.amount_usd, leverage=r.leverage,
+        entry_deviation_pct=r.entry_deviation_pct, trade_direction=r.trade_direction,
+        follow=r.follow, executable=plan.executable, trading_live=plan.trading_live,
+        planned_notional_usd=pv.planned_notional_usd, planned_margin_usd=pv.planned_margin_usd,
+        copied=pv.copied, warnings=list(plan.warnings))
+
+
+def notify_text(plan: CopyPlan) -> str:
+    """Notification body. Only server-validated fields (0x address, numbers, the code
+    from CODE_ALPHABET): nothing a trader or a thesis wrote."""
+    r = plan.request
+    lev = f"{r.leverage}x" if r.leverage else "his leverage"
+    return (f"Code {plan.confirm_code}: ${r.amount_usd:,.2f} on {r.address[:8]}...{r.address[-4:]}, "
+            f"{r.trade_direction.value}, {lev}. Type it to Claude only if you approve.")
+
+
+def notify(plan: CopyPlan, environ: Optional[Dict[str, str]] = None,
+           run: Optional[Callable[..., Any]] = None, platform: Optional[str] = None) -> bool:
+    """Best-effort macOS notification with the confirm code (opt-in NOTIFY_ENV=1).
+    Never raises; returns whether it was sent. The model cannot see it."""
+    import subprocess
+    import sys
+    env = os.environ if environ is None else environ
+    if (env.get(NOTIFY_ENV) or "").strip() != "1" or not plan.confirm_code:
+        return False
+    if (platform or sys.platform) != "darwin":
+        return False
+    text = notify_text(plan).replace("\\", "").replace('"', "")
+    script = f'display notification "{text}" with title "copycat MCP plan" sound name "default"'
+    try:
+        (run or subprocess.run)(["osascript", "-e", script], check=False, timeout=5,
+                                capture_output=True)
+        return True
+    except Exception:
+        return False
+
+
 def check_plan(found: Optional[Tuple[CopyPlan, int]], plan_id: str, code: str,
                now_ms: int) -> Tuple[CopyPlan, int]:
     """Guards (b) and (c). Raises PlanRefused; a wrong code bumps the count
@@ -380,7 +504,7 @@ def check_plan(found: Optional[Tuple[CopyPlan, int]], plan_id: str, code: str,
     if now_ms >= plan.expires_ms:
         raise PlanRefused(410, "expired", f"this plan expired ({MCP_PLAN_TTL_S}s after it was made): "
                                           f"make a new plan with copy_plan")
-    if not codes_match(code, plan.confirm_code):
+    if not plan.confirm_code or not codes_match(code, plan.confirm_code):
         bad += 1
         burn = bad >= MAX_BAD_CODES
         raise PlanRefused(403, "bad_code",
@@ -390,12 +514,17 @@ def check_plan(found: Optional[Tuple[CopyPlan, int]], plan_id: str, code: str,
     return plan, bad
 
 
-def check_caps(plan: CopyPlan, settings: Settings, cap_usd: float) -> None:
+def check_caps(plan: CopyPlan, settings: Settings, cap_usd: float,
+               day_cap_usd: Optional[float] = None, spent_today_usd: float = 0.0) -> None:
     """Guard (d)."""
     req = plan.request
     if req.amount_usd > cap_usd:
         raise PlanRefused(403, "over_cap", f"${req.amount_usd:,.2f} is over the per-plan cap "
                                            f"${cap_usd:,.2f} ({MAX_USD_ENV})")
+    if day_cap_usd is not None and spent_today_usd + req.amount_usd > day_cap_usd + 1e-9:
+        raise PlanRefused(403, "over_day_cap",
+                          f"${spent_today_usd:,.2f} already executed today (UTC) + ${req.amount_usd:,.2f} "
+                          f"is over the daily cap ${day_cap_usd:,.2f} ({MAX_USD_DAY_ENV})")
     if req.leverage is not None and req.leverage > settings.max_position_leverage:
         raise PlanRefused(403, "over_leverage", f"{req.leverage}x is over max_position_leverage "
                                                 f"{settings.max_position_leverage}x")

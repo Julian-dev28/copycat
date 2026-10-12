@@ -163,3 +163,41 @@ def test_patch_bad_leader_override_value_422_and_file_untouched(
     )
     assert r.status_code == 422
     assert not settings_path.exists()
+
+
+# ── audit H4: contract_version is server-set ───────────────────────────────
+
+def test_old_contract_version_in_file_reads_back_as_the_running_one(
+    client: TestClient, auth_headers: dict, config: Config
+) -> None:
+    from contracts.models import CONTRACT_VERSION
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    path = config.data_dir / "settings.json"
+    path.write_text(json.dumps({"contract_version": 2, "enabled": False, "dry_run": True,
+                                "leaders": []}))
+    r = client.get("/api/settings", headers=auth_headers)
+    assert r.json()["contract_version"] == CONTRACT_VERSION
+    assert client.get("/api/health").json()["contract_version"] == CONTRACT_VERSION
+    # a client cannot write an old one back either, and any write migrates the file
+    r = client.patch("/api/settings", headers=auth_headers, json={"contract_version": 2})
+    assert r.status_code == 200 and r.json()["contract_version"] == CONTRACT_VERSION
+    assert json.loads(path.read_text())["contract_version"] == CONTRACT_VERSION
+
+
+def test_follow_their_leverage_on_a_v2_file_stores_leverage_mode_match(
+    client: TestClient, auth_headers: dict, config: Config
+) -> None:
+    """S1: the ticket's "Follow their leverage" must reach the book as leverage_mode
+    match, never fall back to the global (default max)."""
+    from contracts.models import CONTRACT_VERSION
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    (config.data_dir / "settings.json").write_text(json.dumps({"contract_version": 2}))
+    r = client.post(f"/api/wallets/{ADDR_A}/copy", headers=auth_headers,
+                    json={"settings_source": "custom", "allocation_usd": 100.0,
+                          "exposure_mode": "match", "leverage_mode": "match"})
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["contract_version"] == CONTRACT_VERSION
+    assert s["leader_overrides"][ADDR_A]["leverage_mode"] == "match"
+    eff = client.get("/api/settings", headers=auth_headers).json()
+    assert eff["leader_overrides"][ADDR_A]["leverage_mode"] == "match"
