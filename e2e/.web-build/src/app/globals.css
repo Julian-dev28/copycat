@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("..");
 
 /*
  * copycat design tokens (docs/design/DESIGN.md section 3).

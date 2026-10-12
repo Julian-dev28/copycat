@@ -191,6 +191,20 @@ def worse_entry_ok(side: str, mid: float, entry: float, pct: float) -> bool:
     return mid >= entry * (1 - frac)
 
 
+def entry_wait_reason(our_long: bool, mid: float, his_entry: float, pct: float) -> Optional[str]:
+    """Why an open waits (the preview's "wait" status), or None when
+    `worse_entry_ok` lets it through. The engine checks exactly this before
+    every open/add (core._diff_coin) and retries each cycle, so a slice that
+    fails it is not copied now: it opens only once mid comes back within
+    `pct` of his entry. Regression: the preview showed such slices as "copy"
+    with a notional (NEAR: his entry 2.35, mid 5.25, 2% allowed), the engine
+    never opened them."""
+    if mid <= 0 or worse_entry_ok("long" if our_long else "short", mid, his_entry, pct):
+        return None
+    past = abs(mid / his_entry - 1.0) * 100.0
+    return f"price is {past:.1f}% past his entry; opens only within {pct:g}%"
+
+
 def our_is_long(his_szi: float, direction: Any) -> bool:
     """Contract v8 TradeDirection: the side OUR copy takes for his signed size.
     copy: his side. counter: the opposite (he is long -> we are short).
@@ -391,6 +405,8 @@ def base_slices(ntl: Mapping[str, float], his_equity: float, allocation_usd: flo
     return out
 
 
+NOT_COPIED = ("skip", "wait")   # plan slice statuses that place nothing now
+
 UNCAPPED_FALLBACK_USD = 50_000.0   # liquidity reads failed: only orders under this go out uncapped
 
 
@@ -442,7 +458,11 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
                     lev_by_coin: Optional[Mapping[str, int]] = None, held: Iterable[str] = (),
                     liq_cap: Optional[Mapping[str, Optional[float]]] = None,
                     margin_used_usd: float = 0.0,
-                    max_position_leverage: int = 50) -> Dict[str, Any]:
+                    max_position_leverage: int = 50,
+                    pre_skip: Optional[Mapping[str, str]] = None,
+                    wait: Optional[Mapping[str, str]] = None,
+                    max_open_copies: Optional[int] = None,
+                    open_copies: int = 0) -> Dict[str, Any]:
     """What an `allocation` wallet would copy of his book RIGHT NOW. Pure.
     The engine sizes every open from the same pieces (`allocation_notional`,
     `concentrate`, `allocation_room_ntl`, `bump`, `split_order`) in the same
@@ -467,6 +487,14 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
 
     `min_allocation_for_full_book`: the smallest allocation at which every
     one of his positions clears the minimum without concentrating.
+
+    Engine gates that run BEFORE sizing (core._diff_coin / _open_or_add), in
+    its order, none of which spends allocation or an open slot:
+      `pre_skip[coin]` (owned by another wallet, coin filter): "skip" with that reason;
+      `wait[coin]` (`entry_wait_reason`: mid too far past his entry): "wait",
+        nothing copied now, the engine opens it once price comes back;
+      `max_open_copies` (None = not modelled): opens past it, counting
+        `open_copies` already open, are skipped.
     """
     alloc = max(0.0, float(allocation_usd))
     ntl = {c: his_notional(p) for c, p in his_positions.items()}
@@ -489,6 +517,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
     bump_ok = small_account_mode == SmallAccountMode.bump
     cap_total = alloc * ALLOCATION_SLACK
     used = max(0.0, float(margin_used_usd))
+    opened = 0
     slices: List[Dict[str, Any]] = []
     for c in sorted(ntl):
         lev = levs[c]
@@ -500,6 +529,15 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
             "reason": None, "liquidity_cap_usd": None, "fill_cycles": 1,
         }
         slices.append(row)
+        if pre_skip and c in pre_skip:
+            row["status"], row["reason"] = "skip", pre_skip[c]
+            continue
+        if wait and c in wait:
+            row["status"], row["reason"] = "wait", wait[c]
+            continue
+        if max_open_copies is not None and open_copies + opened >= max_open_copies:
+            row["status"], row["reason"] = "skip", f"max_open_copies reached ({max_open_copies})"
+            continue
         if c not in eligible_set:
             row["status"] = "skip"
             row["reason"] = (f"concentrate: slice ${base[c] * scale:,.2f} under the "
@@ -529,13 +567,14 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
         row["notional_usd"] = s
         row["margin_usd"] = s / lev
         used += s / lev
+        opened += 1
 
     if exposure_mode == ExposureMode.target:
         needs = [HL_MIN_ORDER_USD / (ntl[c] / gross * levs[c]) for c in ntl] if gross > 0 else []
     else:
         needs = [HL_MIN_ORDER_USD * his_equity / ntl[c] for c in ntl] if his_equity > 0 else []
     min_full = math.ceil(max(needs) * 100 - 1e-6) / 100.0 if needs else None
-    copied = [r for r in slices if r["status"] != "skip"]
+    copied = [r for r in slices if r["status"] not in NOT_COPIED]
     return {
         "slices": slices,
         "scale": scale,
@@ -543,6 +582,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
         "planned_margin_usd": sum(r["margin_usd"] for r in copied),
         "copied": [r["coin"] for r in copied],
         "skipped": [r["coin"] for r in slices if r["status"] == "skip"],
+        "waiting": [r["coin"] for r in slices if r["status"] == "wait"],
         "min_allocation_for_full_book": min_full,
         "multi_cycle": any(r["fill_cycles"] > 1 for r in copied),
     }
@@ -554,7 +594,9 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
               lev_by_coin: Optional[Mapping[str, int]] = None,
               liq_cap: Optional[Mapping[str, Optional[float]]] = None,
               open_copies: int = 0,
-              taken: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+              taken: Optional[Mapping[str, str]] = None,
+              pre_skip: Optional[Mapping[str, str]] = None,
+              wait: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     """`plan_allocation`'s sibling for the other sizing modes (fixed_margin,
     fixed_notional, proportional): what a first sight of his book would open
     under `settings` (a global wallet runs on the Settings tab as-is). Same
@@ -592,6 +634,12 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
         if c in taken:
             row["status"], row["reason"] = "skip", f"owned by wallet {taken[c]}"
             continue
+        if pre_skip and c in pre_skip:
+            row["status"], row["reason"] = "skip", pre_skip[c]
+            continue
+        if wait and c in wait:
+            row["status"], row["reason"] = "wait", wait[c]
+            continue
         if open_copies + opened >= settings.max_open_copies:
             row["status"] = "skip"
             row["reason"] = f"max_open_copies reached ({settings.max_open_copies})"
@@ -620,7 +668,7 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
         row["notional_usd"] = s
         row["margin_usd"] = s / lev
         opened += 1
-    copied = [r for r in slices if r["status"] != "skip"]
+    copied = [r for r in slices if r["status"] not in NOT_COPIED]
     return {
         "slices": slices,
         "scale": 1.0,
@@ -628,6 +676,7 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
         "planned_margin_usd": sum(r["margin_usd"] for r in copied),
         "copied": [r["coin"] for r in copied],
         "skipped": [r["coin"] for r in slices if r["status"] == "skip"],
+        "waiting": [r["coin"] for r in slices if r["status"] == "wait"],
         "min_allocation_for_full_book": None,
         "multi_cycle": any(r["fill_cycles"] > 1 for r in copied),
     }

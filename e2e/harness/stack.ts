@@ -133,6 +133,15 @@ export function buildWeb(apiURL: string, logsDir: string): void {
   // Turbopack refuses a node_modules symlink that leaves its root, so the copy's
   // root is the repo (which contains services/web/node_modules). The copy's own
   // next.config wraps the real one, so config changes in services/web still apply.
+  // Tailwind's automatic source detection walks the gitignored copy and the
+  // node_modules symlink (15 min and binary garbage classes). Pin it to src/,
+  // which is where every class lives.
+  const css = path.join(WEB_BUILD, "src/app/globals.css");
+  const cssText = fs.readFileSync(css, "utf8");
+  if (!cssText.startsWith('@import "tailwindcss";')) {
+    throw new Error('services/web/src/app/globals.css no longer starts with @import "tailwindcss"; update e2e/harness/stack.ts');
+  }
+  fs.writeFileSync(css, cssText.replace('@import "tailwindcss";', '@import "tailwindcss" source("..");'));
   const nm = path.join(WEB_BUILD, "node_modules");
   if (!fs.existsSync(nm)) fs.symlinkSync(path.relative(WEB_BUILD, path.join(WEB_SRC, "node_modules")), nm);
   fs.renameSync(path.join(WEB_BUILD, "next.config.ts"), path.join(WEB_BUILD, "next.config.base.ts"));

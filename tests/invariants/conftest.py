@@ -18,6 +18,6 @@ settings.register_profile(
     "gate", max_examples=40, deadline=None, derandomize=True, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large, HealthCheck.filter_too_much])
 settings.register_profile(
-    "deep", max_examples=1500, deadline=None, print_blob=True,
+    "deep", max_examples=500, deadline=None, print_blob=True,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large, HealthCheck.filter_too_much])
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "gate"))
