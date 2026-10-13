@@ -32,12 +32,15 @@ def component(name: str, build: Optional[Dict[str, Any]], alive: bool) -> Compon
 
 
 def stale(api: ComponentBuild, others: List[ComponentBuild], checkout_build: Optional[str] = None) -> List[str]:
+    """Components to restart. The reference is the code on disk when git can
+    tell us (so after a pull every running process shows), else the api."""
+    ref = checkout_build if checkout_build and checkout_build != "unknown" else api.build
     out: List[str] = []
-    if checkout_build and checkout_build != "unknown" and api.build and api.build != checkout_build:
+    if api.build and ref and api.build != ref:
         out.append("api")
     for c in others:
         if not c.alive:
             continue
-        if c.build is None or c.build != api.build or c.contract_version != api.contract_version:
+        if c.build is None or c.build != ref or c.contract_version != api.contract_version:
             out.append(c.component)
     return out
