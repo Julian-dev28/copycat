@@ -6,6 +6,7 @@ import { useModeStatus } from "@/components/copy/hooks";
 import { CoinBadge } from "@/components/scout/bits";
 import { TD, TH } from "@/components/scout/file/PositionsTable";
 import { AddressChip } from "@/components/ui/AddressChip";
+import { TableScroll } from "@/components/ui/Table";
 import { isEngineAccount, mergeAccountPositions } from "@/lib/account/positions";
 import type { TradingAccount } from "@/lib/account/types";
 import { formatPct, formatPrice, formatSignedPct, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
@@ -22,7 +23,7 @@ export function AccountPositions({ account, own, asOfMs, demo }: { account: Trad
   if (!rows.length) return <p className="p-4 text-sm text-muted">No open positions.</p>;
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
+      <TableScroll label="Positions">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -66,7 +67,7 @@ export function AccountPositions({ account, own, asOfMs, demo }: { account: Trad
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <p className="px-3 py-2 text-[11px] text-muted">
         As of {new Date(asOfMs).toLocaleTimeString("en-US", { hour12: false })}. copycat rows come from the engine&apos;s copies; Manual is everything else on this account.
       </p>

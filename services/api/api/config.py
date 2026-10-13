@@ -20,15 +20,12 @@ DNS-rebinding guard: localhost, 127.0.0.1, plus COPYCAT_ALLOWED_HOSTS.
 from __future__ import annotations
 
 import hmac
-import logging
 import os
 import secrets
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
-
-logger = logging.getLogger(__name__)
 
 API_VERSION = "0.1.0"
 
@@ -86,7 +83,6 @@ def resolve_api_token(data_dir: Path, env_token: Optional[str], file_name: str =
     msg = (f"copycat api: {env_name} is empty, generated a token into {path} (mode 0600)."
            + (" Paste its contents into the web UI." if file_name == TOKEN_FILE else
               " The copycat MCP server reads it (scoped: research, theses, plans)."))
-    logger.warning(msg)
     print(msg, file=sys.stderr)
     return token, str(path)
 

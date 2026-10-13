@@ -10,11 +10,12 @@ import { accountErrorText } from "@/lib/account/errors";
 import { normalizeBalances, normalizeFills, normalizeOrderRows, normalizeTransfers, orderStatusLabel, transferLabel } from "@/lib/account/history";
 import type { HistoryKind, TradingAccount } from "@/lib/account/types";
 import { formatNumber, formatPrice, formatSignedUsd, formatSize, formatUsd, shortenAddress } from "@/lib/format";
+import { TableScroll } from "@/components/ui/Table";
 import { useAccountHistory } from "./hooks";
 
-function Table({ cols, children }: { cols: string[]; children: ReactNode }) {
+function Table({ cols, label, children }: { cols: string[]; label: string; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
+    <TableScroll label={label}>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
@@ -23,7 +24,7 @@ function Table({ cols, children }: { cols: string[]; children: ReactNode }) {
         </thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -44,7 +45,7 @@ export function FillsHistory({ account }: { account: TradingAccount }) {
       const fills = normalizeFills(raw);
       if (!fills.length) return <Empty>No fills yet.</Empty>;
       return (
-        <Table cols={["Time", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]}>
+        <Table label="Fills" cols={["Time", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]}>
           {fills.map((f, i) => (
             <tr key={`${f.time_ms}-${i}`} className={ROW}>
               <td className={TD}>{when(f.time_ms)}</td>
@@ -69,7 +70,7 @@ export function OrdersHistory({ account }: { account: TradingAccount }) {
       const orders = normalizeOrderRows(raw);
       if (!orders.length) return <Empty>No orders in the last 30 days.</Empty>;
       return (
-        <Table cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Status", "Flags"]}>
+        <Table label="Orders" cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Status", "Flags"]}>
           {orders.map((o) => (
             <tr key={o.oid} className={ROW}>
               <td className={TD}>{when(o.time_ms)}</td>
@@ -97,7 +98,7 @@ export function TransfersHistory({ account }: { account: TradingAccount }) {
       const rows = normalizeTransfers(raw, account.address);
       if (!rows.length) return <Empty>No deposits, withdrawals or transfers yet.</Empty>;
       return (
-        <Table cols={["Time", "Type", "Amount", "Counterparty"]}>
+        <Table label="Transfers" cols={["Time", "Type", "Amount", "Counterparty"]}>
           {rows.map((t, i) => {
             const Icon = DIR_ICON[t.direction];
             return (
@@ -128,7 +129,7 @@ export function BalancesHistory({ account }: { account: TradingAccount }) {
       const rows = normalizeBalances(raw);
       if (!rows.length) return <Empty>No spot balances.</Empty>;
       return (
-        <Table cols={["Coin", "Total", "In orders", "Available", "USD value"]}>
+        <Table label="Balances" cols={["Coin", "Total", "In orders", "Available", "USD value"]}>
           {rows.map((b) => (
             <tr key={b.coin} className={ROW}>
               <td className="px-3 py-2"><CoinBadge coin={b.coin} /></td>

@@ -10,6 +10,16 @@ import type { AccountBalances, AccountSummary } from "./types";
 
 export type Tone = "up" | "down" | "flat" | "warn";
 
+/**
+ * Hyperliquid's own definitions, quoted verbatim (docs/research/user_consensus_2026-10.md,
+ * sourced from hyperliquid.gitbook.io/hyperliquid-docs/trading/portfolio-graphs). Keep this
+ * wording: it is what HL's own app says, so a user sees the same words in both places.
+ */
+export const HL_ACCOUNT_VALUE_DEF =
+  "Hyperliquid's definition: “Account value includes unrealized pnl from cross and isolated margin positions, as well as vault balances.”";
+export const HL_PNL_DEF =
+  "Hyperliquid's definition: “Pnl is defined as account value plus net deposits, i.e. account value + deposits − withdrawals.” Deposits are not trading profit.";
+
 export interface Stat {
   label: string;
   value: string;
@@ -62,7 +72,7 @@ export function overviewStats(s: AccountSummary): Stat[] {
     { label: "Unrealized PnL", value: formatSignedUsd(s.unrealized_pnl_usd), tone: tone(s.unrealized_pnl_usd) },
     { label: "Leverage", value: formatLeverage(s.account_leverage), tone: s.account_leverage >= 10 ? "warn" : undefined, hint: "Open notional over account value" },
     { label: "Margin usage", value: formatPct(s.margin_usage_pct, 0), tone: s.margin_usage_pct >= 80 ? "warn" : undefined },
-    { label: "All-time PnL", value: formatSignedUsd(s.all_time_pnl_usd), tone: tone(s.all_time_pnl_usd) },
+    { label: "All-time PnL", value: formatSignedUsd(s.all_time_pnl_usd), tone: tone(s.all_time_pnl_usd), hint: HL_PNL_DEF },
     { label: "Volume", value: formatUsd(s.volume_usd, true), hint: "All-time traded notional" },
     { label: "Withdrawable", value: formatUsd(s.balances.withdrawable_usd) },
   ];
