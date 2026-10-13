@@ -45,8 +45,30 @@ def _side_of(signed: float) -> Side:
     return "long" if signed > 0 else "short"
 
 
+# A position is "flat" within this tolerance, not only at exactly 0.0.
+# Measured 2026-10-14 on a real HIP-3 wallet's aggregateByTime fills (sz in
+# the low millions on coin "W"): a run of adds/reduces that should close
+# flat to flat left `start + signed sz` at 4.66e-10, 9.31e-10 and 1.16e-10
+# instead of 0.0 -- 2^-31, 2^-30 and 2^-33 exactly, a float32-precision
+# artifact somewhere in HL's own server-side aggregation of the sz sum, not
+# ours. With the old EXACT `== 0` check those three closes were missed
+# entirely: reconstruct() kept the coin "open" forever, every later fill on
+# it became an add/reduce against a phantom residual position, and
+# round_trips() emitted zero trips for it instead of three -- silently
+# dropping $887,706 of this wallet's real 30d realized PnL from the trader
+# file. 1e-6 is far below any coin's real minimum size increment (even
+# szDecimals=5 is 1e-5) and far above the observed float-precision residue.
+_FLAT_EPS = 1e-6
+
+
+def _is_flat(x: float) -> float:
+    """Snap a position to exactly 0.0 within _FLAT_EPS; otherwise unchanged."""
+    return 0.0 if abs(x) < _FLAT_EPS else x
+
+
 def _classify_one(coin: str, time_ms: int, start: float, end: float, px: float,
                    fee: float, closed_pnl: float) -> List[PositionEvent]:
+    start, end = _is_flat(start), _is_flat(end)
     if start == 0 and end == 0:
         return []
     if start == 0:

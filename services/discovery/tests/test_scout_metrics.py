@@ -123,6 +123,23 @@ def test_round_trips_nets_funding_settled_while_each_trip_was_open():
     assert short.win       # 40 - 0.2 + 1.5 > 0
 
 
+def test_round_trips_closes_despite_hl_aggregation_float_residue():
+    """End-to-end version of discovery.positions'
+    test_close_detected_despite_float_residue_from_hl_aggregation: the same
+    real-world residual must still produce a real, PnL-bearing RoundTrip
+    out of M.round_trips(), not vanish because the position never looked
+    exactly flat."""
+    fills = [
+        fill(_t(1), "W", 0.01, 5_000_000.0, "B", 0.0, fee=50.0),
+        fill(_t(2), "W", 0.012, 5_000_000.0, "A", 5_000_000.0 + 4.656612873077393e-10, pnl=10_000.0, fee=60.0),
+    ]
+    tr = M.round_trips(fills)
+    assert len(tr) == 1
+    t = tr[0]
+    assert t.coin == "W" and t.side == "long"
+    assert t.net_pnl_usd == pytest.approx(10_000.0 - 110.0)
+
+
 @pytest.mark.parametrize("opd,hold,trips,want", [
     (100.1, None, 0, TradingStyle.algo), (100.0, 0.1, 5, TradingStyle.scalp),
     (1, 0.25, 3, TradingStyle.intraday), (1, 23.99, 3, TradingStyle.intraday),

@@ -17,6 +17,33 @@ def fill(time_ms, coin, px, sz, side, start_position, fee=0.0, closed_pnl=0.0):
             "start_position": start_position, "fee": fee, "closed_pnl": closed_pnl}
 
 
+def test_close_detected_despite_float_residue_from_hl_aggregation():
+    """Regression, found reconciling real HL data for a HIP-3 wallet
+    (xyz:BRENTOIL and others) with aggregateByTime=true: a long run of
+    adds/reduces on coin "W" (sz in the low millions) should close flat to
+    flat, but summing HL's own aggregated `sz` values left
+    start_position + signed_sz at 4.656612873077393e-10 (= 2^-31) instead
+    of exactly 0.0 -- a float32-scale artifact in HL's server-side
+    aggregation, not ours. The old exact `end == 0` check missed the close
+    entirely: reconstruct() kept the coin open forever and every later fill
+    on it became a reduce against a phantom residual position. round_trips()
+    then emitted ZERO trips for a coin that actually had 3 closed trips
+    worth $887,706 of real realized PnL -- silently dropped from the trader
+    file. This fixture reproduces the exact residual measured 2026-10-14."""
+    fills = [
+        fill(1000, "W", 0.01, 5_000_000.0, "B", 0.0),                       # open long 0 -> 5,000,000
+        fill(2000, "W", 0.012, 5_000_000.0 + 4.656612873077393e-10, "A", 5_000_000.0),  # should close flat
+        fill(3000, "W", 0.013, 1_000_000.0, "B", 0.0),                      # a later, independent open
+    ]
+    by_coin = reconstruct(fills)
+    kinds = [(e.kind, e.start_position, e.end_position) for e in by_coin["W"]]
+    assert kinds == [
+        ("open", 0.0, 5_000_000.0),
+        ("close", 5_000_000.0, 0.0),    # not "reduce" against a 4.66e-10 residual
+        ("open", 0.0, 1_000_000.0),     # the next trip starts clean, not stuck mid-reduce
+    ]
+
+
 def test_open_add_reduce_and_flip_splits_into_close_plus_open():
     fills = [
         fill(1000, "BTC", 100.0, 1.0, "B", 0.0),     # open long 0 -> 1.0
