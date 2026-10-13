@@ -95,6 +95,10 @@ function Breakdown({ fit }: { fit: CopyFit }) {
         Each part is a percentile rank in this refresh&apos;s cohort, except sample, capacity and recency. &quot;Your copy&quot; is the sim at your
         saved settings, so it moves when they do. Points add up to 100.
       </p>
+      <p className="text-[11px] leading-snug text-muted">
+        What this can&apos;t see: wash trading, hedges on another exchange or wallet, and (for a very active wallet) fills older than Hyperliquid&apos;s
+        10,000-fill history cap.
+      </p>
     </div>
   );
 }
