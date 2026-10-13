@@ -21,6 +21,7 @@ THESIS_SECTIONS = (
     "When they trade",
     "What a copier should know",
     "What you can learn and practice",
+    "Invalidation",
     "Confidence & caveats",
 )
 
@@ -72,8 +73,15 @@ What each section must contain:
   leverage and liquidation risk at the copier's own leverage, latency sensitivity (short holds and
   breakout entries degrade most when copied seconds late), concentration in one coin.
 - What you can learn and practice: concrete habits a trader could study or paper-trade.
+- Invalidation: the specific, checkable signals that mean stop copying this trader, separate from the
+  general caveats below. Name concrete thresholds using this trader's own numbers where you can, e.g.
+  drawdown past their worst historical trip, a style change (leverage, hold time or coin mix drifting
+  far from the fingerprint), inactivity (no new trips for an unusual stretch for their pace), leverage
+  creep above their own max_leverage, or a liquidation. A thesis with nothing that could prove it wrong
+  is not a thesis.
 - Confidence & caveats: sample size (trips_analyzed, window_days), missing candles, regime dependence,
-  the fingerprint's own caveats, and what would change your mind.
+  and the fingerprint's own caveats. This is about how much to trust the numbers above, not about when
+  to stop copying (that's Invalidation).
 
 ## 3. Rules
 - Cite trade examples by coin, side and UTC date (e.g. "BTC long, 2026-09-14"). Convert timestamps with
@@ -105,6 +113,7 @@ COPY_TRADER_QUESTIONS = (
 COPY_TRADER_SECTIONS = (
     "Strategy in one sentence",
     "Thesis",
+    "When not to copy",
     "Their book at your amount",
     "Risks for a copier",
 )
@@ -132,6 +141,11 @@ and only execute it after an explicit yes. You are handling the user's real mone
 {sections}
 - Strategy and thesis: quote the fingerprint's numbers and the saved thesis; never invent numbers.
   Under ~30 round trips, say the sample is small first.
+- When not to copy: BEFORE the book table and risks, pull the saved thesis's own "Invalidation" section
+  if it has one, plus the fingerprint's caveats (small sample, truncated fills, no candle context,
+  concentration, hidden PnL outside the counted trips). If there is no saved thesis yet, derive this
+  from the fingerprint alone: say so, and name what you'd want a thesis for. This section exists so the
+  user sees the reasons to walk away before they see a table that makes copying look easy.
 - Their book at your amount: a table of his current positions (coin, side, his notional, your copy,
   status) from the plan's preview, the margin you would use, and what is skipped and why.
 - Risks: leverage and liquidation distance, latency (short holds and breakouts degrade when copied

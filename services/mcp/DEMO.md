@@ -84,9 +84,10 @@ Biggest risks: 1. Concentration. 56% of profit came from SKHX...
 5. Hard to copy at your size. Copy capacity is 0.3%...
 ```
 
-Want it saved? Run `/copycat-thesis 0x<address>`. Claude writes an
-eight-section thesis and saves it. It then appears on the trader's page in
-Scout, on the Strategy tab.
+Want it saved? Run `/copycat-thesis 0x<address>`. Claude writes a
+nine-section thesis (including Invalidation: the signals that mean stop
+copying) and saves it. It then appears on the trader's page in Scout, on the
+Strategy tab.
 
 ## 4. Make a plan
 

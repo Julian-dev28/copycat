@@ -101,8 +101,10 @@ Prompt: `copy_trader(address, amount_usd)`: research, present the strategy at
 that amount, ask leverage / entry deviation / copy-counter / follow-one-shot,
 make the plan and show it; you read the confirm code in copycat (Portfolio > Pending MCP plans) and type it; Claude executes only on your explicit yes with that code. Claude never sees the code (audit H2).
 
-Prompt: `write_thesis(address)`, eight required sections, checked
-deterministically by `prompts.missing_sections()` when saving.
+Prompt: `write_thesis(address)`, nine required sections (including a standalone
+`Invalidation` section: the concrete signals that mean stop copying, separate
+from caveats), checked deterministically by `prompts.missing_sections()` when
+saving.
 
 ## Tests
 
