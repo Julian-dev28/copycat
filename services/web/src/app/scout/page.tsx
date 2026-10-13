@@ -10,10 +10,10 @@ import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
-import { FilterPanel, PresetRow, Toolbar } from "@/components/scout/BoardControls";
+import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControls";
 import { TraderCard } from "@/components/scout/TraderCard";
 import { TraderTable } from "@/components/scout/TraderTable";
-import { ApiTooOld, DemoBanner, RefreshBadge } from "@/components/scout/bits";
+import { ApiTooOld, RefreshBadge } from "@/components/scout/bits";
 import { useNow } from "@/hooks/useNow";
 import { useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders } from "@/hooks/useScout";
 import { isApiTooOld } from "@/lib/scout/api";
@@ -52,7 +52,7 @@ function ScoutBoard() {
   const book = useScoutBook();
   const refresh = useScoutRefresh();
   const nowMs = useNow();
-  const [filtersOpen, setFiltersOpen] = useState(() => countActiveFilters(state) > 0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   function navigate(next: BoardState) {
     const qs = boardStateToSearch(next, demo ? { demo: "1" } : undefined);
@@ -155,8 +155,6 @@ function ScoutBoard() {
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
       </div>
 
-      {demo ? <DemoBanner /> : null}
-
       {page?.stale_settings ? (
         <Notice tone="info" title="Re-ranking for your new settings">
           Your settings changed, so the copy sim is re-running. Until it finishes, Copy Fit and &quot;if copied&quot; use your previous settings.
@@ -170,8 +168,15 @@ function ScoutBoard() {
       ) : null}
 
       <PresetRow state={state} presets={presets.data} update={update} />
-      <Toolbar state={state} update={update} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen((o) => !o)} />
-      {filtersOpen ? <FilterPanel state={state} update={update} onClear={() => navigate(clearFilters(state))} /> : null}
+      <Toolbar state={state} update={update} onOpenFilters={() => setFiltersOpen(true)} onClearFilters={() => navigate(clearFilters(state))} />
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        state={state}
+        update={update}
+        onClear={() => navigate(clearFilters(state))}
+        resultCount={page?.total}
+      />
 
       {body}
     </div>

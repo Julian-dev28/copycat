@@ -12,13 +12,18 @@ keeps the Hyperliquid agent key:
 
 Sources, first hit wins:
   api url : COPYCAT_API_URL, else http://localhost:$COPYCAT_API_PORT (env, then .env), else :8787
-  token   : COPYCAT_API_TOKEN (env, then .env), else $COPYCAT_DATA_DIR/api_token
+  token   : the SCOPED MCP token first (audit H3): COPYCAT_MCP_TOKEN (env, then
+            .env), else $COPYCAT_DATA_DIR/mcp_token (the api generates it).
+            Only for an api that predates the scoped token: COPYCAT_API_TOKEN
+            (env, then .env), else $COPYCAT_DATA_DIR/api_token, the admin
+            token, with a warning on stderr at startup.
   data dir: COPYCAT_DATA_DIR (env, then .env), else ./data; relative paths are
             resolved against the repo root, not the cwd (Claude Code launches
             the server from wherever the user happens to be)
 
-The token file is re-read on every request when no env token is set, so
-starting the MCP server before the api (which generates the file) works.
+Token files are re-read on every request when no env token wins, so starting
+the MCP server before the api (which generates the files) works, and a
+restarted api's new mcp_token is picked up without restarting the MCP.
 """
 from __future__ import annotations
 
@@ -29,7 +34,8 @@ from typing import Dict, Mapping, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_API_PORT = 8787
-TOKEN_FILE = "api_token"
+TOKEN_FILE = "api_token"           # admin token: legacy fallback only
+MCP_TOKEN_FILE = "mcp_token"       # scoped token (api.auth.MCP_SCOPE): preferred
 DEFAULT_AUTHOR = "claude-code via copycat MCP"
 DEFAULT_TIMEOUT_S = 30.0
 # Opt-in for the one money-moving tool (execute_copy_plan). Read from the MCP
@@ -38,8 +44,8 @@ DEFAULT_TIMEOUT_S = 30.0
 ALLOW_TRADING_ENV = "COPYCAT_MCP_ALLOW_TRADING"
 
 # The only .env keys this server reads. COPYCAT_AGENT_KEY is deliberately absent.
-_DOTENV_KEYS = ("COPYCAT_API_URL", "COPYCAT_API_PORT", "COPYCAT_API_TOKEN", "COPYCAT_DATA_DIR",
-                "COPYCAT_MCP_AUTHOR")
+_DOTENV_KEYS = ("COPYCAT_API_URL", "COPYCAT_API_PORT", "COPYCAT_API_TOKEN", "COPYCAT_MCP_TOKEN",
+                "COPYCAT_DATA_DIR", "COPYCAT_MCP_AUTHOR")
 
 
 def scrub_agent_key(environ: "os._Environ[str] | Dict[str, str]" = os.environ) -> bool:
@@ -59,28 +65,53 @@ def read_dotenv(path: Path) -> Dict[str, str]:
     return {k: v for k, v in raw.items() if k in _DOTENV_KEYS and v}
 
 
+def _read(path: Path) -> Optional[str]:
+    try:
+        t = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return t or None
+
+
 @dataclass
 class McpConfig:
     api_url: str
-    env_token: Optional[str]
+    env_token: Optional[str]          # COPYCAT_API_TOKEN (admin): legacy fallback
     data_dir: Path
     author: str = DEFAULT_AUTHOR
     timeout_s: float = DEFAULT_TIMEOUT_S
     allow_trading: bool = False      # registers execute_copy_plan; env COPYCAT_MCP_ALLOW_TRADING=1 only
+    mcp_env_token: Optional[str] = None   # COPYCAT_MCP_TOKEN (scoped): preferred
 
     @property
     def token_file(self) -> Path:
         return self.data_dir / TOKEN_FILE
 
-    def token(self) -> Optional[str]:
-        """Current bearer token, or None if neither source has one yet."""
+    @property
+    def mcp_token_file(self) -> Path:
+        return self.data_dir / MCP_TOKEN_FILE
+
+    def _resolve(self) -> "tuple[Optional[str], str]":
+        """(token, where it came from). Scoped sources before admin ones."""
+        if self.mcp_env_token:
+            return self.mcp_env_token, "COPYCAT_MCP_TOKEN"
+        t = _read(self.mcp_token_file)
+        if t:
+            return t, str(self.mcp_token_file)
         if self.env_token:
-            return self.env_token
-        try:
-            t = self.token_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
-        return t or None
+            return self.env_token, "COPYCAT_API_TOKEN (admin)"
+        t = _read(self.token_file)
+        if t:
+            return t, f"{self.token_file} (admin)"
+        return None, "none"
+
+    def token(self) -> Optional[str]:
+        """Current bearer token, or None if no source has one yet."""
+        return self._resolve()[0]
+
+    def token_source(self) -> str:
+        """Where the current token comes from; ends in "(admin)" for the legacy fallback."""
+        return self._resolve()[1]
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None,
@@ -104,6 +135,7 @@ class McpConfig:
         return cls(
             api_url=url.rstrip("/"),
             env_token=get("COPYCAT_API_TOKEN"),
+            mcp_env_token=get("COPYCAT_MCP_TOKEN"),
             data_dir=data_dir,
             author=get("COPYCAT_MCP_AUTHOR") or DEFAULT_AUTHOR,
             allow_trading=(env.get(ALLOW_TRADING_ENV) or "").strip() == "1",

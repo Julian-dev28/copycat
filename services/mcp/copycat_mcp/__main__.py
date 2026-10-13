@@ -17,11 +17,15 @@ def main() -> None:
     import logging
     logging.getLogger("httpx").setLevel(logging.WARNING)
     config = McpConfig.from_env()
-    token_src = "COPYCAT_API_TOKEN" if config.env_token else str(config.token_file)
+    token_src = config.token_source()
     from contracts import build
     b = build.record("mcp")
     print(f"copycat-mcp: api {config.api_url}, token from {token_src}, build {b['build']} "
           f"(contract v{b['contract_version']})", file=sys.stderr)
+
+    if token_src.endswith("(admin)"):
+        print("copycat-mcp: WARNING using the ADMIN api token. Restart the copycat api so it "
+              f"generates {config.mcp_token_file} (the scoped MCP token, audit H3).", file=sys.stderr)
 
     from .server import build_server
     build_server(config).run("stdio")

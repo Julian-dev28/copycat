@@ -25,8 +25,9 @@ from .config import McpConfig
 
 START_HINT = ("Start copycat first: `make dev` in the copycat repo (or `docker compose up -d`), "
               "then retry.")
-TOKEN_HINT = ("Set COPYCAT_API_TOKEN to the api's token (in the MCP server env or the repo .env), "
-              "or point COPYCAT_DATA_DIR at the data dir that holds api_token.")
+TOKEN_HINT = ("Set COPYCAT_API_TOKEN to the api's token, or better COPYCAT_MCP_TOKEN to its scoped "
+              "MCP token (in the MCP server env or the repo .env), or point COPYCAT_DATA_DIR at the "
+              "data dir that holds mcp_token.")
 
 
 class ApiError(Exception):
@@ -71,7 +72,8 @@ class CopycatApi:
         plan's live preview reads every coin he holds: ~40 s for 60+ coins)."""
         token = self.config.token()
         if not token:
-            raise ApiError(f"No copycat api token found (looked at COPYCAT_API_TOKEN and "
+            raise ApiError(f"No copycat api token found (looked at COPYCAT_MCP_TOKEN, "
+                           f"{self.config.mcp_token_file}, COPYCAT_API_TOKEN and "
                            f"{self.config.token_file}). {TOKEN_HINT}", status=401)
         if params:
             params = {k: v for k, v in params.items() if v is not None and v != []}

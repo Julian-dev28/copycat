@@ -10,6 +10,7 @@ import { HaltButton } from "@/components/positions/HaltButton";
 import { CloseAllButton } from "@/components/positions/CloseAllButton";
 import { EmptyAccountBanner } from "@/components/EmptyAccountBanner";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
+import { PendingMcpPlans } from "@/components/mcp/PendingMcpPlans";
 import { YourWallets } from "@/components/trade/YourWallets";
 import { useTradeMode, useTradeSettings, useTradeStatus, useWallets } from "@/components/trade/hooks";
 import { withDemo } from "@/components/trade/bits";
@@ -61,6 +62,7 @@ function Portfolio() {
         ) : null}
       </div>
       {statusQ.isError ? <LoadError what="engine status" error={statusQ.error} onRetry={() => statusQ.refetch()} /> : null}
+      <PendingMcpPlans enabled={!demo} />
       <EmptyAccountBanner status={status} settings={s} />
       <EngineStatusBar status={status} tradingEnabled={s?.enabled} />
       <YourWallets

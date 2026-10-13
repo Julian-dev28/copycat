@@ -1,16 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exitDemoHref, routeHasOwnDemoBanner } from "./strip";
-
-describe("routeHasOwnDemoBanner", () => {
-  it("is true only where a page draws its own banner", () => {
-    expect(routeHasOwnDemoBanner("/")).toBe(true);
-    expect(routeHasOwnDemoBanner("/scout")).toBe(true);
-    expect(routeHasOwnDemoBanner("/scout/0xabc")).toBe(true);
-    for (const r of ["/settings", "/discover", "/account", "/portfolio", "/scoutx", null]) {
-      expect(routeHasOwnDemoBanner(r)).toBe(false);
-    }
-  });
-});
+import { exitDemoHref } from "./strip";
 
 describe("exitDemoHref", () => {
   it("drops demo and acct and keeps the rest", () => {

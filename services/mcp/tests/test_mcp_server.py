@@ -640,3 +640,44 @@ def test_no_hardcoded_plan_expiry_in_anything_the_model_reads():
     tools = run(make_server(FakeApi(), allow_trading=True), lambda c: c.list_tools()).tools
     ex = next(t for t in tools if t.name == "execute_copy_plan")
     assert f"{MCP_PLAN_TTL_S} s" in ex.description
+
+
+# ── audit H3: the MCP prefers the scoped token over the admin one ────────
+
+def test_h3_scoped_mcp_token_beats_every_admin_source(tmp_path):
+    (tmp_path / "api_token").write_text("a" * 64)
+    (tmp_path / "mcp_token").write_text("m" * 64 + "\n")
+    cfg = McpConfig.from_env({"COPYCAT_SKIP_DOTENV": "1", "COPYCAT_DATA_DIR": str(tmp_path),
+                              "COPYCAT_API_TOKEN": "e" * 40})
+    assert cfg.token() == "m" * 64 and not cfg.token_source().endswith("(admin)")
+    cfg = McpConfig.from_env({"COPYCAT_SKIP_DOTENV": "1", "COPYCAT_DATA_DIR": str(tmp_path),
+                              "COPYCAT_MCP_TOKEN": "s" * 40, "COPYCAT_API_TOKEN": "e" * 40})
+    assert cfg.token() == "s" * 40 and cfg.token_source() == "COPYCAT_MCP_TOKEN"
+
+
+def test_h3_admin_token_is_only_a_labeled_fallback(tmp_path):
+    cfg = McpConfig.from_env({"COPYCAT_SKIP_DOTENV": "1", "COPYCAT_DATA_DIR": str(tmp_path)})
+    assert cfg.token() is None and cfg.token_source() == "none"
+    (tmp_path / "api_token").write_text("a" * 64)
+    assert cfg.token() == "a" * 64 and cfg.token_source().endswith("(admin)")
+    (tmp_path / "mcp_token").write_text("m" * 64)          # api restarted: scoped token appears
+    assert cfg.token() == "m" * 64                          # picked up without an MCP restart
+
+
+def test_h3_dotenv_mcp_token_is_read(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("COPYCAT_MCP_TOKEN=" + "s" * 40 + "\nCOPYCAT_API_TOKEN=" + "k" * 40 + "\n")
+    assert McpConfig.from_env({}, dotenv_path=env).token() == "s" * 40
+
+
+def test_h3_every_api_path_the_mcp_calls_is_inside_the_scope():
+    """A tool hitting a route outside MCP_SCOPE would 403 on the scoped token."""
+    import re
+    from pathlib import Path
+    MCP_SCOPE = pytest.importorskip("api.auth").MCP_SCOPE    # cross-service contract check; skips standalone
+    src = (Path(__file__).resolve().parents[1] / "copycat_mcp" / "server.py").read_text()
+    templates = {t for _, t in MCP_SCOPE}
+    used = set(re.findall(r'f?"(/api/[^"?]*)"', src))
+    norm = {re.sub(r"\{[^}]+\}", "{x}", u) for u in used}
+    allowed = {re.sub(r"\{[^}]+\}", "{x}", t) for t in templates}
+    assert norm and norm <= allowed, norm - allowed

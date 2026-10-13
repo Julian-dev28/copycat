@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Loader2, SearchX } from "lucide-react";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
-import { ApiTooOld, DemoBanner } from "@/components/scout/bits";
+import { ApiTooOld } from "@/components/scout/bits";
 import { useNow } from "@/hooks/useNow";
 import { useScoutBook, useScoutMode } from "@/hooks/useScout";
 import { buildingText, fileView } from "@/lib/scout/file/state";
@@ -36,7 +36,6 @@ export function TraderFile({ address }: { address: string }) {
   const [whatIf, setWhatIf] = useState<WhatIfResult | null>(null);
   const view = fileView(address, q.data, q.error);
 
-  const banner = demo ? <DemoBanner /> : null;
   if (view === "invalid") return <Message title="That is not a wallet address">Trader files take a 0x address with 40 hex characters.</Message>;
   if (view === "too_old") return <ApiTooOld what="the trader file" />;
   if (view === "not_found") return <Message title="No trader file for this address">The api has no Hyperliquid account data for it. Check the address.</Message>;
@@ -56,7 +55,6 @@ export function TraderFile({ address }: { address: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {banner}
       <FileHeader profile={base} book={book} demo={demo} nowMs={nowMs} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-4">

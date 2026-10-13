@@ -89,6 +89,9 @@ export type DiscoveryRun = Omit<Schemas["DiscoveryRun"], "results" | "sim_settin
 
 export type HealthResponse = Schemas["HealthResponse"];
 
+/** One live MCP plan WITH its confirm code (admin token only). See lib/mcp/pendingPlans.ts. */
+export type McpPendingPlan = Schemas["McpPendingPlan"];
+
 export type StartDiscoveryRunBody = Omit<Schemas["DiscoveryRunRequest"], "settings"> & {
   settings?: Settings;
 };
