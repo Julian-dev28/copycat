@@ -681,3 +681,16 @@ def test_h3_every_api_path_the_mcp_calls_is_inside_the_scope():
     norm = {re.sub(r"\{[^}]+\}", "{x}", u) for u in used}
     allowed = {re.sub(r"\{[^}]+\}", "{x}", t) for t in templates}
     assert norm and norm <= allowed, norm - allowed
+
+
+
+def test_h2_no_tool_text_points_the_model_at_a_code_it_cannot_see():
+    """Since H2 the plan carries no code. Any tool/argument text that says the
+    code is in the plan (plan.confirm_code, "one-time confirm_code") invites the
+    model to guess one."""
+    import json as _json
+    tools = run(make_server(FakeApi(), allow_trading=True), lambda c: c.list_tools()).tools
+    blob = _json.dumps([t.model_dump(mode="json") for t in tools]).lower()
+    assert "plan.confirm_code" not in blob and "one-time\\nconfirm_code" not in blob
+    ex = next(t for t in tools if t.name == "execute_copy_plan")
+    assert "never guess or invent" in _json.dumps(ex.input_schema).lower()

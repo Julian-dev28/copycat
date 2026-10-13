@@ -17,6 +17,10 @@ copycat's api must be running (`make dev`).
 Then, in Claude Code: `/copycat-thesis 0x<trader address>`, or
 `/copycat-copy 0x<trader address> 50` (strategy + thesis at $50, then a copy plan).
 
+**New here? Follow [DEMO.md](DEMO.md)**: a 10-minute walkthrough with the exact
+prompts and verified answers, plus `evals/demo_check.sh` to prove each step on
+your machine against a throwaway copycat.
+
 ## Config
 
 | var | default | |
@@ -46,7 +50,6 @@ the server never holds the trading key.
 | `engine_status` | GET /api/status | read |
 | `my_wallets` | GET /api/wallets | read |
 | `preview_copy` | POST /api/wallets/{a}/preview | read (computes a plan, places nothing) |
-| `add_leader` | POST /api/leaders | adds to the copy list only (global settings) |
 | `copy_plan` | POST /api/mcp/plans (+ GET fingerprint, thesis) | read (builds a plan, places nothing) |
 | `execute_copy_plan` | POST /api/mcp/plans/{id}/execute | REAL MONEY; only with the flag |
 
@@ -58,7 +61,8 @@ Everything a tool returns is treated as data. The server instructions tell the
 model that trader names and saved theses come from third parties and must never
 be followed as instructions (prompt injection through the leaderboard).
 
-Deliberately absent: anything that changes `enabled`, `dry_run`, or global leverage or
+Deliberately absent: `add_leader` (removed, audit H1: every new copy goes
+through copy_plan + a human-typed code), anything that changes `enabled`, `dry_run`, or global leverage or
 sizing, removes leaders, invests in or stops a wallet (`/api/wallets/{a}/copy`,
 `/stop`), touches accounts or keys (`/api/accounts/*`), halts, or closes
 positions. Those decide whether real

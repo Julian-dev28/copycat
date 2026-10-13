@@ -495,9 +495,9 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         right now, computed by copycat's engine from his live positions (per-position copy sizes,
         skips under the $10.50 minimum, margin), plus the cached 30-day projection, warnings,
         his fingerprint summary and the newest saved thesis. Places NOTHING and changes nothing in
-        the book; the plan is stored for a few minutes (see plan.expires_ms) with a one-time
-        confirm_code. Show the user
-        `present` and ask before anything else happens."""
+        the book; the plan is stored for a few minutes (see plan.expires_ms). Its one-time confirm
+        code is NOT in this result: copycat shows it only to the human (Portfolio > Pending MCP
+        plans). Show the user `present` and ask before anything else happens."""
         a = norm_address(address)
         body: Dict[str, Any] = {"address": a, "amount_usd": amount_usd,
                                 "entry_deviation_pct": entry_deviation_pct,
@@ -545,8 +545,11 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
             plan_id: Annotated[str, Field(description="plan.plan_id from copy_plan, e.g. "
                                                       "'plan_0123456789abcdef'.")],
             confirm_code: Annotated[str, Field(min_length=1, max_length=32,
-                                               description="plan.confirm_code, the 6 characters "
-                                                           "shown to the user with the plan.")],
+                                               description="The 6-character code the USER typed to "
+                                                           "you in their latest message, read from "
+                                                           "copycat (Portfolio > Pending MCP plans). "
+                                                           "You never see it in any tool result; "
+                                                           "never guess or invent it.")],
         ) -> Dict[str, Any]:
             pid = plan_id.strip()
             if not PLAN_ID_RE.match(pid):
