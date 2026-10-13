@@ -6,7 +6,7 @@ import { CoinBadge } from "@/components/scout/bits";
 import { Badge } from "@/components/ui";
 import { formatUsd } from "@/lib/format";
 import type { TicketPreview } from "@/lib/trade/ticket";
-import { fullBookShortfall, liqTone } from "@/lib/trade/ticketView";
+import { fullBookShortfall, leverageMismatch, leverageMismatchText, liqTone } from "@/lib/trade/ticketView";
 import type { ExposureMode, MarginMode } from "@/lib/trade/types";
 import { SideTag } from "./bits";
 
@@ -54,6 +54,7 @@ export function PreviewBox({
   const wantsFull = onUseFullBook !== null && amount !== null && skipped.length > 0 && p.fullBookUsd !== null && p.fullBookUsd > amount;
   const shortfall = wantsFull ? fullBookShortfall(p.fullBookUsd, equityUsd) : null;
   const tone = liqTone(p.liq);
+  const mismatch = leverageMismatch(p.liq, p.hisLeverage, mode);
   return (
     <section
       aria-label="Preview"
@@ -182,6 +183,15 @@ export function PreviewBox({
           )}
         </Row>
       </div>
+      {mismatch ? (
+        <p
+          data-testid="ticket-leverage-mismatch"
+          className={clsx("flex items-start gap-1.5", mismatch.severe ? "text-danger" : "text-warn")}
+        >
+          <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <span>Tighter than theirs: {leverageMismatchText(mismatch)}</span>
+        </p>
+      ) : null}
       {(p.notes ?? []).map((n) => (
         <p key={n} className="text-muted">
           {n}

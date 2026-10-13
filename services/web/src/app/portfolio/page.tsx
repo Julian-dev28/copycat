@@ -76,7 +76,7 @@ function Portfolio() {
         nowMs={nowMs}
         empty={<p className="text-sm text-muted">No copies yet. Copy a trader from the Trade page.</p>}
       />
-      <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} />
+      <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} nowMs={nowMs} />
       {!demo ? <EventFeed /> : null}
     </div>
   );
