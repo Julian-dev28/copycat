@@ -7,7 +7,7 @@ import { apiCaps, buildCopyRequest, effective, initialDraft, inherit, switchesSo
 import { applyCoinFilter } from "@/lib/trade/coinFilter";
 import { applyDirection } from "@/lib/trade/direction";
 import { checkAmount, maxInvest, parseInvest, targetLeverageCap } from "@/lib/trade/form";
-import { localPreview } from "@/lib/trade/preview";
+import { estimateNote, localPreview } from "@/lib/trade/preview";
 import type { TicketPreview } from "@/lib/trade/ticket";
 import type { TradeDirection, TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
 import type { TraderProfile } from "@/lib/scout/types";
@@ -75,8 +75,7 @@ export function useTicket(address: string | null, profile: TraderProfile | undef
   const merged = local ? mergePreview(fresh, local) : fresh;
   // Filters and direction on top of either source: idempotent when the engine already applied them.
   const preview = merged ? applyDirection(applyCoinFilter(merged, eff.allow, eff.block), eff.direction) : null;
-  const previewNote =
-    apiFailed === "too_old" ? "Local estimate: your api has no preview route yet." : apiFailed ? "Local estimate: the engine preview failed." : null;
+  const previewNote = estimateNote(apiFailed, Boolean(local && !fresh), profile?.positions_as_of_ms);
 
   return {
     draft, setDraft, resetField, setDirection, lev, amount, maxUsd, check, body, action, switching, invested, saved, caps, eff,

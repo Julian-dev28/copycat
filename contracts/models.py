@@ -12,7 +12,9 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 11  # v11: CopyPlan.confirm_code never in api responses (None), McpPendingPlan,
+CONTRACT_VERSION = 12  # v12: EngineEvent.account (audit M10: events are per trading account),
+#                        EngineStatus.day_pnl_unreliable_since_ms (S5), HealthResponse.builds/stale (M12)
+# v11: CopyPlan.confirm_code never in api responses (None), McpPendingPlan,
 #                        HealthResponse.contract_version; Settings.contract_version server-set
 # v10: WalletPreviewSlice.status "wait" (+ WalletPreview.waiting)
 # v9: MCP copy plans (CopyPlan*), one_shot wallets
@@ -216,6 +218,9 @@ class EngineEvent(BaseModel):
     leverage: Optional[int] = None
     reason: Optional[str] = None    # skip/error reason, human readable
     dry_run: bool = False
+    # v12 (audit M10): the trading account the engine ran for. None on lines
+    # written before v12 and on engine-wide lines (a crashed cycle).
+    account: Optional[str] = None
 
 
 class LeaderStatus(BaseModel):
@@ -250,6 +255,9 @@ class EngineStatus(BaseModel):
     # ambiguous): day_pnl_usd is then the last good value (or None) and the daily loss
     # halt neither starts nor ends on it. The web must flag or hide the number.
     day_pnl_reliable: bool = True
+    # v12 (audit S5): when day PnL has been unreliable since (None while reliable).
+    # With a loss limit set, new copies pause once this is UNRELIABLE_GRACE_MS old.
+    day_pnl_unreliable_since_ms: Optional[int] = None
     halted_reason: Optional[str] = None     # daily loss limit etc.
     positions: List[CopyPosition] = Field(default_factory=list)
     leaders: List[LeaderStatus] = Field(default_factory=list)
@@ -416,6 +424,7 @@ class TraderPositionView(BaseModel):
     liq_distance_pct: Optional[float] = None
     margin_usd: float
     funding_since_open_usd: float
+    max_leverage: Optional[int] = None   # v12 (audit S8): HL position maxLeverage (the coin max)
 
 class RoundTrip(BaseModel):
     coin: str

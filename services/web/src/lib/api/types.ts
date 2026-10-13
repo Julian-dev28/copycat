@@ -28,7 +28,7 @@ import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 12;
 export const MAX_LEADERS = 25;
 export const HL_MIN_ORDER_USD = 10.5;
 export const MAX_LEVERAGE_CAP = 50;
@@ -70,9 +70,11 @@ export type LeaderStatus = Omit<Schemas["LeaderStatus"], "owned_coins" | "effect
   effective: Settings;
 };
 
-export type EngineStatus = Omit<Schemas["EngineStatus"], "leaders" | "positions" | "day_pnl_reliable"> & {
+export type EngineStatus = Omit<Schemas["EngineStatus"], "leaders" | "positions" | "day_pnl_reliable" | "day_pnl_unreliable_since_ms"> & {
   /** v9; older apis omit it (treat as reliable). */
   day_pnl_reliable?: boolean;
+  /** v12 (audit S5): since when it has been unreliable; older apis omit it. */
+  day_pnl_unreliable_since_ms?: number | null;
   leaders: LeaderStatus[];
   positions: CopyPosition[];
 };

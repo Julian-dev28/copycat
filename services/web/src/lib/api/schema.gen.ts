@@ -1244,6 +1244,26 @@ export interface components {
             /** Volume Usd */
             volume_usd: number;
         };
+        /**
+         * ComponentBuild
+         * @description One process's code identity (contracts.build). `build` None: unknown
+         *     (the process never recorded one: not started, or started on older code).
+         */
+        ComponentBuild: {
+            /**
+             * Alive
+             * @default false
+             */
+            alive: boolean;
+            /** Build */
+            build?: string | null;
+            /** Component */
+            component: string;
+            /** Contract Version */
+            contract_version?: number | null;
+            /** Started Ms */
+            started_ms?: number | null;
+        };
         /** CopyFit */
         CopyFit: {
             /** Caps */
@@ -1435,6 +1455,8 @@ export interface components {
          * @description One line of the engine's append-only event log (data/events.jsonl).
          */
         EngineEvent: {
+            /** Account */
+            account?: string | null;
             /**
              * Action
              * @enum {string}
@@ -1471,6 +1493,8 @@ export interface components {
              * @default true
              */
             day_pnl_reliable: boolean;
+            /** Day Pnl Unreliable Since Ms */
+            day_pnl_unreliable_since_ms?: number | null;
             /** Day Pnl Usd */
             day_pnl_usd?: number | null;
             /** Dry Run */
@@ -1586,10 +1610,14 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
+            /** Builds */
+            builds?: components["schemas"]["ComponentBuild"][];
             /** Contract Version */
             contract_version: number;
             /** Ok */
             ok: boolean;
+            /** Stale */
+            stale?: string[];
             /** Version */
             version: string;
         };
@@ -1970,7 +1998,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 11
+             * @default 12
              */
             contract_version: number;
             /**
@@ -2400,6 +2428,8 @@ export interface components {
             margin_usd: number;
             /** Mark Px */
             mark_px: number;
+            /** Max Leverage */
+            max_leverage?: number | null;
             /** Notional Usd */
             notional_usd: number;
             /** Roe Pct */

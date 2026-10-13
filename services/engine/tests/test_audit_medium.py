@@ -215,3 +215,77 @@ def test_s10_failed_or_absurd_reads_keep_the_default(engine_state):
     v.set_account(OUR, 1000.0)
     run(v, cfg(), engine_state, now_ms=0)
     assert core.fee_bps(engine_state) == core.TAKER_FEE_BPS
+
+
+# ── M8: a stopped wallet winds down with its own terms ──
+
+def test_m8_stopped_wallet_keeps_its_override_terms(engine_state):
+    v = FakeVenue()
+    v.set_account(OUR, 1000.0)
+    v.hold(LEADER1, "BTC", 4.0, entry_px=100.0)
+    s = cfg(leader_overrides={LEADER1: {"settings_source": "custom", "trade_direction": "counter",
+                                        "fixed_notional_usd": 30.0, "coin_blocklist": ["DOGE"]}})
+    assert run(v, s, engine_state, now_ms=0)["opened"] == ["BTC"]
+    v.hold(OUR, "BTC", -0.3, entry_px=100.0, equity_perp_usd=1000.0)
+    assert engine_state.get_ledger(LEADER1)["terms"]["override"]["trade_direction"] == "counter"
+    out = run(v, cfg(leaders=[]), engine_state, now_ms=5_000)                    # wallet stopped
+    row = [r for r in out["leaders"] if r.address == LEADER1][0]
+    assert row.effective.trade_direction.value == "counter"
+    assert row.effective.fixed_notional_usd == 30.0 and row.effective.coin_blocklist == ["DOGE"]
+    v.hold(LEADER1, "BTC", 0.0)                                                   # he exits
+    assert run(v, cfg(leaders=[]), engine_state, now_ms=10_000)["closed"] == ["BTC"]
+
+
+def test_m8_a_bad_frozen_override_falls_back_to_global(engine_state):
+    engine_state.remember_terms(LEADER1, {"override": {"max_slippage_pct": "nope"}}, 0)
+    es = core._orphan_settings(engine_state, cfg(max_slippage_pct=1.0), LEADER1)
+    assert es.max_slippage_pct == 1.0
+
+
+# ── M10: event history is per trading account ──
+
+def test_m10_events_filter_by_account(tmp_path):
+    from contracts.models import EngineEvent
+    from engine import events as ev
+    p = tmp_path / "events.jsonl"
+    A, B = "0x" + "a" * 40, "0x" + "b" * 40
+    ev.append_event(p, EngineEvent(ts_ms=1, action="open", leader=LEADER1, coin="BTC", account=A))
+    ev.append_event(p, EngineEvent(ts_ms=2, action="open", leader=LEADER1, coin="ETH", account=B))
+    ev.append_event(p, EngineEvent(ts_ms=3, action="error", reason="cycle raised"))     # engine-wide
+    assert [e.coin for e in ev.read_events(p, account=B)] == [None, "ETH"]
+    assert [e.coin for e in ev.read_leader_events(p, LEADER1, account=A.upper().replace("0X", "0x"))] == ["BTC"]
+    assert len(ev.read_events(p)) == 3
+
+
+def test_m10_engine_stamps_every_event_with_its_account(tmp_path, monkeypatch):
+    from engine import account as account_mod, public
+    monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(account_mod, "resolve_our_address", lambda: OUR)
+    seen = []
+    monkeypatch.setattr(public.events_mod, "append_event", lambda path, e: seen.append(e))
+    v = FakeVenue()
+    v.set_account(OUR, 1000.0)
+    v.hold(LEADER1, "BTC", 1.0, entry_px=100.0)
+    (tmp_path / "settings.json").write_text(cfg().model_dump_json())
+    public.run_cycle(v, now_ms=0)
+    assert seen and all(e.account == OUR.lower() for e in seen)
+
+
+# ── S6: preview keeps unknown-max-leverage coins in his gross ──
+
+def test_s6_unknown_max_leverage_coin_waits_and_stays_in_the_gross(engine_state, tmp_path, monkeypatch):
+    import pytest
+    from contracts.models import WalletCopyRequest
+    from engine import public
+    monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path))
+    v = FakeVenue()
+    v.hold(LEADER1, "BTC", 10.0, entry_px=100.0, equity_perp_usd=10_000.0)     # $1000
+    v.hold(LEADER1, "NEW", 10.0, entry_px=100.0, equity_perp_usd=10_000.0)     # $1000, max unknown
+    v.max_levs["NEW"] = 0
+    req = WalletCopyRequest(allocation_usd=100.0, exposure_mode="target", target_leverage=5)
+    pv = public.preview_wallet(LEADER1, req, Settings(), venue=v, now_ms=1)
+    assert pv.his_gross_notional_usd == pytest.approx(2000.0)
+    by = {s.coin: s for s in pv.slices}
+    assert by["NEW"].status == "wait" and "max leverage unknown" in by["NEW"].reason
+    # BTC is half his book: n/gross x A x L = 0.5 x 100 x 5 = $250, not the whole $500
+    assert by["BTC"].notional_usd == pytest.approx(250.0)

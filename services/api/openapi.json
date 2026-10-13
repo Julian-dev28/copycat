@@ -539,6 +539,58 @@
         "title": "CoinStat",
         "type": "object"
       },
+      "ComponentBuild": {
+        "description": "One process's code identity (contracts.build). `build` None: unknown\n(the process never recorded one: not started, or started on older code).",
+        "properties": {
+          "alive": {
+            "default": false,
+            "title": "Alive",
+            "type": "boolean"
+          },
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "contract_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version"
+          },
+          "started_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started Ms"
+          }
+        },
+        "required": [
+          "component"
+        ],
+        "title": "ComponentBuild",
+        "type": "object"
+      },
       "CopyFit": {
         "properties": {
           "caps": {
@@ -1063,6 +1115,17 @@
       "EngineEvent": {
         "description": "One line of the engine's append-only event log (data/events.jsonl).",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
           "action": {
             "enum": [
               "baseline",
@@ -1194,6 +1257,17 @@
             "default": true,
             "title": "Day Pnl Reliable",
             "type": "boolean"
+          },
+          "day_pnl_unreliable_since_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Pnl Unreliable Since Ms"
           },
           "day_pnl_usd": {
             "anyOf": [
@@ -1514,6 +1588,13 @@
       },
       "HealthResponse": {
         "properties": {
+          "builds": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentBuild"
+            },
+            "title": "Builds",
+            "type": "array"
+          },
           "contract_version": {
             "title": "Contract Version",
             "type": "integer"
@@ -1521,6 +1602,13 @@
           "ok": {
             "title": "Ok",
             "type": "boolean"
+          },
+          "stale": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stale",
+            "type": "array"
           },
           "version": {
             "title": "Version",
@@ -2546,7 +2634,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 11,
+            "default": 12,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -3793,6 +3881,17 @@
           "mark_px": {
             "title": "Mark Px",
             "type": "number"
+          },
+          "max_leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Leverage"
           },
           "notional_usd": {
             "title": "Notional Usd",

@@ -179,12 +179,15 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
     # Written as they happen, not batched at the end: if the cycle raises
     # after an order went through, the open/close event must still be in
     # the log, or the feed would disagree with the exchange.
-    def log_event(e: EngineEvent) -> None:
-        events_mod.append_event(_events_path(), e)
-
     # Re-resolved every cycle: activating another account in the vault switches
     # the engine at the next cycle, onto that account's own state db.
     our_address = account_mod.resolve_our_address()
+
+    def log_event(e: EngineEvent) -> None:
+        if e.account is None and our_address:
+            e = e.model_copy(update={"account": norm_addr(our_address)})   # audit M10
+        events_mod.append_event(_events_path(), e)
+
     switched_from = switch.note_account(data_dir, our_address, now_ms, log_event)
     if not our_address:
         return _idle_cycle(now_ms, t0)
@@ -248,6 +251,7 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             available_margin_usd=summary["available_margin_usd"],
             day_pnl_usd=summary["day_pnl_usd"],
             day_pnl_reliable=summary.get("day_pnl_reliable", True),
+            day_pnl_unreliable_since_ms=summary.get("day_pnl_unreliable_since_ms"),
             halted_reason=summary["halted_reason"],
             positions=summary["positions"],
             leaders=summary["leaders"],
@@ -444,19 +448,30 @@ def _is_running(last_cycle_ms: Optional[int], poll_interval_s: float) -> bool:
     return (int(time.time() * 1000) - last_cycle_ms) < staleness_ms
 
 
+def active_account() -> Optional[str]:
+    """The trading account the engine runs for now (lowercase), or None."""
+    try:
+        a = account_mod.resolve_our_address()
+    except Exception:
+        return None
+    return norm_addr(a) if a else None
+
+
 def events(limit: int = 100, since_ms: Optional[int] = None) -> List[EngineEvent]:
     """Newest first, at most `limit`, optionally only events with
-    `ts_ms > since_ms`. See `engine.events.read_events`."""
-    return events_mod.read_events(_events_path(), limit=limit, since_ms=since_ms)
+    `ts_ms > since_ms`, for the ACTIVE account only (audit M10). See
+    `engine.events.read_events`."""
+    return events_mod.read_events(_events_path(), limit=limit, since_ms=since_ms,
+                                  account=active_account())
 
 
 def leader_events(address: str, limit: int = 50,
                   before_ms: Optional[int] = None) -> List[EngineEvent]:
-    """One wallet's events (actions + skips with reasons), newest first,
-    `ts_ms < before_ms` when given. Reads events.jsonl from the tail with a
-    capped scan (`engine.events.read_leader_events`)."""
+    """One wallet's events (actions + skips with reasons) on the ACTIVE
+    account (audit M10), newest first, `ts_ms < before_ms` when given. Reads
+    events.jsonl from the tail with a capped scan (`engine.events.read_leader_events`)."""
     return events_mod.read_leader_events(_events_path(), norm_addr(address), limit=limit,
-                                         before_ms=before_ms)
+                                         before_ms=before_ms, account=active_account())
 
 
 # ── wallet ledger: archive (contract v8) ────────────────────────────────────
@@ -608,11 +623,13 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
     notes: List[str] = []
     levs: Dict[str, int] = {}
     coin_max: Dict[str, int] = {}
+    unknown_max: Dict[str, str] = {}
     for c, p in sorted(positions.items()):
         m = int(venue.max_leverage(c) or 0)
         if m <= 0:
-            notes.append(f"{c}: max leverage unknown, the engine would wait")
-            positions.pop(c)
+            # Audit S6: keep it in his book (the engine's lead_gross is his whole
+            # book, so every target slice is n/gross of ALL of it); it waits.
+            unknown_max[c] = "max leverage unknown: the engine waits and re-checks every cycle"
             continue
         coin_max[c] = m
         levs[c] = sizing.exchange_leverage(es, float(p.get("lev") or 1.0), m)
@@ -644,6 +661,9 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
                                        mids.get(c, 0.0), float(p.get("entry_px") or 0.0),
                                        es.max_worse_entry_pct)
         if why:
+            wait[c] = why
+    for c, why in unknown_max.items():
+        if c not in pre_skip:
             wait[c] = why
 
     held: List[str] = []

@@ -11,9 +11,11 @@ import {
 
 const MIN = HL_MIN_ORDER_USD;
 
-function levFor(inp: TicketInput, hisLev: number, cap: number): number {
+/** The engine's exchange leverage (sizing.exchange_leverage): capped by max_position_leverage AND the coin's max (S8). */
+function levFor(inp: TicketInput, hisLev: number, cap: number, coinMax?: number | null): number {
   const l = inp.mode === "target" ? inp.targetLeverage : Math.ceil(Math.max(1, hisLev));
-  return Math.max(1, Math.min(cap, Math.round(l)));
+  const c = coinMax && coinMax > 0 ? Math.min(cap, coinMax) : cap;
+  return Math.max(1, Math.min(c, Math.round(l)));
 }
 
 export function localPreview(inp: TicketInput): TicketPreview {
@@ -23,7 +25,7 @@ export function localPreview(inp: TicketInput): TicketPreview {
   const total = raw.reduce((a, b) => a + b, 0);
   const gross = inp.positions.reduce((a, p) => a + Math.abs(p.notional_usd), 0);
   const hisLeverage = inp.leaderEquityUsd > 0 ? gross / inp.leaderEquityUsd : null;
-  const levs = inp.positions.map((p) => levFor(inp, p.leverage, cap));
+  const levs = inp.positions.map((p) => levFor(inp, p.leverage, cap, p.max_leverage));
 
   let sized: number[];
   const reasons: (string | null)[] = raw.map(() => null);
@@ -120,4 +122,24 @@ export function liqEstimate(inp: TicketInput, live: PlannedCopy[], exposureUsd: 
   if (lev <= 0) return { kind: "unknown" };
   const pct = estimateLiquidationDistance(lev, "isolated").adverseMovePct ?? 0;
   return { kind: "isolated", pct, leverage: lev };
+}
+
+/**
+ * Audit S8: the local estimate uses Scout's cached copy of his book, which can
+ * be hours old. Say so whenever it is what the ticket shows, not only when
+ * the engine preview failed.
+ */
+export function estimateNote(apiFailed: string | null | false, showingLocal: boolean, asOfMs: number | null | undefined, nowMs = Date.now()): string | null {
+  const age = asOfMs ? ` (his positions as of ${ageText(nowMs - asOfMs)} ago)` : "";
+  if (apiFailed === "too_old") return `Local estimate${age}: your api has no preview route yet.`;
+  if (apiFailed) return `Local estimate${age}: the engine preview failed.`;
+  if (showingLocal) return `Estimate from cached data${age}; the engine preview replaces it in a moment.`;
+  return null;
+}
+
+function ageText(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return h < 48 ? `${h} h` : `${Math.floor(h / 24)} d`;
 }

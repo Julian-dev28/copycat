@@ -350,6 +350,21 @@ class EngineState:
                                    (json.dumps(terms), leader))
             self._conn.commit()
 
+    def remember_terms(self, leader: str, terms: Dict[str, Any], now_ms: int) -> None:
+        """Audit M8: keep a wallet's current terms in its ledger row whether or
+        not it has an `invested_ms`, so a stopped wallet still winds down with
+        them. Never resets PnL or the archive mark."""
+        cur = self.get_ledger(leader)
+        if cur is not None and cur["terms"] == terms:
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO ledger (leader, invested_ms, realized_pnl_usd, fees_usd, terms, "
+                "updated_ms) VALUES (?, NULL, 0, 0, ?, ?) ON CONFLICT(leader) DO UPDATE SET "
+                "terms = excluded.terms",
+                (leader, json.dumps(terms), now_ms))
+            self._conn.commit()
+
     def book_pnl(self, leader: str, pnl_usd: float, fee_usd: float, now_ms: int) -> bool:
         """Add one fill's realized PnL (already net of `fee_usd`) and fee.
         Not counted (returns False) when `now_ms` is before the row's

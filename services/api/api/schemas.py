@@ -95,12 +95,26 @@ class DiscoveryRunResponse(BaseModel):
     run_id: str
 
 
+class ComponentBuild(BaseModel):
+    """One process's code identity (contracts.build). `build` None: unknown
+    (the process never recorded one: not started, or started on older code)."""
+    component: str
+    build: Optional[str] = None
+    contract_version: Optional[int] = None
+    started_ms: Optional[int] = None
+    alive: bool = False
+
+
 class HealthResponse(BaseModel):
     ok: bool
     version: str
     # the running contracts.models.CONTRACT_VERSION (audit H4): the web's feature caps
     # read this, never a value stored in settings.json
     contract_version: int
+    # audit M12: every long-running process's build, and the ones running other
+    # code than this api (restart them). Empty `stale` = all on the same code.
+    builds: List[ComponentBuild] = Field(default_factory=list)
+    stale: List[str] = Field(default_factory=list)
 
 
 class CloseAllResponse(BaseModel):

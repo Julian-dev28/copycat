@@ -57,6 +57,7 @@ from contracts.models import (
     HL_MIN_ORDER_USD,
     CopyPosition,
     EngineEvent,
+    LeaderOverride,
     LeaderStatus,
     MarginMode,
     Settings,
@@ -198,6 +199,7 @@ class _Cycle:
         self.leader_coins: Dict[str, List[str]] = {}   # for read-budget pacing
         self.raw_positions: Dict[str, Any] = {}
         self.entry_coins: Set[str] = set()     # coins with an entry this cycle (no catch-up on top)
+        self.leader_es: Dict[str, Settings] = {}   # effective settings per leader this cycle (M8)
         self.cur_leader: Optional[str] = None  # the leader being diffed (tags his skip events)
         # v9: the one-shot leader's allowed coins (coin -> his side then), None = not one-shot
         self.one_shot: Optional[Dict[str, int]] = None
@@ -277,6 +279,8 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     halted_reason = _halt_check(state, settings, day_pnl_usd, log_event, now_ms,
                                 reliable=day_pnl_reliable)
     out["halted_reason"] = halted_reason
+    since = state.get_kv(_UNRELIABLE_SINCE_KEY)
+    out["day_pnl_unreliable_since_ms"] = int(since) if since is not None and not day_pnl_reliable else None
 
     cy.equity_usd = equity_usd
     cy.entries_ok = settings.enabled and halted_reason is None
@@ -294,10 +298,15 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
         _note_account_start(state, configured, now_ms)
     for leader in configured:
         es = settings.for_leader(leader)
+        terms = _terms(es)
+        ov = settings.leader_overrides.get(leader)
+        terms["override"] = ov.model_dump(mode="json") if ov is not None else None
         # any wallet with invested_ms (custom allocation, or a global copy, whose
         # override holds only invested_ms) gets its ledger reset on a re-invest
         if es.invested_ms is not None:
-            state.sync_ledger(leader, es.invested_ms, _terms(es), now_ms)
+            state.sync_ledger(leader, es.invested_ms, terms, now_ms)
+        else:
+            state.remember_terms(leader, terms, now_ms)       # audit M8
 
     if not cy.dry:
         _resolve_pending(cy)
@@ -329,7 +338,9 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
 
     leader_rows: List[Dict[str, Any]] = []
     for leader in order:
-        es = settings.for_leader(leader)
+        es = (settings.for_leader(leader) if leader in configured_set
+              else _orphan_settings(state, settings, leader))
+        cy.leader_es[leader] = es
         try:
             row = _run_leader(cy, leader, es, leader not in configured_set)
         except Exception as exc:  # one bad leader must never stop the others' exits
@@ -350,6 +361,22 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     _log_skip_changes(state, out["skipped"], now_ms, log_event, settings.dry_run,
                       out.get("skip_leaders") or {})
     return out
+
+
+def _orphan_settings(state: EngineState, settings: Settings, leader: str) -> Settings:
+    """Audit M8: a stopped wallet winds down with the per-wallet override it
+    last ran with (frozen in its ledger row), not the global settings. Falls
+    back to the global ones when nothing was frozen or it no longer validates."""
+    frozen = ((state.get_ledger(leader) or {}).get("terms") or {}).get("override")
+    if not isinstance(frozen, dict):
+        return settings.for_leader(leader)
+    try:
+        ov = LeaderOverride.model_validate(frozen)
+        return settings.model_copy(update={
+            "leader_overrides": {**settings.leader_overrides, leader: ov}}).for_leader(leader)
+    except Exception:
+        logger.warning("frozen override for %s does not validate; using global settings", leader)
+        return settings.for_leader(leader)
 
 
 def _terms(es: Settings) -> Dict[str, Any]:
@@ -771,7 +798,7 @@ def _do_reduce(cy: _Cycle, coin: str, leader: str, prev: float, cur: float,
     order_size = venue.size_for(coin, reduce_size * mid, mid)
     cloid = new_cloid()
     res = venue.market(coin, is_buy, order_size, mid, reduce_only=True, cloid=cloid,
-                       max_slippage_pct=cy.settings.for_leader(leader).max_slippage_pct, **_wkw(cy))
+                       max_slippage_pct=(cy.leader_es.get(leader) or cy.settings.for_leader(leader)).max_slippage_pct, **_wkw(cy))
     if _filled(res) > 0 or (_full(res, order_size) and "filled_sz" not in res):
         _book_fill(state, venue, leader, coin, pos, res,
                    _filled(res) if "filled_sz" in res else order_size, cy.now_ms)

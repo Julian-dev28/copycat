@@ -47,8 +47,16 @@ def _rotate_if_large(path: Path) -> None:
         logger.warning("events.jsonl rotation failed, continuing without it", exc_info=True)
 
 
+def for_account(ev: EngineEvent, account: Optional[str]) -> bool:
+    """Audit M10: an event belongs on `account`'s feed when it was written for
+    that account or for no account in particular (pre-v12 lines, engine-wide
+    errors). `account` None shows everything."""
+    return account is None or ev.account is None or ev.account.lower() == account.lower()
+
+
 def read_events(path: Union[str, Path], limit: int = 100,
-                 since_ms: Optional[int] = None) -> List[EngineEvent]:
+                 since_ms: Optional[int] = None,
+                 account: Optional[str] = None) -> List[EngineEvent]:
     """Newest first, at most `limit`, optionally only events with
     `ts_ms > since_ms`. Only reads the live file (see module docstring on
     rotation) -- a missing file returns an empty list, never an error: no
@@ -71,6 +79,8 @@ def read_events(path: Union[str, Path], limit: int = 100,
                 continue
             if since_ms is not None and ev.ts_ms <= since_ms:
                 continue
+            if not for_account(ev, account):
+                continue
             out.append(ev)
     out.sort(key=lambda e: e.ts_ms, reverse=True)
     return out[:limit]
@@ -82,7 +92,8 @@ MAX_SCAN_BYTES = 8 * 1024 * 1024   # a wallet's history page never reads more th
 
 def read_leader_events(path: Union[str, Path], leader: str, limit: int = 50,
                        before_ms: Optional[int] = None,
-                       max_scan_bytes: int = MAX_SCAN_BYTES) -> List[EngineEvent]:
+                       max_scan_bytes: int = MAX_SCAN_BYTES,
+                       account: Optional[str] = None) -> List[EngineEvent]:
     """One wallet's events (actions and skips with reasons), newest first:
     `event.leader == leader` and, with `before_ms`, `ts_ms < before_ms`
     (page with the last row's ts_ms). Reads the live file backwards from the
@@ -112,7 +123,7 @@ def read_leader_events(path: Union[str, Path], leader: str, limit: int = 50,
             tail = lines.pop(0) if pos > 0 else b""
             for raw in reversed(lines):
                 ev = _match(raw, needle, leader, before_ms)
-                if ev is not None:
+                if ev is not None and for_account(ev, account):
                     out.append(ev)
                     if len(out) >= limit:
                         break

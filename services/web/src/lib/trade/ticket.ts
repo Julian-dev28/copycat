@@ -29,6 +29,8 @@ export interface LeaderPos {
   side: "long" | "short";
   notional_usd: number;
   leverage: number;
+  /** HL's max leverage for the coin (v12, audit S8); the engine never exceeds it. */
+  max_leverage?: number | null;
 }
 
 export interface TicketInput {
@@ -103,7 +105,11 @@ export function rawCopies(inp: TicketInput): number[] {
   const gross = inp.positions.reduce((a, p) => a + Math.abs(p.notional_usd), 0);
   return inp.positions.map((p) => {
     const n = Math.abs(p.notional_usd);
-    if (inp.mode === "target") return gross > 0 ? (n / gross) * A * Math.max(1, inp.targetLeverage) : 0;
+    if (inp.mode === "target") {
+      // engine: n/gross x A x the coin's exchange leverage, which the coin max caps (S8)
+      const coinMax = p.max_leverage && p.max_leverage > 0 ? p.max_leverage : Infinity;
+      return gross > 0 ? (n / gross) * A * Math.max(1, Math.min(inp.targetLeverage, coinMax)) : 0;
+    }
     return inp.leaderEquityUsd > 0 ? (n / inp.leaderEquityUsd) * A : 0;
   });
 }

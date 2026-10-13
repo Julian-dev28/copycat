@@ -384,7 +384,8 @@ def position_views(raw_positions: Dict[str, Dict[str, Any]]) -> List[TraderPosit
             liquidation_px=liq if liq else None,
             liq_distance_pct=round(abs(mark - liq) / mark * 100.0, 4) if (liq and mark > 0) else None,
             margin_usd=round(_num(p.get("marginUsed")) or 0.0, 2),
-            funding_since_open_usd=round(_num((p.get("cumFunding") or {}).get("sinceOpen")) or 0.0, 2)))
+            funding_since_open_usd=round(_num((p.get("cumFunding") or {}).get("sinceOpen")) or 0.0, 2),
+            max_leverage=int(_num(p.get("maxLeverage")) or 0) or None))
     return out
 
 

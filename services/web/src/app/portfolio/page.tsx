@@ -64,7 +64,7 @@ function Portfolio() {
       {statusQ.isError ? <LoadError what="engine status" error={statusQ.error} onRetry={() => statusQ.refetch()} /> : null}
       <PendingMcpPlans enabled={!demo} />
       <EmptyAccountBanner status={status} settings={s} />
-      <EngineStatusBar status={status} tradingEnabled={s?.enabled} />
+      <EngineStatusBar status={status} tradingEnabled={s?.enabled} lossLimitOn={(s?.daily_loss_limit_usd ?? 0) < 0} />
       <YourWallets
         wallets={wallets.data ?? []}
         settings={settings.data}

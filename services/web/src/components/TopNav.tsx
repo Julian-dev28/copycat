@@ -11,6 +11,7 @@ import { CatLogo } from "@/components/CatLogo";
 import { AccountSwitcher } from "@/components/account/AccountSwitcher";
 import { AccountMenu } from "@/components/shell/AccountMenu";
 import { DemoStrip } from "@/components/DemoStrip";
+import { StaleBuildStrip } from "@/components/StaleBuildStrip";
 import { NAV_ICONS } from "@/components/shell/navIcons";
 import { TokenDot } from "@/components/shell/TokenDot";
 import { useDemoQuery, useMounted } from "@/components/shell/useDemoQuery";
@@ -108,6 +109,7 @@ export function TopNav() {
       <ScoutTabs pathname={pathname} demo={demo} />
       <Suspense fallback={null}>
         <DemoStrip />
+        <StaleBuildStrip />
       </Suspense>
     </header>
   );
