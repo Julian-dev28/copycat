@@ -69,7 +69,7 @@ export function CoinBadge({ coin, title }: { coin: string; title?: string }) {
   return (
     <span
       title={title ?? (dex ? `${coin}: ${dexHint(dex)}` : coin)}
-      className="inline-flex h-5 items-center gap-1 rounded-full border border-border bg-surface-2 px-2 text-[11px] font-medium text-fg"
+      className="inline-flex h-5 items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 text-[11px] font-medium text-fg"
     >
       {dex ? <span className="font-num text-[9px] uppercase text-muted">{dex}</span> : null}
       <span className="font-num">{name}</span>
@@ -178,12 +178,12 @@ export function RefreshBadge({ cohort, nowMs, asOfMs }: { cohort?: number; nowMs
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <span className="inline-flex min-h-8 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-fg-soft shadow-e1" role="status">
+      <span className="inline-flex min-h-8 items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 text-fg-soft shadow-e1" role="status">
         <span className={clsx("h-1.5 w-1.5 flex-shrink-0 rounded-full", dot)} aria-hidden="true" />
         <span>{text}</span>
         {cohort ? <span className="text-muted">· {cohort} ranked</span> : null}
         {running ? (
-          <span className="h-1 w-16 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
+          <span className="h-1 w-16 overflow-hidden rounded-sm bg-surface-3" aria-hidden="true">
             <span className="block h-full bg-accent transition-[width] duration-[var(--dur-base)]" style={{ width: `${pct}%` }} />
           </span>
         ) : null}

@@ -90,7 +90,7 @@ export function AmountField({
               onClick={() => v !== null && onChange(chipText(v))}
               title={v === null ? "Free margin unknown" : formatUsd(v)}
               className={clsx(
-                "h-7 rounded-full border text-xs font-medium transition-colors duration-[var(--dur-fast)] active:scale-[.98] disabled:opacity-40",
+                "h-7 rounded-sm border text-xs font-medium transition-colors duration-[var(--dur-fast)] active:scale-[.98] disabled:opacity-40",
                 on ? "border-border-strong bg-surface-3 text-fg" : "border-border text-muted hover:border-border-strong hover:text-fg",
               )}
             >

@@ -76,7 +76,7 @@ function LogBody({ address, live, liveState }: { address: string; live: EngineEv
           value={filter}
           onChange={setFilter}
         />
-        {liveState === "open" ? <span className="whitespace-nowrap rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">live</span> : null}
+        {liveState === "open" ? <span className="whitespace-nowrap rounded-sm bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">live</span> : null}
       </div>
       {fallback ? <p className="px-4 pt-2 text-[11px] text-warning">Your api has no per-wallet log yet: this is the shared event tail, filtered to this wallet.</p> : null}
       <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto" aria-live="polite" aria-label="Wallet events">

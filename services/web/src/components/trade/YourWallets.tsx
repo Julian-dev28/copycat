@@ -172,7 +172,7 @@ export function YourWallets({
                     <td className={TD}>{w.open_copies}</td>
                     <td className="px-3 py-2 text-right">
                       <span className="flex flex-col items-end gap-0.5">
-                        <span title={badge.hint} className={clsx("rounded-full px-2 py-0.5 text-[11px] font-medium", TONE[badge.tone])}>{badge.label}</span>
+                        <span title={badge.hint} className={clsx("rounded-sm px-2 py-0.5 text-[11px] font-medium", TONE[badge.tone])}>{badge.label}</span>
                         {status === "paused" ? <span className="text-[10px] whitespace-nowrap text-muted">no new copies; exits still followed</span> : null}
                         {status === "running" && w.one_shot ? <span className="text-[10px] whitespace-nowrap text-muted">new trades not copied</span> : null}
                         {status === "running" && engine === "dry_run" ? <span className="text-[10px] text-muted">dry run</span> : null}

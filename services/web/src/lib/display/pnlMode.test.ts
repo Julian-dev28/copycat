@@ -21,9 +21,9 @@ const tokens = parseTokens(css);
 
 /** What each mode must resolve --up / --down to, per theme (DESIGN.md 3.3). */
 const EXPECTED: Record<PnlMode, Record<"light" | "dark", { up: string; down: string }>> = {
-  standard: { dark: { up: "#2fd28c", down: "#ff6370" }, light: { up: "#0b7347", down: "#c0263a" } },
+  standard: { dark: { up: "#4fbf8f", down: "#ef5a68" }, light: { up: "#0b7347", down: "#c0263a" } },
   colorblind: { dark: { up: "#4cb0ff", down: "#ff9a2e" }, light: { up: "#0a6fc2", down: "#a84f00" } },
-  "east-asia": { dark: { up: "#ff6370", down: "#2fd28c" }, light: { up: "#c0263a", down: "#0b7347" } },
+  "east-asia": { dark: { up: "#ef5a68", down: "#4fbf8f" }, light: { up: "#c0263a", down: "#0b7347" } },
 };
 
 afterEach(() => {

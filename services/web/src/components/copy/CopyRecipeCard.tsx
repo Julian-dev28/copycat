@@ -47,7 +47,7 @@ export function CopyRecipeCard({ settings, status }: { settings: Settings; statu
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={clsx("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold", mode.className)}>
+            <span className={clsx("inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-xs font-semibold", mode.className)}>
               <span className={clsx("h-1.5 w-1.5 rounded-full", mode.dot)} aria-hidden="true" />
               {mode.label}
             </span>

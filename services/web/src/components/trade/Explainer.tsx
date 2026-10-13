@@ -49,7 +49,7 @@ export function Explainer({ scoutHref }: { scoutHref: string }) {
       <ol className="grid flex-1 gap-3 sm:grid-cols-3">
         {STEPS.map((s, i) => (
           <li key={s.n} className={i > 0 ? "hidden gap-2.5 sm:flex" : "flex gap-2.5"}>
-            <span className="num-sm flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 text-fg-soft">{s.n}</span>
+            <span className="num-sm flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-sm border border-border bg-surface-2 text-fg-soft">{s.n}</span>
             <span>
               <span className="block text-sm font-medium text-fg">{s.title}</span>
               <span className="block text-xs text-muted">{s.text}</span>
@@ -59,7 +59,7 @@ export function Explainer({ scoutHref }: { scoutHref: string }) {
       </ol>
       <Link
         href={scoutHref}
-        className="inline-flex items-center gap-1.5 self-start whitespace-nowrap rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-fg-soft transition-colors hover:border-border-strong hover:text-fg md:self-center"
+        className="inline-flex items-center gap-1.5 self-start whitespace-nowrap rounded-sm border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-fg-soft transition-colors hover:border-border-strong hover:text-fg md:self-center"
       >
         <Telescope size={14} aria-hidden="true" /> Research traders in Scout
       </Link>
@@ -67,7 +67,7 @@ export function Explainer({ scoutHref }: { scoutHref: string }) {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss the intro"
-        className="absolute top-2 right-2 grid h-7 w-7 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+        className="absolute top-2 right-2 grid h-7 w-7 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"
       >
         <X size={14} aria-hidden="true" />
       </button>

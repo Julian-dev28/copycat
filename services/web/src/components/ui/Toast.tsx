@@ -45,7 +45,7 @@ export function Toaster() {
                   t.action?.onClick();
                   toasts.dismiss(t.id);
                 }}
-                className="flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-surface-2"
+                className="flex-shrink-0 rounded-sm px-2.5 py-1 text-xs font-medium text-accent hover:bg-surface-2"
               >
                 {t.action.label}
               </button>
@@ -54,7 +54,7 @@ export function Toaster() {
               type="button"
               onClick={() => toasts.dismiss(t.id)}
               aria-label="Dismiss"
-              className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg"
+              className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-sm text-muted hover:bg-surface-2 hover:text-fg"
             >
               <X size={14} aria-hidden="true" />
             </button>

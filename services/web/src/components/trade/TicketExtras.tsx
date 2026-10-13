@@ -35,7 +35,7 @@ export function DirectionSwitch({
         Direction
         {!globalSource && supported ? <Inherit set={set} onReset={onReset} label="direction" /> : null}
       </span>
-      <div role="radiogroup" aria-label="Copy or counter this trader" className="grid grid-cols-2 gap-1 rounded-full border border-border bg-surface-2 p-1">
+      <div role="radiogroup" aria-label="Copy or counter this trader" className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-surface-2 p-1">
         {opts.map(({ v, icon: Icon }) => {
           const on = v === value;
           return (
@@ -47,7 +47,7 @@ export function DirectionSwitch({
               disabled={!supported}
               onClick={() => onChange(v)}
               className={clsx(
-                "flex items-center justify-center gap-1.5 rounded-full py-1.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-base)] ease-in-out disabled:cursor-not-allowed disabled:opacity-50",
+                "flex items-center justify-center gap-1.5 rounded-sm py-1.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-base)] ease-in-out disabled:cursor-not-allowed disabled:opacity-50",
                 // Not accent-filled (DESIGN 5 Segmented): the accent belongs to the primary action.
                 on ? "bg-surface text-fg shadow-e1 dark:bg-surface-3" : "text-muted hover:text-fg",
               )}

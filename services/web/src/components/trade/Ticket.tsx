@@ -151,7 +151,7 @@ export function Ticket({
       {/* header; on phones a tap on it (or the chevron) opens and closes the sheet */}
       <div className="flex items-start justify-between gap-2 px-4 pt-2 pb-3 lg:pt-4" onClick={(e) => e.target === e.currentTarget && onSheet(!sheetOpen)}>
         <div className="min-w-0 flex-1">
-          <span className="mx-auto mb-2 block h-1 w-10 rounded-full bg-border-strong lg:hidden" aria-hidden="true" />
+          <span className="mx-auto mb-2 block h-1 w-10 rounded-sm bg-border-strong lg:hidden" aria-hidden="true" />
           <h2 id="ticket-title" className="truncate text-heading text-fg">
             {t.invested ? "Adjust" : "Copy"} {label}
           </h2>
@@ -184,7 +184,7 @@ export function Ticket({
             aria-expanded={sheetOpen}
             aria-controls="ticket-body"
             aria-label={sheetOpen ? "Hide the ticket" : "Show the ticket"}
-            className="grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg lg:hidden"
+            className="grid h-8 w-8 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg lg:hidden"
           >
             <ChevronUp size={18} aria-hidden="true" className={clsx("transition-transform duration-[var(--dur-base)]", sheetOpen && "rotate-180")} />
           </button>

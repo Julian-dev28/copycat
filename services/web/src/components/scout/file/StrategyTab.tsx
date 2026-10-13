@@ -34,7 +34,7 @@ export function StrategyTab({ address }: { address: string }) {
       <Panel className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap gap-1.5">
           {f.tags.map((t) => (
-            <span key={t} className="rounded-full border border-accent/30 bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">
+            <span key={t} className="rounded-sm border border-accent/30 bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">
               {t}
             </span>
           ))}

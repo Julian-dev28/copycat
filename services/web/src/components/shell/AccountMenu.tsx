@@ -32,7 +32,7 @@ export function AccountMenu() {
         type="button"
         popoverTarget={id}
         aria-label={`${LABELS.accountMenu}${tokenOk ? "" : `, ${LABELS.noApiToken.toLowerCase()}`}`}
-        className="relative grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg sm:hidden"
+        className="relative grid h-9 w-9 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg sm:hidden"
       >
         <Menu size={18} aria-hidden="true" />
         {mounted ? <TokenDot ok={tokenOk} /> : null}

@@ -14,6 +14,7 @@ import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
 import { flagText, SIZE_TIER_HINT, visibleFlags } from "@/lib/scout/labels";
+import { longShortSplit } from "@/lib/scout/split";
 import type { PnlUnit } from "@/lib/scout/query";
 import type { PnlWindow, TraderRow, TraderScore } from "@/lib/scout/types";
 import { formatSignedUsdCompact, WINDOW_LABEL, windowPerf } from "@/lib/scout/window";
@@ -44,6 +45,28 @@ export function IfCopied({ s, className }: { s: TraderScore; className?: string 
         max dip {formatPct(Math.abs(s.sim_max_drawdown_pct))}
       </span>
     </span>
+  );
+}
+
+/**
+ * Long / short share of his 30d round trips as a 2px two-tone bar with mono
+ * labels (the stat strip at the foot of every reference card). Sides are not
+ * good or bad (DESIGN 3.4): long is accent, short is the strong hairline.
+ */
+export function LongShortStrip({ trades, className }: { trades: TraderRow["trades_30d"]; className?: string }) {
+  const s = longShortSplit(trades);
+  if (!s) return null;
+  return (
+    <div className={clsx("flex flex-col gap-1.5", className)} title={`${s.long} long, ${s.short} short round trips in 30d`}>
+      <div className="flex h-0.5 w-full overflow-hidden bg-surface-3" role="img" aria-label={`${s.longPct}% long, ${100 - s.longPct}% short`}>
+        <div className="h-full bg-accent" style={{ width: `${s.longPct}%` }} />
+        <div className="h-full flex-1 bg-border-strong" />
+      </div>
+      <div className="text-label flex justify-between text-muted">
+        <span><span className="text-fg-soft">{s.longPct}%</span> long</span>
+        <span>short <span className="text-fg-soft">{100 - s.longPct}%</span></span>
+      </div>
+    </div>
   );
 }
 
@@ -112,6 +135,8 @@ export function TraderCard({
       <CopyFitMeter fit={s.copy_fit} className="relative z-10" />
 
       <CoinBadges coins={row.top_coins} />
+
+      <LongShortStrip trades={row.trades_30d} />
 
       <div className="mt-auto flex items-end justify-between gap-3 border-t border-border pt-3">
         <div className="min-w-0 leading-tight">

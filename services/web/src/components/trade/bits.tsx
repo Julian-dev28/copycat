@@ -35,7 +35,7 @@ export function Stat({ label, children, className }: { label: string; children: 
  */
 export function SideTag({ side, className }: { side: "long" | "short"; className?: string }) {
   return (
-    <span className={clsx("inline-flex h-5 items-center gap-0.5 whitespace-nowrap rounded-full bg-surface-2 px-1.5 text-[11px] font-medium text-fg-soft", className)}>
+    <span className={clsx("inline-flex h-5 items-center gap-0.5 whitespace-nowrap rounded-sm bg-surface-2 px-1.5 text-[11px] font-medium text-fg-soft", className)}>
       <span aria-hidden="true">{side === "long" ? "↗" : "↘"}</span>
       {side === "long" ? "Long" : "Short"}
     </span>

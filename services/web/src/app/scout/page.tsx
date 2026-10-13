@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
 import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControls";
+import { BoardTicker } from "@/components/scout/BoardTicker";
 import { TraderCard } from "@/components/scout/TraderCard";
 import { TraderTable } from "@/components/scout/TraderTable";
 import { ApiTooOld, RefreshBadge } from "@/components/scout/bits";
@@ -154,6 +155,8 @@ function ScoutBoard() {
         </div>
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
       </div>
+
+      <BoardTicker rows={page?.rows ?? []} window={state.window} unit={state.unit} demo={demo} />
 
       {page?.stale_settings ? (
         <Notice tone="info" title="Re-ranking for your new settings">

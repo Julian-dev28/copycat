@@ -86,24 +86,24 @@ The cat stays orange. The logo keeps its identity and stands out more because it
 
 ### 3.1 Color: dark (default)
 
-| Token | Hex | Use | Contrast (bg `#07080b` / surface `#0e1015` / s2 `#151821`) |
+| Token | Hex | Use | Contrast (bg `#08080a` / surface `#101012` / s2 `#17171a`) |
 |---|---|---|---|
-| `--bg` | `#07080b` | page canvas | |
-| `--surface` | `#0e1015` | panels, cards | |
-| `--surface-2` | `#151821` | inputs, table headers, segmented tracks | |
-| `--surface-3` | `#1c2030` | hover, selected row, raised popover | |
-| `--border` | `#232838` | hairlines (or `rgb(255 255 255 / .08)`) | |
-| `--border-strong` | `#2f3547` | focus-adjacent, input borders | |
-| `--fg` | `#eef0f6` | primary text, big numbers | 17.58 / 16.70 / 15.56 |
-| `--fg-soft` | `#c4c9d6` | body copy, table cells | 12.09 / 11.48 / 10.70 |
-| `--muted` | `#8b92a5` | labels, captions, secondary numbers | 6.44 / 6.12 / 5.70 (5.20 on s3) |
-| `--faint` | `#5f6679` | decorative only: grid lines, disabled, separators. **Never text** | 3.49 / 3.32 |
+| `--bg` | `#08080a` | page canvas | |
+| `--surface` | `#101012` | panels, cards | |
+| `--surface-2` | `#17171a` | inputs, table headers, segmented tracks | |
+| `--surface-3` | `#1e1e22` | hover, selected row, raised popover | |
+| `--border` | `#222226` | hairlines (or `rgb(255 255 255 / .08)`) | |
+| `--border-strong` | `#303036` | focus-adjacent, input borders | |
+| `--fg` | `#ececee` | primary text, big numbers | 17.58 / 16.70 / 15.56 |
+| `--fg-soft` | `#c6c6cb` | body copy, table cells | 12.09 / 11.48 / 10.70 |
+| `--muted` | `#8d8d96` | labels, captions, secondary numbers | 6.44 / 6.12 / 5.70 (5.20 on s3) |
+| `--faint` | `#55555c` | decorative only: grid lines, disabled, separators. **Never text** | 3.49 / 3.32 |
 | `--accent` | `#7aa2ff` | links, selected states, primary button bg, focus ring | 8.05 / 7.65 / 7.13 |
 | `--accent-fg` | `#050b1a` | text on accent | 7.89 on accent |
-| `--accent-soft` | `#1d2436` (accent at 14% on surface) | selected pill bg | accent text on it 6.22 |
+| `--accent-soft` | `#181c26` (accent at 14% on surface) | selected pill bg | accent text on it 6.22 |
 | `--brand` | `#ff7a1a` | cat logo, wordmark "copy", ember glow. Not interactive | 7.68 / 7.29 |
-| `--up` | `#2fd28c` | gains, positive PnL | 10.22 / 9.71 / 9.05 |
-| `--down` | `#ff6370` | losses, negative PnL | 6.93 / 6.59 / 6.14 |
+| `--up` | `#4fbf8f` | gains, positive PnL | 10.22 / 9.71 / 9.05 |
+| `--down` | `#ef5a68` | losses, negative PnL | 6.93 / 6.59 / 6.14 |
 | `--up-soft` / `--down-soft` | `#132b26` / `#301c22` | PnL cell flashes, chart fills (14%) | up 7.65, down 5.53 on their soft |
 | `--warn` | `#f2b544` | caution: dry run, skipped, near-liq, under-minimum | 10.94 / 10.39 / 9.68 |
 | `--warn-soft` | `#2e271c` | banner bg | warn text 8.06 |
@@ -112,17 +112,17 @@ The cat stays orange. The logo keeps its identity and stands out more because it
 
 ### 3.2 Color: light
 
-| Token | Hex | Contrast (bg `#f6f7f9` / surface `#ffffff` / s2 `#eff1f5`) |
+| Token | Hex | Contrast (bg `#f7f7f8` / surface `#ffffff` / s2 `#f2f2f4`) |
 |---|---|---|
-| `--bg` | `#f6f7f9` | |
+| `--bg` | `#f7f7f8` | |
 | `--surface` | `#ffffff` | |
-| `--surface-2` | `#eff1f5` | |
-| `--surface-3` | `#e6e9ef` | |
-| `--border` | `#dfe3ea` | |
-| `--fg` | `#0d1017` | 17.75 / 19.03 / 16.83 |
-| `--fg-soft` | `#2b3140` | 12.12 / 12.99 / 11.49 |
-| `--muted` | `#596174` | 5.78 / 6.20 / 5.48 |
-| `--faint` | `#9aa1b0` | decorative only (2.4 to 2.6) |
+| `--surface-2` | `#f2f2f4` | |
+| `--surface-3` | `#e9e9ec` | |
+| `--border` | `#e3e3e7` | |
+| `--fg` | `#0c0c0e` | 17.75 / 19.03 / 16.83 |
+| `--fg-soft` | `#2c2c31` | 12.12 / 12.99 / 11.49 |
+| `--muted` | `#5d5d66` | 5.78 / 6.20 / 5.48 |
+| `--faint` | `#a1a1aa` | decorative only (2.4 to 2.6) |
 | `--accent` | `#2d5bd8` | 5.44 / 5.83 / 5.16 (4.80 on s3) |
 | `--accent-fg` | `#ffffff` | 5.83 on accent |
 | `--accent-soft` | `#eaeffb` | accent text on it 5.07 |
@@ -191,20 +191,32 @@ Serif italic: one word max per title, never in data views. Examples: "Scout the 
 
 ### 3.6 Spacing, radius, elevation
 
+**v2 "terminal" (2026-10-14).** The rounded, glowing v1 read as a consumer app. v2 is square, flat and
+mono-labelled, after Hyperdash and julianmartinez-delta.vercel.app: near-black neutral surfaces (no blue
+tint), 2-3px radii everywhere (`rounded-full` survives only on status dots), no card shadows (a 1px hairline
+and a hover fill instead), flat uppercase mono nav with a 1px accent underline, a scroll-progress hairline
+under the header, scroll reveal on panels, a ticker strip on Scout, and a long/short stat strip at the foot
+of every trader card. Effects taken from the reference: `.glass` with an inset top highlight, the edge-faded
+marquee, two faint corner glows on the canvas, `[data-reveal]` rise-and-fade on first view. Contrast is
+re-checked by `src/lib/display/tokens.test.ts` on every commit.
+
 - Spacing: 4px base. Dense data rows 36px (`py-2`), comfortable rows 44px. Panel padding 16px mobile / 20px desktop. Page gap 20px. Section gap 32px.
 - Container: one width everywhere. Today the nav is `max-w-[1440px]` and `<main>` is `max-w-6xl`, so the logo and the content edges do not line up. Use `max-w-[1360px]` for Trade (3 columns) and `max-w-6xl` for reading pages, and put the nav inside the same container width as the page.
 
 | Radius token | px | Use |
 |---|---|---|
-| `--r-pill` | 999 | chips, tabs, segmented controls, small buttons, badges |
-| `--r-sm` | 8 | inputs, table row hover, menu items |
-| `--r-md` | 12 | panels, cards, tables |
-| `--r-lg` | 16 | dialogs, drawers, hero cards |
+| `--r-pill` | 2 | chips, tabs, segmented controls, small buttons, badges (was 999 in v1) |
+| `--r-sm` | 2 | inputs, table row hover, menu items |
+| `--r-md` | 3 | panels, cards, tables |
+| `--r-lg` | 4 | dialogs, drawers, hero cards |
+
+Tailwind's whole `rounded-*` scale is remapped to these in `globals.css` (`--radius-sm` .. `--radius-3xl`),
+so no component needs to change its class to stay square. `rounded-full` is reserved for status dots.
 
 | Elevation | Dark | Light |
 |---|---|---|
 | `e0` flat | `--surface`, 1px `--border` | same |
-| `e1` raised card | `--surface` + `inset 0 1px 0 rgb(255 255 255 / .04)` + `0 1px 0 rgb(0 0 0 / .4)` | `0 1px 2px rgb(13 16 23 / .06)` |
+| `e1` raised card | none: flat `--surface` + 1px `--border`; hover brightens the border and fills `--surface-2` at 60% | same |
 | `e2` popover / menu | `--surface-3` + `0 12px 32px -12px rgb(0 0 0 / .7)` | `0 12px 32px -12px rgb(13 16 23 / .18)` |
 | `e3` dialog | glass: `rgb(14 16 21 / .82)` + `backdrop-filter: blur(20px) saturate(160%)` + `0 24px 60px -20px rgb(0 0 0 / .8)` | `rgb(255 255 255 / .9)` + same blur |
 | glow (primary button hover, focus) | `0 0 0 1px var(--accent), 0 8px 24px -8px color-mix(in srgb, var(--accent) 45%, transparent)` | same at 30% |
@@ -241,7 +253,9 @@ What animates:
 | Element | Animation |
 |---|---|
 | Segmented controls, tabs | a single `::before` thumb that slides (`transform: translateX`, `--dur-base`, `--ease-in-out`) instead of the selected button repainting as a block |
-| Nav active pill | same sliding thumb under the nav links; View Transition name `nav-pill` on route change |
+| Nav active underline | the 1px accent line moves between links; View Transition name `nav-pill` on route change |
+| Scroll reveal | `[data-reveal]` panels fade in and rise 12px the first time they scroll into view, 50ms stagger per batch (max 300ms), `components/shell/Reveal.tsx`; off under reduced motion |
+| Scout ticker | `components/ui/Marquee.tsx`: the top 12 rows drift left at ~6 s per item, edges fade, hover pauses |
 | Panels on first page load | `@starting-style { opacity: 0; transform: translateY(6px) }`, `--dur-slow`, 40ms stagger per panel, max 4 panels. Never on refetch |
 | Dialogs, drawers | backdrop fade `--dur-base`; panel `opacity 0 → 1`, `scale .98 → 1` (dialog) or `translateX(16px) → 0` (drawer), `--dur-slow` |
 | Popovers, account switcher | `opacity` + `translateY(-4px)`, `--dur-base` |
@@ -289,7 +303,7 @@ What animates:
 
 ## 6. Page layouts
 
-**Global shell.** Sticky glass header 56px: cat + wordmark, primary nav as a pill group with sliding thumb, right side account switcher, theme, token. Scroll-progress hairline is not needed on app pages. Mobile (under 640px): header shows cat + account switcher; primary nav moves to a bottom tab bar (5 items, icon + 10px label, 56px + safe-area), Settings into the account switcher menu. Demo mode: a slim `--warn-soft` strip pinned under the header on every page (including Settings and Discover, see audit).
+**Global shell.** Sticky glass header 56px: cat + wordmark, primary nav as flat 11px mono uppercase links (`tracking .14em`), active one `--fg` with a 1px accent underline at the header's bottom edge (View Transition name `nav-pill`), right side account switcher, theme, token. A 1px accent scroll-progress hairline runs along the bottom edge (`components/shell/ScrollProgress.tsx`). Mobile (under 640px): header shows cat + account switcher; primary nav moves to a bottom tab bar (5 items, icon + 10px label, 56px + safe-area), Settings into the account switcher menu. Demo mode: a slim `--warn-soft` strip pinned under the header on every page (including Settings and Discover, see audit).
 
 **Trade.** Three columns at 1280px+: Markets 300px, wallet detail flexible, ticket 360px. Bottom dock "Your copies" collapsible, 4 rows visible then scroll. At 1024 to 1279px: Markets collapses to a 56px rail with a search button that opens a drawer. Under 1024px: single column; wallet header, chart, positions, then ticket; the ticket action bar becomes a sticky bottom sheet with the amount and the Copy button. Onboarding strip (1-2-3) shows for first-time real users too, dismissible, remembered per browser.
 

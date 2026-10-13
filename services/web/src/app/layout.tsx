@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 import { TopNav } from "@/components/TopNav";
+import { RevealObserver } from "@/components/shell/Reveal";
 import { BottomTabBar } from "@/components/shell/BottomTabBar";
 import { AppMain } from "@/components/shell/AppMain";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
@@ -64,11 +65,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <a
             href="#main"
-            className="sr-only z-[60] rounded-full bg-accent text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:px-4 focus:py-2"
+            className="sr-only z-[60] rounded-sm bg-accent text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:px-4 focus:py-2"
           >
             Skip to content
           </a>
           <TopNav />
+          <RevealObserver />
           <AppMain>{children}</AppMain>
           <BottomTabBar />
           <SettingsDrawer />

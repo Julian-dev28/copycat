@@ -51,7 +51,7 @@ export function InfoTip({ id, content, label = "More info" }: { id: string; cont
         type="button"
         aria-label={label}
         aria-describedby={id}
-        className="grid h-4 w-4 place-items-center rounded-full text-muted transition-colors hover:text-fg"
+        className="grid h-4 w-4 place-items-center rounded-sm text-muted transition-colors hover:text-fg"
       >
         <Info size={12} aria-hidden="true" />
       </button>

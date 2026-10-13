@@ -44,7 +44,7 @@ export function DemoAccountSwitch({ acct, hrefFor }: { acct: DemoAccount; hrefFo
   return (
     <nav aria-label="Demo account size" className="flex items-center gap-2 text-xs text-muted">
       <span>Demo account</span>
-      <span className="flex rounded-full border border-border bg-surface-2 p-0.5">
+      <span className="flex rounded-sm border border-border bg-surface-2 p-0.5">
         {ACCTS.map((a) => (
           <Link
             key={a}
@@ -52,7 +52,7 @@ export function DemoAccountSwitch({ acct, hrefFor }: { acct: DemoAccount; hrefFo
             scroll={false}
             aria-current={a === acct ? "true" : undefined}
             className={clsx(
-              "num-sm rounded-full px-2.5 py-0.5 transition-colors duration-[var(--dur-fast)]",
+              "num-sm rounded-sm px-2.5 py-0.5 transition-colors duration-[var(--dur-fast)]",
               a === acct ? "bg-surface text-fg shadow-e1 dark:bg-surface-3" : "hover:text-fg",
             )}
           >

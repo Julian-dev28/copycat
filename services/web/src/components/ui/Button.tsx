@@ -21,8 +21,8 @@ export const BUTTON_VARIANT: Record<ButtonVariant, string> = {
 };
 
 export const BUTTON_SIZE: Record<ButtonSize, string> = {
-  sm: "h-8 text-xs px-3 rounded-full gap-1.5",
-  md: "h-9 text-sm px-4 rounded-full gap-2",
+  sm: "h-8 text-xs px-3 rounded-sm gap-1.5",
+  md: "h-9 text-sm px-4 rounded-sm gap-2",
   lg: "h-11 text-base px-5 rounded-xl gap-2",
 };
 

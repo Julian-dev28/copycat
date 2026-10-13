@@ -11,7 +11,7 @@ export function StepProgress({ steps }: { steps: SignStepView[] }) {
           <div className="flex flex-col items-center">
             <span
               className={clsx(
-                "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-sm border text-xs font-semibold",
                 s.state === "done" && "border-success bg-success/15 text-success",
                 s.state === "doing" && "border-accent bg-accent-soft text-accent",
                 s.state === "failed" && "border-danger bg-danger/10 text-danger",

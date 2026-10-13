@@ -35,7 +35,7 @@ export function Badge({ tone = "neutral", dot, children, className, ...rest }: B
   return (
     <span
       className={clsx(
-        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-label leading-none",
+        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm border px-2 text-label leading-none",
         BADGE_TONE[tone],
         className,
       )}

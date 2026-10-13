@@ -25,7 +25,7 @@ export function EquityBreakdown({ balances }: { balances: AccountBalances }) {
     <Panel>
       <PanelHeader title="Equity" description={`${formatUsd(balances.total_usd)} total · ${formatUsd(balances.withdrawable_usd)} withdrawable`} />
       <div className="flex flex-col gap-3 px-4 pb-4 sm:px-5">
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label={slices.map((s) => `${s.label} ${formatPct(s.pct, 0)}`).join(", ")}>
+        <div className="flex h-3 w-full overflow-hidden rounded-sm bg-surface-2" role="img" aria-label={slices.map((s) => `${s.label} ${formatPct(s.pct, 0)}`).join(", ")}>
           {total > 0
             ? slices.filter((s) => s.usd > 0).map((s) => <span key={s.key} style={{ width: `${s.pct}%`, background: COLOR[s.key] }} className="h-full border-r border-surface last:border-r-0" />)
             : null}

@@ -17,7 +17,7 @@ import { WINDOW_LABEL } from "@/lib/scout/window";
 
 type Update = (patch: Partial<BoardState>) => void;
 
-const SELECT = "h-8 rounded-full border border-border bg-surface-2 pr-7 pl-3 text-xs text-fg transition-colors hover:border-border-strong";
+const SELECT = "h-8 rounded-sm border border-border bg-surface-2 pr-7 pl-3 text-xs text-fg transition-colors hover:border-border-strong";
 
 function Chip({ active, onClick, children, title }: { active: boolean; onClick: () => void; children: ReactNode; title?: string }) {
   return (
@@ -27,7 +27,7 @@ function Chip({ active, onClick, children, title }: { active: boolean; onClick: 
       title={title}
       onClick={onClick}
       className={clsx(
-        "inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors duration-[var(--dur-fast)]",
+        "inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-sm border px-3 text-xs font-medium transition-colors duration-[var(--dur-fast)]",
         active ? "border-border-strong bg-surface-3 text-fg shadow-e1" : "border-border bg-surface text-muted hover:border-border-strong hover:text-fg",
       )}
     >
@@ -154,20 +154,20 @@ export function Toolbar({
           <Button size="sm" variant="secondary" onClick={onOpenFilters} aria-haspopup="dialog" className="flex-shrink-0">
             <SlidersHorizontal size={13} aria-hidden="true" />
             Filters
-            {nFilters ? <span className="num-sm grid h-4 min-w-4 place-items-center rounded-full bg-fg px-1 text-[10px] text-bg">{nFilters}</span> : null}
+            {nFilters ? <span className="num-sm grid h-4 min-w-4 place-items-center rounded-sm bg-fg px-1 text-[10px] text-bg">{nFilters}</span> : null}
           </Button>
         </div>
       </div>
       {chips.length ? (
         <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
           {chips.map((c) => (
-            <span key={c.key} className="inline-flex h-7 items-center gap-1 rounded-full border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg-soft">
+            <span key={c.key} className="inline-flex h-7 items-center gap-1 rounded-sm border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg-soft">
               {c.label}
               <button
                 type="button"
                 aria-label={`Remove filter: ${c.label}`}
                 onClick={() => update(c.clear)}
-                className="grid h-5 w-5 place-items-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-fg"
+                className="grid h-5 w-5 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-3 hover:text-fg"
               >
                 <X size={11} aria-hidden="true" />
               </button>
@@ -339,13 +339,13 @@ export function FilterSheet({
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
               {state.coins.map((c) => (
-                <span key={c} className="font-num inline-flex h-7 items-center gap-1 rounded-full border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg">
+                <span key={c} className="font-num inline-flex h-7 items-center gap-1 rounded-sm border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg">
                   {c}
                   <button
                     type="button"
                     aria-label={`Remove ${c}`}
                     onClick={() => update({ coins: state.coins.filter((x) => x !== c) })}
-                    className="grid h-5 w-5 place-items-center rounded-full text-muted hover:bg-surface-3 hover:text-fg"
+                    className="grid h-5 w-5 place-items-center rounded-sm text-muted hover:bg-surface-3 hover:text-fg"
                   >
                     <X size={11} aria-hidden="true" />
                   </button>

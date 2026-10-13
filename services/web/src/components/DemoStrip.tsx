@@ -27,7 +27,7 @@ export function DemoStrip() {
         </p>
         <Link
           href={exitDemoHref(pathname, sp.toString())}
-          className="flex-shrink-0 rounded-full px-2 py-0.5 font-medium text-warn underline-offset-2 hover:underline"
+          className="flex-shrink-0 rounded-sm px-2 py-0.5 font-medium text-warn underline-offset-2 hover:underline"
         >
           {LABELS.leaveDemo}
         </Link>

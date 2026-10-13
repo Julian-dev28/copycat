@@ -27,7 +27,7 @@ export function Switch({ checked, onChange, id, disabled, label, stateText }: Sw
       <label
         htmlFor={id}
         className={clsx(
-          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-[var(--dur-base)] ease-in-out",
+          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-sm transition-colors duration-[var(--dur-base)] ease-in-out",
           checked ? "bg-accent" : "bg-surface-3 ring-1 ring-border-strong ring-inset",
           disabled && "cursor-not-allowed opacity-40",
         )}
@@ -41,18 +41,18 @@ export function Switch({ checked, onChange, id, disabled, label, stateText }: Sw
           checked={checked}
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
-          className="peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0 disabled:cursor-not-allowed"
+          className="peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-sm opacity-0 disabled:cursor-not-allowed"
         />
         <span
           aria-hidden="true"
           className={clsx(
-            "pointer-events-none ml-0.5 inline-block h-4 w-4 rounded-full bg-white shadow-e1 transition-transform duration-[var(--dur-base)] ease-in-out",
+            "pointer-events-none ml-0.5 inline-block h-4 w-4 rounded-sm bg-white shadow-e1 transition-transform duration-[var(--dur-base)] ease-in-out",
             checked ? "translate-x-4" : "translate-x-0",
           )}
         />
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -inset-0.5 rounded-full outline-2 outline-offset-1 outline-transparent peer-focus-visible:outline-[var(--accent)] peer-focus-visible:outline"
+          className="pointer-events-none absolute -inset-0.5 rounded-sm outline-2 outline-offset-1 outline-transparent peer-focus-visible:outline-[var(--accent)] peer-focus-visible:outline"
         />
       </label>
       {words ? (
