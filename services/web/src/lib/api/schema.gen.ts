@@ -2411,6 +2411,11 @@ export interface components {
             /** Settings Hash */
             settings_hash: string;
             /**
+             * Sim Equity Usd
+             * @default 0
+             */
+            sim_equity_usd: number;
+            /**
              * Stale Settings
              * @default false
              */

@@ -226,7 +226,10 @@ export function fixtureSettings(nowMs: number): Settings {
 }
 
 export function fixturePage(rows: TraderRow[], total: number, nowMs: number): TraderPage {
-  return { as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows };
+  return {
+    as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows,
+    sim_equity_usd: FIXTURE_SIM_EQUITY,
+  };
 }
 
 export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {

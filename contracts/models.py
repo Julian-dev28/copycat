@@ -424,6 +424,12 @@ class TraderPage(BaseModel):
     total: int                           # after filters
     rows: List[TraderRow]
     stale_settings: bool = False         # rows were scored at an older settings_hash (spec 7.3)
+    # v13: the equity Copy Fit / sim_copy_capacity_pct were simulated at for every row on this
+    # page (COPYCAT_SCOUT_SIM_EQUITY, default 1,000). NOT the viewer's own account size -- the
+    # board ranks one cohort for everyone at one equity. State this plainly in the UI so a small
+    # account doesn't read a 90 Fit / high capacity as "copyable at my size" (user_consensus
+    # non-negotiable #3: sizing math must be shown, never assumed). 0 before the first build.
+    sim_equity_usd: float = 0.0
 
 class TraderPositionView(BaseModel):
     coin: str

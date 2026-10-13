@@ -53,7 +53,7 @@ export function IfCopied({ s, className }: { s: TraderScore; className?: string 
         </span>
       </span>
       {cap !== null && cap !== undefined ? (
-        <span className="num-sm text-muted" title="Share of their 30d opens the sim could actually execute at your settings and equity">
+        <span className="num-sm text-muted" title="Share of their 30d opens the sim could actually execute at your settings and the board's sim equity, not necessarily your own balance">
           capacity {formatPct(cap, 0)}
           {s.sim_capacity_note ? <span className="text-warn"> · {s.sim_capacity_note}</span> : null}
         </span>

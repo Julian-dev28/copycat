@@ -3819,6 +3819,11 @@
             "title": "Settings Hash",
             "type": "string"
           },
+          "sim_equity_usd": {
+            "default": 0.0,
+            "title": "Sim Equity Usd",
+            "type": "number"
+          },
           "stale_settings": {
             "default": false,
             "title": "Stale Settings",

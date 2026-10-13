@@ -22,6 +22,9 @@ def test_universe_filters_and_book(w):
     p = public.scout_page(q())
     assert set(addrs(p)) == BOARD and p.total == 6 and p.cohort_size == 6
     assert not p.stale_settings and p.refresh_id and p.settings_hash
+    # user_consensus non-negotiable #3: the sim equity every row was ranked at must be on the
+    # wire, so the UI can say plainly "this is a $1,000 board, not your own account size".
+    assert p.sim_equity_usd == EQUITY
 
 
 def test_every_row_metric_populated(w):

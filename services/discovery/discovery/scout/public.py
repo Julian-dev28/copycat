@@ -120,7 +120,8 @@ def scout_page(query: Optional[Dict[str, Any]] = None) -> TraderPage:
     wanted = store.meta_get(conn, "wanted_hash")
     return TraderPage(as_of_ms=ptr["as_of_ms"], refresh_id=ptr["refresh_id"], settings_hash=ptr["settings_hash"],
                       cohort_size=ptr["cohort_size"], total=int(total), rows=out,
-                      stale_settings=bool(wanted and wanted != ptr["settings_hash"]))
+                      stale_settings=bool(wanted and wanted != ptr["settings_hash"]),
+                      sim_equity_usd=float(ptr.get("sim_equity") or 0.0))
 
 
 def scout_presets() -> ScoutPresets:

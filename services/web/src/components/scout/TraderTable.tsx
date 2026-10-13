@@ -23,7 +23,7 @@ const ACCOUNT_VALUE_HINT =
   "Account value from Hyperliquid's leaderboard: includes unrealized PnL, main perps dex. " +
   "A wallet's HIP-3-only equity on another dex may not be included.";
 const PNL_HINT = "Hyperliquid's own PnL for this window. Excludes deposits and withdrawals, so it reflects trading result, not transfers.";
-const CAPACITY_HINT = "Share of their 30d opens the sim could actually execute at your settings and equity.";
+const CAPACITY_HINT = "Share of their 30d opens the sim could actually execute at your settings and the board's sim equity, not necessarily your own balance.";
 
 /** Sortable columns and the order a first click asks for (what you'd want first). */
 const COLS: { key: SortKey | null; label: string; first?: SortOrder; title?: string; align?: "left" | "right" }[] = [
