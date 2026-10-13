@@ -32,12 +32,40 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower().replace("&", " and ")).strip()
 
 
+def _headings(markdown: str) -> List[str]:
+    return [_norm(m.group(1)) for m in re.finditer(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", markdown, re.M)]
+
+
 def missing_sections(markdown: str) -> List[str]:
     """Required sections with no matching markdown heading (any level).
     A heading matches if it starts with the section name, ignoring case,
     punctuation and `&` vs `and`; e.g. "## How they enter (evidence)" counts."""
-    headings = [_norm(m.group(1)) for m in re.finditer(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", markdown, re.M)]
+    headings = _headings(markdown)
     return [s for s in THESIS_SECTIONS if not any(h.startswith(_norm(s)) for h in headings)]
+
+
+def out_of_order_sections(markdown: str) -> List[str]:
+    """Required sections that ARE present (missing_sections() already covers
+    absent ones) but appear out of THESIS_SECTIONS's order, e.g. "Exits"
+    before "Sizing & risk". One message per section that comes before an
+    earlier-required section it should follow, so a draft that is merely
+    shuffled gets a precise, fixable complaint instead of a silent pass.
+    Found reconciling a real thesis eval run (2026-10-14): a judge scored
+    "Format discipline" 1/2 for exactly this, something missing_sections()
+    alone never catches."""
+    headings = _headings(markdown)
+    present = [s for s in THESIS_SECTIONS if any(h.startswith(_norm(s)) for h in headings)]
+    positions = {s: next(i for i, h in enumerate(headings) if h.startswith(_norm(s))) for s in present}
+    out: List[str] = []
+    worst_pos_so_far = -1
+    worst_name = None
+    for s in present:   # present is already in THESIS_SECTIONS order
+        if positions[s] < worst_pos_so_far:
+            out.append(f'"{s}" appears before "{worst_name}" in the draft, but the required order is '
+                      f'"{worst_name}" then "{s}"')
+        else:
+            worst_pos_so_far, worst_name = positions[s], s
+    return out
 
 
 def write_thesis_prompt(address: str) -> str:

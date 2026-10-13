@@ -46,7 +46,8 @@ from pydantic import Field
 
 from .api_client import Accepted, ApiError, CopycatApi, RouteMissing
 from .config import McpConfig
-from .prompts import THESIS_MAX_CHARS, copy_trader_prompt, missing_sections, write_thesis_prompt
+from .prompts import (THESIS_MAX_CHARS, copy_trader_prompt, missing_sections, out_of_order_sections,
+                      write_thesis_prompt)
 
 INSTRUCTIONS = """copycat is a self-hosted Hyperliquid copy-trading app. These tools read its trader
 research data (Scout board, trader profiles, deterministic strategy fingerprints, round trips,
@@ -400,15 +401,16 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         copycat stores it as source "claude_code" (the api sets source, time and the link to the
         current 30d fingerprint; this tool cannot write a "ta" thesis). The newest one is shown. Text only:
         it changes nothing about copying or trading. The result lists any required sections the
-        markdown is missing; if so, fix and save again."""
+        markdown is missing AND any present but out of order; if either is non-empty, fix and save again."""
         if len(markdown) > THESIS_MAX_CHARS:
             raise ToolError(f"Thesis is {len(markdown)} chars; the limit is {THESIS_MAX_CHARS}. Shorten it.")
         # Exactly the api's ThesisWrite fields (extra="forbid"). source="claude_code" is server-set.
         body = {"title": title.strip(), "markdown": markdown, "author": (author or config.author).strip()}
         res = await call("PUT", f"/api/scout/traders/{norm_address(address)}/thesis", json=body)
         missing = missing_sections(markdown)
-        return {"saved": res, "missing_sections": missing,
-                "ok": not missing}
+        order_issues = out_of_order_sections(markdown)
+        return {"saved": res, "missing_sections": missing, "order_issues": order_issues,
+                "ok": not missing and not order_issues}
 
     # ── Settings and copy list ─────────────────────────────────────────
 
