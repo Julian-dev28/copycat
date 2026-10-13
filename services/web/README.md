@@ -62,8 +62,8 @@ query string.
 src/app/          routes (one folder per page), globals.css (design tokens), fonts/
 src/components/   UI by area: trade/, scout/, account/, copy/ (settings panels),
                   positions/, mcp/ (pending MCP plans), discover/, ui/ (shared primitives), shell/ (bottom
-                  tab bar, account menu, main container), settings/ (Display),
-                  TopNav, CatLogo
+                  tab bar, account menu, main container, first-run checklist),
+                  settings/ (Display), TopNav, CatLogo
 src/lib/          pure logic + tests by area: trade/, scout/, account/, api/,
                   display/ (PnL mode, motion, contrast, toasts), shell/ (nav,
                   container), labels.ts (glossary)

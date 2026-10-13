@@ -13,6 +13,16 @@ NEXT_PUBLIC_COPYCAT_API ?= http://localhost:$(API_PORT)
 
 export PYTHONPATH := .:services/hl:services/vault:services/engine:services/discovery:services/api
 
+# `make dev WEB_PORT=3205`: the api only accepts requests whose browser Origin
+# matches COPYCAT_WEB_ORIGIN (default http://localhost:3000); a mismatch fails
+# CORS on every write with a generic "can't reach the api" in the web, with no
+# hint that the port is the cause. Only override it when WEB_PORT was actually
+# passed on the command line, so a plain `make dev` and a custom COPYCAT_WEB_ORIGIN
+# in .env are both untouched.
+ifeq ($(origin WEB_PORT),command line)
+export COPYCAT_WEB_ORIGIN := http://localhost:$(WEB_PORT)
+endif
+
 .PHONY: help install dev test eval openapi up down mcp-install
 
 help: ## list targets

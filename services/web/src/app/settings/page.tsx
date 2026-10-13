@@ -10,6 +10,7 @@ import { SaveStatusBadge } from "@/components/copy/SaveStatusBadge";
 import { CopyRecipeCard } from "@/components/copy/CopyRecipeCard";
 import { EmptyAccountBanner } from "@/components/EmptyAccountBanner";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
+import { DisplaySettings } from "@/components/settings/DisplaySettings";
 import type { SettingsPatch } from "@/lib/api/types";
 import { ApiTokenPanel, TradeDefaultsPanel } from "./TradeDefaultsPanel";
 
@@ -70,6 +71,7 @@ function SettingsContent({ demo }: { demo: boolean }) {
       <CopyBehaviorPanel settings={settings} onPatch={onPatch} />
       <CopyRecipeCard settings={settings} status={status} />
       <LeadersPanel settings={settings} status={status} />
+      <DisplaySettings />
       {demo ? null : <ApiTokenPanel />}
     </>
   );

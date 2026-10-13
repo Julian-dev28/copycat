@@ -35,6 +35,12 @@ export function KindBadge({ kind }: { kind: TradingAccount["kind"] }) {
   );
 }
 
+/** copycat vs. a real HL vault (research/user_consensus_2026-10.md: "Known ways copiers lose
+ * money" - vault lockup/profit-share confusion). Exported so a test can pin the facts without
+ * rendering JSX. */
+export const NOT_A_VAULT_TEXT =
+  "This is your own Hyperliquid account, not a pooled vault: no lockup, no profit share, nothing deposited with anyone else. Copying places the same trades on your account, with your own money.";
+
 /** What an agent key can and cannot do. Shown wherever a key is handed over. */
 export function AgentBanner({ compact }: { compact?: boolean }) {
   return (
@@ -43,9 +49,12 @@ export function AgentBanner({ compact }: { compact?: boolean }) {
       <div className="text-muted">
         <p className="font-semibold text-foreground">copycat trades with an agent key: it can trade, it cannot withdraw.</p>
         {compact ? null : (
-          <p className="mt-0.5">
-            Hyperliquid agent wallets can place and cancel orders only. Moving funds out always needs the main wallet. Keys never leave this machine.
-          </p>
+          <>
+            <p className="mt-0.5">
+              Hyperliquid agent wallets can place and cancel orders only. Moving funds out always needs the main wallet. Keys never leave this machine.
+            </p>
+            <p className="mt-0.5">{NOT_A_VAULT_TEXT}</p>
+          </>
         )}
       </div>
     </div>

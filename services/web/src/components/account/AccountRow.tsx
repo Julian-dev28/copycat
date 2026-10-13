@@ -35,7 +35,7 @@ export function AccountRow({ account, nowMs }: { account: TradingAccount; nowMs:
         </div>
         <AgentBadge account={account} nowMs={nowMs} />
       </div>
-      {v.hint && v.status !== "active" ? <p className="text-[11px] text-muted">{v.hint}</p> : null}
+      {v.hint ? <p className="text-[11px] text-muted">{v.hint}</p> : null}
 
       {mode === "rename" ? <RenameForm account={account} onDone={() => setMode("view")} /> : null}
       {mode === "remove" ? <RemoveConfirm account={account} onDone={() => setMode("view")} /> : null}

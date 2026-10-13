@@ -35,7 +35,12 @@ test.describe("demo Account", () => {
     await saved.check();
     await expect(done).toBeEnabled();
     await done.click();
-    if (!(await accountItems(page).count())) await page.getByRole("button", { name: "Accounts", exact: true }).click();
+    // "Continue to funding" moves the SAME dialog to its fund step (by design:
+    // one continuous session from create through funding); it never closes on
+    // its own, so close it here before reopening Accounts to check the list.
+    await page.getByRole("heading", { name: "Fund your wallet" }).waitFor();
+    await page.getByRole("dialog").last().getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "Accounts", exact: true }).click();
     await expect(accountItems(page)).toHaveCount(before + 1);
     await expect(accountItems(page).filter({ hasText: "e2e created" })).toHaveCount(1);
     expect(errors).toEqual([]);
@@ -59,9 +64,19 @@ test.describe("demo Account", () => {
     const before = await accountItems(page).count();
     await page.getByRole("button", { name: /^Connect an existing account/ }).click();
     const dlg = page.getByRole("dialog").last();
+    // Required before the form will submit at all (SignWithWallet.tsx checkLabel):
+    // without it, "Connect wallet" just shows "Give it a name." and the demo
+    // wallet mode below is never exercised.
+    await dlg.getByRole("textbox", { name: "Name" }).fill("e2e rejected");
     await dlg.getByRole("combobox", { name: "Demo wallet" }).selectOption({ label: "Rejects signature" });
     await dlg.getByRole("button", { name: "Connect wallet" }).click();
-    await expect(dlg.getByText(/reject|cancel|denied/i).first()).toBeVisible({ timeout: 15_000 });
+    // Not a text search: the dialog's own <select> has an option literally
+    // named "Rejects signature", which a loose /reject/i text match finds
+    // first (hidden, since the select is closed) and never looks past. The
+    // "Try again" button is the real, semantic signal that the flow erred
+    // (SignWithWallet.tsx: state.step === "error" renders it in place of
+    // "Connect wallet").
+    await expect(dlg.getByRole("button", { name: "Try again" })).toBeVisible({ timeout: 15_000 });
     await dlg.getByRole("button", { name: "Close" }).click();
     await page.getByRole("button", { name: "Accounts", exact: true }).click();
     await expect(accountItems(page)).toHaveCount(before);
@@ -98,7 +113,9 @@ test.describe("demo Account", () => {
     const move = page.getByRole("dialog", { name: /^Move USDC/ });
     await move.getByRole("textbox", { name: "Amount" }).fill("10");
     await move.getByRole("textbox", { name: "Passphrase" }).fill(PASS);
-    await move.getByRole("button", { name: "Move", exact: true }).click();
+    // Not exact: once an amount is typed the submit button's accessible name
+    // grows to "Move $10.00" (MoneyActionDialog.tsx: `${TITLE[kind].split(" ")[0]}{amt ? ... }`).
+    await move.getByRole("button", { name: /^Move/ }).click();
     await expect(page.getByText(/moved|done|sent|success/i).first()).toBeVisible({ timeout: 15_000 });
     await page.keyboard.press("Escape");
 
@@ -107,9 +124,9 @@ test.describe("demo Account", () => {
     await wd.getByRole("textbox", { name: "Amount" }).fill("0.5");
     await wd.getByRole("textbox", { name: "Passphrase" }).fill(PASS);
     // below the $1 fee: must not be submittable
-    await expect(wd.getByRole("button", { name: "Withdraw", exact: true })).toBeDisabled();
+    await expect(wd.getByRole("button", { name: /^Withdraw/ })).toBeDisabled();
     await wd.getByRole("textbox", { name: "Amount" }).fill("20");
-    await wd.getByRole("button", { name: "Withdraw", exact: true }).click();
+    await wd.getByRole("button", { name: /^Withdraw/ }).click();
     await expect(page.getByText(/withdraw.*(sent|submitted|requested|done)|on its way/i).first()).toBeVisible({ timeout: 15_000 });
     await page.keyboard.press("Escape");
 
@@ -118,7 +135,7 @@ test.describe("demo Account", () => {
     await send.getByRole("radio", { name: /Ledger via Rabby/ }).click();
     await send.getByRole("textbox", { name: "Amount" }).fill("5");
     await send.getByRole("textbox", { name: "Passphrase" }).fill(PASS);
-    await send.getByRole("button", { name: "Send", exact: true }).click();
+    await send.getByRole("button", { name: /^Send/ }).click();
     await expect(page.getByText(/sent|done|success/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });
