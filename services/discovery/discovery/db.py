@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS fills_coverage (
     wallet TEXT PRIMARY KEY,
     first_ms INTEGER NOT NULL,
     last_ms INTEGER NOT NULL,
-    fetched_ms INTEGER NOT NULL
+    fetched_ms INTEGER NOT NULL,
+    liq_backfilled INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS fills_v2 (
@@ -118,6 +119,7 @@ _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN heartbeat_ms INTEGER",
     "ALTER TABLE runs ADD COLUMN params_json TEXT",
     "ALTER TABLE fills_v2 ADD COLUMN liquidation INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE fills_coverage ADD COLUMN liq_backfilled INTEGER NOT NULL DEFAULT 0",
 ]
 
 _local = threading.local()
@@ -184,9 +186,42 @@ def merge_ranges(ranges: List[Tuple[int, int]], join_gap: int = 1) -> List[Tuple
 # ── fills ─────────────────────────────────────────────────────────────────
 
 def get_fills_coverage(conn: sqlite3.Connection, wallet: str) -> Optional[Dict[str, int]]:
-    row = conn.execute("SELECT first_ms, last_ms, fetched_ms FROM fills_coverage WHERE wallet = ?",
+    row = conn.execute("SELECT first_ms, last_ms, fetched_ms, liq_backfilled FROM fills_coverage WHERE wallet = ?",
                        (wallet,)).fetchone()
     return dict(row) if row else None
+
+
+def mark_liq_backfilled(conn: sqlite3.Connection, wallet: str) -> None:
+    """One-time per wallet (contract v13 backfill): every fill already
+    cached for this wallet now carries HL's real `liquidation` flag, not
+    the hard-0 default rows written before that column existed."""
+    conn.execute("UPDATE fills_coverage SET liq_backfilled = 1 WHERE wallet = ?", (wallet,))
+    conn.commit()
+
+
+def upsert_liquidation_flags(conn: sqlite3.Connection, wallet: str, fills: List[Dict[str, Any]]) -> int:
+    """Refresh ONLY the `liquidation` column on rows already cached for
+    `wallet` (contract v13 backfill): same natural key as insert_fills, but
+    ON CONFLICT DO UPDATE instead of OR IGNORE, so a re-fetch of an already-
+    cached window corrects the flag in place rather than being a no-op.
+    A fill not already cached is inserted fresh (same shape as insert_fills)
+    -- harmless since the key is identical, just never expected to add new
+    rows in practice (the window was already fully synced)."""
+    rows = [
+        (wallet, int(f["time_ms"]), f["coin"], float(f["px"]), float(f["sz"]), f["side"],
+         f.get("dir"), float(f["start_position"]), float(f.get("closed_pnl", 0.0)),
+         float(f.get("fee", 0.0)), int(bool(f.get("liquidation", False))))
+        for f in fills
+    ]
+    conn.executemany(
+        "INSERT INTO fills_v2 "
+        "(wallet, time_ms, coin, px, sz, side, dir, start_position, closed_pnl, fee, liquidation) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(wallet, time_ms, coin, side, sz, px, start_position) "
+        "DO UPDATE SET liquidation = excluded.liquidation",
+        rows)
+    conn.commit()
+    return len(rows)
 
 
 def set_fills_coverage(conn: sqlite3.Connection, wallet: str, first_ms: int, last_ms: int,

@@ -63,6 +63,7 @@ def sync_fills(conn: sqlite3.Connection, venue: Venue, wallet: str, window_days:
     if cov is None:
         db.insert_fills(conn, wallet, _fetch(venue, wallet, ws, now_ms))
         db.set_fills_coverage(conn, wallet, ws, now_ms, now_ms)
+        db.mark_liq_backfilled(conn, wallet)   # a first-ever sync already carries real liquidation flags
         return db.get_cached_fills(conn, wallet, ws, now_ms)
 
     first, last, fetched = cov["first_ms"], cov["last_ms"], cov["fetched_ms"]
@@ -81,3 +82,35 @@ def sync_fills(conn: sqlite3.Connection, venue: Venue, wallet: str, window_days:
 def coverage_end(conn: sqlite3.Connection, wallet: str) -> Optional[int]:
     cov = db.get_fills_coverage(conn, wallet)
     return cov["last_ms"] if cov else None
+
+
+def ensure_liquidation_backfilled(conn: sqlite3.Connection, venue: Venue, wallet: str) -> bool:
+    """One-time per wallet: fills cached before the `liquidation` column
+    existed (contract v13) were written with it hard-0 regardless of HL's
+    real flag on that fill, so every liquidation older than the column's
+    rollout reads as an ordinary close. `fills_coverage.liq_backfilled`
+    marks a wallet done; a brand-new wallet (sync_fills' `cov is None`
+    branch) is marked done immediately since its first-ever fetch already
+    has the real flag, so this only ever does real work for a wallet synced
+    before this feature shipped, and only once.
+
+    Refetches the wallet's whole cached window [first_ms, last_ms] (same
+    aggregateByTime call sync_fills already makes -- same page cost, same
+    rate limiter, same background HL priority through the caller's venue)
+    and upserts just the `liquidation` column onto the rows already cached.
+    Soft-fail: a failed read here must not fail the wallet's stage-B build
+    (its fills/stats are already correct without this) -- it just tries
+    again next cycle, same as `extras`/`funding` being optional reads.
+
+    Returns whether a refetch actually ran (for tests; callers don't need
+    to branch on it, this only ever runs once and self-marks done)."""
+    cov = db.get_fills_coverage(conn, wallet)
+    if cov is None or cov.get("liq_backfilled"):
+        return False
+    try:
+        rows = _fetch(venue, wallet, cov["first_ms"], cov["last_ms"])   # same aggregateByTime path as sync_fills
+    except FillsFetchError:
+        return False   # transient failure: try again next cycle, not marked done
+    db.upsert_liquidation_flags(conn, wallet, rows)
+    db.mark_liq_backfilled(conn, wallet)
+    return True

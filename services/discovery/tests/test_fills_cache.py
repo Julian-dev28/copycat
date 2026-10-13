@@ -140,3 +140,69 @@ def test_liquidation_column_migrates_onto_a_pre_existing_fills_v2_table(tmp_path
     db.insert_fills(conn, "0xnew", [f])
     rows = {r["coin"]: r["liquidation"] for r in db.get_cached_fills(conn, "0xnew", 0, 1000)}
     assert rows == {"ETH": 0, "SOL": 1}
+
+
+# ── liquidation backfill (coordinator follow-up: fills cached before the ──
+# ── `liquidation` column existed stay 0 forever without this) ────────────
+
+def test_a_brand_new_wallet_is_marked_backfilled_on_its_first_sync(conn):
+    """A wallet synced for the first time after this column shipped already
+    has the real flag on every cached row: no refetch is ever needed for it."""
+    venue = FakeVenue()
+    w = "0xbrandnew"
+    venue.set_fills(w, [fill(1_000)])
+    fills_cache.sync_fills(conn, venue, w, window_days=1, now_ms=10_000)
+    assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 1
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is False
+    assert len(venue.fills_calls) == 1   # only the one sync call, no extra refetch
+
+
+def test_ensure_liquidation_backfilled_corrects_a_pre_migration_zero(conn):
+    """The exact scenario this exists for: a fill cached before the
+    `liquidation` column existed has it hard-0 regardless of HL's real
+    value. One profile build must correct it from HL; a second must not
+    refetch at all."""
+    venue = FakeVenue()
+    w = "0xpremigration"
+    # Simulate data written before the column existed: insert_fills + set_fills_coverage
+    # directly (not sync_fills), as a real pre-migration discovery.db would already have it,
+    # with liq_backfilled left at its column default (0).
+    db.insert_fills(conn, w, [fill(1_000)])             # liquidation defaults to 0
+    db.set_fills_coverage(conn, w, 0, 10_000, 10_000)
+    assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 0
+
+    f = fill(1_000)
+    f["liquidation"] = True                              # HL's real answer: this WAS a liquidation
+    venue.set_fills(w, [f])
+
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is True
+    assert venue.fills_calls == [(w, 0, 10_000)]
+    row = db.get_cached_fills(conn, w, 0, 10_000)[0]
+    assert bool(row["liquidation"]) is True
+    assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 1
+
+    # second call: already done, must not refetch
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is False
+    assert venue.fills_calls == [(w, 0, 10_000)]          # unchanged
+
+
+def test_ensure_liquidation_backfilled_is_a_no_op_with_no_cached_fills(conn):
+    venue = FakeVenue()
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, "0xnever-synced") is False
+    assert venue.fills_calls == []
+
+
+def test_ensure_liquidation_backfilled_retries_on_a_failed_read(conn):
+    venue = FakeVenue()
+    w = "0xflaky"
+    db.insert_fills(conn, w, [fill(1_000)])
+    db.set_fills_coverage(conn, w, 0, 10_000, 10_000)
+    venue.fail_fills.add(w)
+
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is False
+    assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 0   # not marked done: must retry
+
+    venue.fail_fills.clear()
+    venue.set_fills(w, [fill(1_000)])
+    assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is True
+    assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 1

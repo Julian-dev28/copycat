@@ -217,6 +217,13 @@ def build_wallet(conn: sqlite3.Connection, venue: CountingVenue, address: str, n
     fills = fills_cache.sync_fills(conn, venue, address, C.WINDOW_DAYS, now_ms,   # type: ignore[arg-type]
                                    discovery_config.CACHE_FRESH_S)
     try:
+        # One-time per wallet, no-op once done (fills_coverage.liq_backfilled): a wallet synced
+        # before the `liquidation` column existed has every cached fill's flag hard-0 regardless
+        # of HL's real value. Never blocks the build on failure, same as extras/funding.
+        fills_cache.ensure_liquidation_backfilled(conn, venue, address)   # type: ignore[arg-type]
+    except Exception as exc:
+        logger.warning("scout stage B: %s liquidation backfill failed, will retry next cycle: %s", address, exc)
+    try:
         funding = funding_cache.sync_funding(conn, venue, address, C.WINDOW_DAYS, now_ms,   # type: ignore[arg-type]
                                              discovery_config.CACHE_FRESH_S)
     except funding_cache.FundingFetchError as exc:
