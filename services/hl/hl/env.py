@@ -5,8 +5,9 @@ immediately, with no process restart.
 
 COPYCAT_NETWORK: "mainnet" (default) or "testnet" -- picks the Hyperliquid
 base URL for every /info and /exchange call this service makes.
-COPYCAT_HL_BASE_URL / COPYCAT_HL_STATS_URL (loopback URLs only) replace both
-hosts; the e2e lane (e2e/) points the whole stack at a local mock Hyperliquid.
+COPYCAT_HL_BASE_URL / COPYCAT_HL_STATS_URL (loopback URLs only, and only with
+COPYCAT_E2E=1) replace both hosts; the e2e lane (e2e/) points the whole stack
+at a local mock Hyperliquid.
 
 COPYCAT_AGENT_KEY + COPYCAT_ACCOUNT_ADDRESS gate every write (set_leverage,
 market, close). Reads work without them. Per docs/ARCHITECTURE.md: the
@@ -57,6 +58,11 @@ def _loopback_override(var: str) -> str:
     slash), or "" when unset or not on this machine (logged, then ignored)."""
     raw = (os.environ.get(var) or "").strip().rstrip("/")
     if not raw:
+        return ""
+    if os.environ.get("COPYCAT_E2E") != "1":
+        # Audit L8: mainnet-signed actions would go to whatever listens on that
+        # port. Only the e2e lane, which says so explicitly, may redirect them.
+        logger.error("[hl.env] %s is set but COPYCAT_E2E is not 1: ignored, using the real Hyperliquid", var)
         return ""
     try:
         parsed = urlsplit(raw)

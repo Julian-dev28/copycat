@@ -31,6 +31,7 @@ def hl_mock(monkeypatch, tmp_path):
     for k in ("COPYCAT_AGENT_KEY", "COPYCAT_ACCOUNT_ADDRESS", "COPYCAT_NETWORK"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("COPYCAT_HL_BASE_URL", url)
+    monkeypatch.setenv("COPYCAT_E2E", "1")
     monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path / "data"))
     from hl import meta, sdk
     from hl import venue as venue_mod

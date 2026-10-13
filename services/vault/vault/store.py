@@ -109,12 +109,16 @@ def write_agent_key(account_id: str, agent_address: str, private_key: str) -> No
     fsio.atomic_write(_key_path(account_id, AGENT), json.dumps(blob).encode())
 
 
-def read_agent_key(account_id: str) -> Optional[str]:
+def read_agent_key(account_id: str, agent_address: Optional[str] = None) -> Optional[str]:
+    """`agent_address` (audit L5): bind the AAD to the account ROW's agent
+    address, not only to the one stored in the blob, so a blob swapped in
+    from another row fails authentication here instead of one check later."""
     path = _key_path(account_id, AGENT)
     if not path.exists():
         return None
     blob = json.loads(fsio.read_private(path))
-    return crypto.open_machine(blob, _aad(account_id, AGENT, blob.get("address", ""))).decode()
+    addr = (agent_address or blob.get("address", "")).lower()
+    return crypto.open_machine(blob, _aad(account_id, AGENT, addr)).decode()
 
 
 def write_main_key(account_id: str, address: str, private_key: str, passphrase: str) -> None:
@@ -130,6 +134,17 @@ def read_main_key(account_id: str, address: str, passphrase: str) -> str:
     return crypto.open_passphrase(blob, passphrase, _aad(account_id, MAIN, address)).decode()
 
 
+def main_key_scrypt_n(account_id: str) -> Optional[int]:
+    """The scrypt N the stored main key was sealed with (None: no key / unreadable)."""
+    path = _key_path(account_id, MAIN)
+    if not path.exists():
+        return None
+    try:
+        return int(json.loads(fsio.read_private(path)).get("n"))
+    except (ValueError, TypeError, OSError):
+        return None
+
+
 def delete_agent_key(account_id: str) -> None:
     _key_path(account_id, AGENT).unlink(missing_ok=True)
 
@@ -140,3 +155,7 @@ def archive_main_key(account_id: str) -> None:
         dst = _key_path(account_id, MAIN, folder="removed")
         fsio.ensure_dir(dst.parent)
         src.replace(dst)
+        # Audit L6: make the rename durable in both directories, so a crash
+        # cannot leave the only copy of a withdraw-capable key nowhere.
+        fsio._fsync_dir(dst.parent)
+        fsio._fsync_dir(src.parent)

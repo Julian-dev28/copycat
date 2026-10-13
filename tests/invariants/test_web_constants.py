@@ -31,3 +31,15 @@ def test_web_unreliable_grace_matches_the_engine():
     src = (TYPES.parents[1] / "engine" / "dayPnl.ts").read_text()
     m = _re.search(r"export const UNRELIABLE_GRACE_MS = ([0-9_ *]+);", src)
     assert m and eval(m.group(1).replace("_", "")) == UNRELIABLE_GRACE_MS
+
+
+def test_web_pinned_bridges_match_hl_accounts():
+    """Audit L7: the web's pinned deposit triples equal hl.accounts' network facts."""
+    import re as _re
+    from hl import accounts
+    src = (TYPES.parents[1] / "account" / "depositFlow.ts").read_text()
+    web = set(_re.findall(r'chain_id: (\d+), usdc: "(0x[0-9a-f]{40})", bridge: "(0x[0-9a-f]{40})"', src))
+    facts = getattr(accounts, "FUNDING", None)
+    assert isinstance(facts, dict), "hl.accounts network table renamed: update this test"
+    py = {(str(f["chain_id"]), f["usdc_address"].lower(), f["bridge_address"].lower()) for f in facts.values()}
+    assert web == py

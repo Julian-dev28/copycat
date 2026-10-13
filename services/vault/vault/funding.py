@@ -88,6 +88,9 @@ def _check_destination(acct: TradingAccount, kind: str, to_perp: Optional[bool],
         dest = norm_address(destination, "destination")
         if dest == acct.address:
             raise InvalidRequest("destination is this account")
+        # Audit L3: a TYPO guard, not a security boundary. withdraw3 can already
+        # go to any address (with confirm_destination), and a token holder can
+        # import any address they control as a vault account.
         if store.find_by_address(store.load(), dest) is None:
             raise InvalidRequest("destination must be another account in this copycat")
         return None, dest

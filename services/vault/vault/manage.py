@@ -8,7 +8,7 @@ from eth_account import Account
 
 from contracts.models import AccountKind, TradingAccount
 
-from . import agents, fsio, store
+from . import agents, crypto, fsio, guess_guard, store
 from .approval import approve_with_main_key, now_ms
 from .errors import NeedsBrowserSignIn, VaultCorrupt, WrongPassphrase
 
@@ -88,11 +88,26 @@ def remove(account_id: str) -> None:
 
 
 def _unlock_main(acct: TradingAccount, passphrase: Optional[str]) -> str:
+    """The ONE place a created wallet's main key is decrypted. Audit M6: a
+    persisted per-account guard refuses while locked out and counts wrong
+    passphrases; audit M7: a blob sealed at weaker scrypt params is re-sealed
+    at the current ones after a successful unlock."""
+    guess_guard.check(acct.id)
     if not passphrase:
         raise WrongPassphrase()
-    key = store.read_main_key(acct.id, acct.address, passphrase)
+    try:
+        key = store.read_main_key(acct.id, acct.address, passphrase)
+    except WrongPassphrase:
+        guess_guard.failed(acct.id)
+        raise
     if Account.from_key(key).address.lower() != acct.address:
         raise VaultCorrupt("stored main key does not match its account")
+    guess_guard.succeeded(acct.id)
+    n = store.main_key_scrypt_n(acct.id)
+    if n is not None and n < crypto.SCRYPT_N:
+        with fsio.locked():
+            store.write_main_key(acct.id, acct.address, key, passphrase)
+        logger.info("[vault] re-sealed account %s main key at scrypt N=%d", acct.id, crypto.SCRYPT_N)
     return key
 
 
@@ -129,7 +144,7 @@ def active_credentials() -> Optional[Tuple[str, str]]:
     row = next((r for r in doc["accounts"] if r["id"] == aid), None) if aid else None
     if not row or not row.get("agent_address"):
         return None
-    key = store.read_agent_key(aid)
+    key = store.read_agent_key(aid, row["agent_address"])
     if not key:
         return None
     if Account.from_key(key).address.lower() != row["agent_address"]:

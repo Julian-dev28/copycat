@@ -61,7 +61,11 @@ function SettingsContent({ demo }: { demo: boolean }) {
         />
       </div>
       <EmptyAccountBanner status={status} settings={settings} />
-      <EngineControlsPanel settings={settings} onPatch={onPatch} />
+      <EngineControlsPanel
+        settings={settings}
+        onPatch={onPatch}
+        openRealCopies={status && !status.dry_run ? status.positions.length : 0}
+      />
       <TradeDefaultsPanel settings={settings} onPatch={onPatch} />
       <CopyBehaviorPanel settings={settings} onPatch={onPatch} />
       <CopyRecipeCard settings={settings} status={status} />

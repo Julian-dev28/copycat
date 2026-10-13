@@ -54,8 +54,8 @@ export function CloseAllButton({ openCopies }: { openCopies: number }) {
           <>
             {openCopies === 0
               ? "copycat doesn't see any open copies right now, so this should be a no-op. It still asks the engine to market-close anything it opened."
-              : `Market-closes ${openCopies === 1 ? "the 1 open copy" : `all ${openCopies} open copies`} on Hyperliquid right now.`} The traders&apos; own positions are untouched, and the engine will open new copies again if trading is
-            still on. Type <span className="font-num font-semibold text-foreground">{CLOSE_ALL_PHRASE}</span> to confirm.
+              : `Market-closes ${openCopies === 1 ? "the 1 open copy" : `all ${openCopies} open copies`} on Hyperliquid right now.`} The traders&apos; own positions are untouched, and trading is switched off so nothing new opens. This acts on the
+            active trading account only: copies left open on another account close only after you switch back to it. Type <span className="font-num font-semibold text-foreground">{CLOSE_ALL_PHRASE}</span> to confirm.
           </>
         }
         footer={

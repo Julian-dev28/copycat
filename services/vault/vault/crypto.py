@@ -27,7 +27,10 @@ from . import fsio
 from .errors import VaultCorrupt, WrongPassphrase
 
 MACHINE_KEY_FILE = "machine.key"
-SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 15, 8, 1
+# Audit M7: 2^17 (128 MB, ~0.2 s) for keys that can withdraw. Blobs carry their
+# own params, so older 2^15 blobs still open; manage._unlock_main re-seals them
+# at these params on the next successful unlock.
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 17, 8, 1
 _MAX_SCRYPT_N = 2 ** 20        # a tampered blob must not make us burn GBs of RAM
 
 

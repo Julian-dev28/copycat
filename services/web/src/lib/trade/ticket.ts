@@ -94,7 +94,8 @@ export interface TicketPreview {
   maxCycles: number;
   /** Engine notes (api preview only), e.g. "his equity read is stale". */
   notes?: string[];
-  source: "local" | "api";
+  /** local: the ticket's own estimate; api: the engine preview; demo: the demo's stand-in for the engine preview (audit L11). */
+  source: "local" | "api" | "demo";
   /** v8: the direction the sides were stamped with (applyDirection). */
   direction?: "copy" | "counter";
 }

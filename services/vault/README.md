@@ -115,9 +115,15 @@ be logged by accident; reasons are VaultError messages (secret-free).
   `cat`, a grep, a log, a screenshot or a pasted config. An agent key can trade
   your account into losses but cannot withdraw.
 - **Main keys of created wallets need your passphrase.** A copy of the folder
-  alone does not give them up; scrypt makes each guess cost ~0.1 s and 32 MB.
-  A weak passphrase is still guessable offline: use a long one. The api
-  rate-limits passphrase routes (5/min, 30/hour per route).
+  alone does not give them up; scrypt (N=2^17, r=8) makes each guess cost
+  ~0.2 s and 128 MB. Older blobs sealed at 2^15 are re-sealed at the next
+  successful unlock (audit M7). A weak passphrase is still guessable offline:
+  use a long one. Online guessing: every route that unlocks a main key goes
+  through one per-account guard persisted in `vault/passphrase_guard.json`
+  (audit M6): 3 free misses, then a lockout of 1, 2, 4, ... minutes per
+  further miss (max 24 h), cleared by a correct passphrase; while locked the
+  passphrase is not even tried. The api also rate-limits each route (5/min,
+  30/hour).
 - **The api process handles secrets in flight.** Create, import, sign-in,
   refresh and transfer bodies carry keys or the passphrase; the api passes them
   to the vault and drops them. Python cannot wipe memory, so a heap dump of the
@@ -126,6 +132,13 @@ be logged by accident; reasons are VaultError messages (secret-free).
 - **The main key of a created wallet is shown once.** If you lose that backup
   and the passphrase, the funds are gone. Removing the account archives the
   sealed key in `vault/removed/` instead of deleting it.
+- **`machine.key` sits next to the agent blobs** (audit L4). Read access to
+  `data/` is read access to every agent key (trade, not withdraw). Keep
+  `data/` on your user's disk, out of backups that leave the machine and out
+  of synced folders. An OS keychain would split them; not done yet.
+- **"Send" only to your own copycat accounts is a typo guard** (audit L3), not
+  a security boundary: Withdraw can go to any address (you type it twice),
+  and anyone with the api token can import an address they control.
 - **Not defended:** malware running as your user (it can read the vault and
   the machine key, or keylog the passphrase), a compromised browser during
   sign-in (it could swap the agent address before you sign; your wallet shows

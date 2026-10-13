@@ -36,6 +36,11 @@ services:
       COPYCAT_NETWORK: ${COPYCAT_NETWORK:-mainnet}
       COPYCAT_WEB_ORIGIN: ${COPYCAT_WEB_ORIGIN:-http://localhost:3000}
       COPYCAT_LOG_LEVEL: ${COPYCAT_LOG_LEVEL:-INFO}
+      # Audit L2: the api's half of the MCP trading opt-in (the MCP server needs its own).
+      COPYCAT_MCP_ALLOW_TRADING: ${COPYCAT_MCP_ALLOW_TRADING:-}
+      COPYCAT_MCP_MAX_USD: ${COPYCAT_MCP_MAX_USD:-}
+      COPYCAT_MCP_MAX_USD_PER_DAY: ${COPYCAT_MCP_MAX_USD_PER_DAY:-}
+      COPYCAT_MCP_TOKEN: ${COPYCAT_MCP_TOKEN:-}
     ports:
       - "127.0.0.1:${COPYCAT_API_PORT:-8787}:8787"
     healthcheck:

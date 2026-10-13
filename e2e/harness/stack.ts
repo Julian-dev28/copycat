@@ -258,6 +258,7 @@ export async function startStack(mode: StackMode): Promise<StackState> {
         COPYCAT_DATA_DIR: dataDir,
         COPYCAT_ENV_FILE: path.join(root, "no-such.env"),   // import-env never reads the repo's .env
         COPYCAT_HL_BASE_URL: state.mockURL,
+        COPYCAT_E2E: "1",                                    // hl.env honors the override only with this
         COPYCAT_API_TOKEN: token,
         COPYCAT_API_PORT: String(apiPort),
         COPYCAT_BIND: "127.0.0.1",

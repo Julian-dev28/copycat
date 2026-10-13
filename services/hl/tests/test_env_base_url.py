@@ -18,6 +18,18 @@ def test_testnet_without_override(monkeypatch):
     assert env.base_url() == constants.TESTNET_API_URL
 
 
+@pytest.fixture(autouse=True)
+def _e2e(monkeypatch):
+    monkeypatch.setenv("COPYCAT_E2E", "1")
+
+
+def test_l8_override_needs_copycat_e2e(monkeypatch, caplog):
+    monkeypatch.delenv("COPYCAT_E2E")
+    monkeypatch.setenv("COPYCAT_HL_BASE_URL", "http://127.0.0.1:9001")
+    assert env.base_url() == constants.MAINNET_API_URL
+    assert "COPYCAT_E2E is not 1" in caplog.text
+
+
 @pytest.mark.parametrize("url", ["http://127.0.0.1:9001", "http://localhost:9001/", "http://[::1]:9001"])
 def test_loopback_override_wins(monkeypatch, url):
     monkeypatch.setenv("COPYCAT_NETWORK", "testnet")

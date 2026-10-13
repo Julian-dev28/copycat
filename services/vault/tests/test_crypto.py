@@ -40,7 +40,7 @@ def test_machine_round_trip_and_aad_binding():
 
 def test_passphrase_round_trip_wrong_passphrase_and_wrong_owner():
     blob = crypto.seal_passphrase(b"main-key", "correct horse battery", b"a")
-    assert blob["n"] == 2 ** 15 and blob["r"] == 8 and blob["p"] == 1
+    assert blob["n"] == 2 ** 17 and blob["r"] == 8 and blob["p"] == 1   # audit M7
     assert crypto.open_passphrase(blob, "correct horse battery", b"a") == b"main-key"
     with pytest.raises(WrongPassphrase) as e1:
         crypto.open_passphrase(blob, "wrong horse battery", b"a")
