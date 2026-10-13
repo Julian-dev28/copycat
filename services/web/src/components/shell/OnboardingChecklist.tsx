@@ -6,6 +6,7 @@ import { Check, KeyRound } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useEngineStatus } from "@/hooks/useEngineStatus";
 import { useActiveAccount } from "@/components/account/hooks";
+import { NOT_A_VAULT_TEXT } from "@/components/account/bits";
 import { onboardingComplete, onboardingSteps, type OnboardingStep } from "@/lib/shell/onboarding";
 import { useDemoQuery, useMounted } from "./useDemoQuery";
 
@@ -41,16 +42,18 @@ export function OnboardingChecklist() {
   if (onboardingComplete(steps)) return null;
 
   return (
-    <section
-      aria-label="First-run checklist"
-      className="mb-4 flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 shadow-e1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2"
-    >
-      <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Get set up</h2>
-      <ol className="flex flex-1 flex-wrap gap-x-6 gap-y-2">
-        {steps.map((s) => (
-          <ChecklistItem key={s.key} step={s} onToken={openDrawer} />
-        ))}
-      </ol>
+    <section aria-label="First-run checklist" className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 shadow-e1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+        <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Get set up</h2>
+        <ol className="flex flex-1 flex-wrap gap-x-6 gap-y-2">
+          {steps.map((s) => (
+            <ChecklistItem key={s.key} step={s} onToken={openDrawer} />
+          ))}
+        </ol>
+      </div>
+      {/* research/user_consensus_2026-10.md: a copier can confuse the copy-sim
+          with a real HL vault (lockup, profit share). Say plainly it's neither. */}
+      <p className="text-[11px] text-muted">{NOT_A_VAULT_TEXT}</p>
     </section>
   );
 }
