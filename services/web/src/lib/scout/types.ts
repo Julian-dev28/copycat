@@ -99,6 +99,13 @@ export interface TraderPage {
   rows: TraderRow[];
   /** Spec 7.3: rows are from the previous settings while stage C reruns. */
   stale_settings?: boolean;
+  /**
+   * v13: the equity Copy Fit / sim_copy_capacity_pct were simulated at for
+   * every row on this page (COPYCAT_SCOUT_SIM_EQUITY, default 1,000). NOT
+   * the viewer's own account size: one cohort is ranked for everyone at one
+   * equity. 0 before the first build.
+   */
+  sim_equity_usd?: number;
 }
 
 export interface TraderPositionView {
@@ -249,6 +256,9 @@ export interface ScoutPresetsWire {
   coin_counts: Record<string, number>;
   hip3_count: number;
   total: number;
+  /** v13 (user_consensus P1 #7): wallets that fell out of the ranked top-300 in 30d. */
+  departed_30d?: number;
+  departed_liquidated_30d?: number;
 }
 
 /** What the preset row renders; lib/scout/query.ts::normalizePresets builds it from the wire shape. */
@@ -256,6 +266,8 @@ export interface ScoutPresets {
   coins: { coin: string; traders: number }[];
   hip3: number;
   total: number;
+  departed: number;
+  departedLiquidated: number;
 }
 
 // ── Strategy (contract v3.1): fingerprint, evidence trades, theses ──────────

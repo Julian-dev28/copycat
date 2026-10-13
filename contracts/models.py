@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 13  # v13: RoundTrip.gross_pnl_usd/fee_usd/funding_usd (user research P0: net
+CONTRACT_VERSION = 14  # v14: TraderScore.liquidations_30d/last_liquidation_ms (the wallet's OWN real
+#                        liquidations, distinct from sim_liquidations), sim_capacity_note,
+#                        coattail_leader/coattail_share_pct; ScoutPresets.departed_30d/departed_liquidated_30d
+#                        (user_consensus_2026-10 P0/P1: leaderboard trust gaps)
+# v13: RoundTrip.gross_pnl_usd/fee_usd/funding_usd (user research P0: net
 #                        funding paid/received during the hold into round-trip PnL; net_pnl_usd is
 #                        now gross - fee + funding, all three optional/default 0 for old stored rows);
 #                        LeaderFillView.liquidation (HL's own flag, was fetched but silently dropped)
@@ -300,6 +304,18 @@ class TraderScore(BaseModel):
     copy_fit: Optional["CopyFit"] = None
     style: Optional["TradingStyle"] = None
     last_fill_ms: Optional[int] = None
+    # v13: the wallet's OWN real liquidations (HL fill dir "Liquidated *"), 30d window.
+    # Distinct from sim_liquidations (what WOULD happen to a copy at your settings):
+    # a wallet can show sim_liquidations=0 and still have blown up for real.
+    liquidations_30d: int = 0
+    last_liquidation_ms: Optional[int] = None
+    # v13: one-line reason the sim's copy_capacity is low (dominant skip cause), None when
+    # capacity is high or there is nothing to explain.
+    sim_capacity_note: Optional[str] = None
+    # v13: coattail-rider check (user_consensus P1 #6): set when most of this wallet's
+    # opens land 1-120s after another top-ranked wallet's same-coin/same-side open.
+    coattail_leader: Optional[str] = None
+    coattail_share_pct: Optional[float] = None
 
 
 class DiscoveryRun(BaseModel):
@@ -412,6 +428,12 @@ class TraderPage(BaseModel):
     total: int                           # after filters
     rows: List[TraderRow]
     stale_settings: bool = False         # rows were scored at an older settings_hash (spec 7.3)
+    # v13: the equity Copy Fit / sim_copy_capacity_pct were simulated at for every row on this
+    # page (COPYCAT_SCOUT_SIM_EQUITY, default 1,000). NOT the viewer's own account size -- the
+    # board ranks one cohort for everyone at one equity. State this plainly in the UI so a small
+    # account doesn't read a 90 Fit / high capacity as "copyable at my size" (user_consensus
+    # non-negotiable #3: sizing math must be shown, never assumed). 0 before the first build.
+    sim_equity_usd: float = 0.0
 
 class TraderPositionView(BaseModel):
     coin: str
@@ -531,6 +553,12 @@ class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /
     coin_counts: Dict[str, int] = Field(default_factory=dict)  # coin -> traders with it in top coins
     hip3_count: int = 0                  # traders with any HIP-3 coin in top coins
     total: int = 0                       # rows in the "all" tab
+    # v13 (user_consensus P1 #7): wallets that fell out of the ranked universe in the
+    # last 30d, so the board can say "N wallets left the top 300" instead of silently
+    # showing only survivors. departed_liquidated_30d is the subset whose last known
+    # stats showed a real (not sim) liquidation before it dropped off.
+    departed_30d: int = 0
+    departed_liquidated_30d: int = 0
 
 
 TraderScore.model_rebuild()

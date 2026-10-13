@@ -279,12 +279,14 @@ export function clearFilters(s: BoardState): BoardState {
  * chips", never a crash. Malformed coin names are dropped.
  */
 export function normalizePresets(raw: unknown): ScoutPresets {
-  const out: ScoutPresets = { coins: [], hip3: 0, total: 0 };
+  const out: ScoutPresets = { coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 };
   if (!raw || typeof raw !== "object") return out;
   const r = raw as Record<string, unknown>;
   const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
   out.hip3 = count(r.hip3_count ?? r.hip3);
   out.total = count(r.total);
+  out.departed = count(r.departed_30d ?? r.departed);
+  out.departedLiquidated = count(r.departed_liquidated_30d ?? r.departedLiquidated);
   const counts = r.coin_counts && typeof r.coin_counts === "object" ? (r.coin_counts as Record<string, unknown>) : {};
   const seen = new Set<string>();
   for (const c of Array.isArray(r.coins) ? r.coins : []) {

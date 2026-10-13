@@ -65,3 +65,25 @@ def test_steady_outranks_higher_pnl_liquidated():
 def test_deterministic_for_fixed_cohort():
     cohort = [mk(f"w{i}", sim_score=float(i % 3), sharpe_30d=float(i)) for i in range(20)]
     assert F.compute(cohort, NOW) == F.compute(list(cohort), NOW)
+
+
+def test_wallet_liquidated_cap_distinct_from_sim_liquidated():
+    """user_consensus P0 #3: a wallet's OWN real liquidation (flag
+    "wallet_liquidated") caps Fit at 50, separately from the sim's own
+    "liquidated" cap at 20 (sim_liquidations > 0). Three otherwise-identical
+    wallets (so their uncapped blend, 60.0, is the same for all three):
+    plain "ok" is uncapped; "blew_up" trips only the real-liquidation cap
+    (60 -> 50); "both" also trips the sim cap, which is tighter and wins
+    (-> 20), but both flags are still recorded."""
+    out = F.compute([mk("ok"), mk("blew_up", flags=["wallet_liquidated"]),
+                     mk("both", sim_liquidations=1, flags=["wallet_liquidated"])], NOW)
+    assert out["ok"].value == pytest.approx(60.0) and out["ok"].caps == []
+    assert out["blew_up"].value == pytest.approx(50.0) and out["blew_up"].caps == ["wallet_liquidated"]
+    assert out["both"].value == pytest.approx(20.0)
+    assert set(out["both"].caps) == {"liquidated", "wallet_liquidated"}
+
+
+def test_coattail_cap():
+    out = F.compute([mk("ok"), mk("rider", flags=["coattail"])], NOW)
+    assert out["ok"].value == pytest.approx(60.0)
+    assert out["rider"].value == pytest.approx(50.0) and out["rider"].caps == ["coattail"]

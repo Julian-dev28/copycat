@@ -69,6 +69,11 @@ CREATE TABLE IF NOT EXISTS scout_requests (    -- on-demand trader files, built 
   address TEXT PRIMARY KEY, requested_ms INTEGER, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT);
 
 CREATE TABLE IF NOT EXISTS scout_meta (k TEXT PRIMARY KEY, v TEXT);
+
+CREATE TABLE IF NOT EXISTS scout_departures (   -- survivorship trail (user_consensus P1 #7)
+  address TEXT PRIMARY KEY, display_name TEXT, last_account_value REAL, last_pnl_30d REAL,
+  had_liquidation INTEGER NOT NULL DEFAULT 0, last_seen_ms INTEGER, departed_ms INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_scout_departures_ms ON scout_departures (departed_ms);
 """
 
 ROW_COLUMNS = ("refresh_id", "settings_hash", "address", "display_name", "fit", "sim_return", "sim_dd",
@@ -88,9 +93,17 @@ def connect(path: Optional[Path] = None) -> sqlite3.Connection:
     """Per-thread connection from discovery.db.connect (WAL, discovery's own
     schema) plus Scout's tables. Whether they exist is asked of the file each
     time (one indexed sqlite_master lookup): caching it by connection id was a
-    bug, ids are reused after a connection is collected."""
+    bug, ids are reused after a connection is collected.
+
+    The sentinel is the NEWEST table SCHEMA creates (currently
+    scout_departures): a database that already has every older scout table
+    but not this one still needs the (idempotent, CREATE TABLE IF NOT
+    EXISTS) script run once. Bumping SCHEMA with a new table must move this
+    sentinel to that table's name, or an existing data/discovery.db never
+    gets it (caught live: scout_presets() 500'd with "no such table:
+    scout_departures" against a database that predated it)."""
     conn = discovery_db.connect(path or C.db_path())
-    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_requests'").fetchone() is None:
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_departures'").fetchone() is None:
         with _schema_lock:
             conn.executescript(SCHEMA)
             conn.commit()
@@ -154,6 +167,36 @@ def universe(conn: sqlite3.Connection, sources: Sequence[str] = ("lb", "book")) 
 def universe_row(conn: sqlite3.Connection, address: str) -> Optional[Dict[str, Any]]:
     r = conn.execute("SELECT * FROM scout_universe WHERE address = ?", (address,)).fetchone()
     return dict(r) if r else None
+
+
+# ── departures (survivorship trail, user_consensus P1 #7) ───────────────────
+
+DEPARTURE_RETENTION_MS = 180 * 24 * 60 * 60 * 1000   # keep 180d of history, then prune
+
+
+def record_departures(conn: sqlite3.Connection, dropped: List[Dict[str, Any]], now_ms: int) -> None:
+    """One row per wallet that just fell out of the ranked universe. Upsert:
+    a wallet that leaves, comes back, and leaves again just gets its
+    departed_ms refreshed, so the summary always reflects the latest exit."""
+    if not dropped:
+        return
+    with conn:
+        conn.executemany(
+            "INSERT INTO scout_departures (address, display_name, last_account_value, last_pnl_30d, "
+            "had_liquidation, last_seen_ms, departed_ms) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(address) DO UPDATE SET display_name = excluded.display_name, "
+            "last_account_value = excluded.last_account_value, last_pnl_30d = excluded.last_pnl_30d, "
+            "had_liquidation = excluded.had_liquidation, last_seen_ms = excluded.last_seen_ms, "
+            "departed_ms = excluded.departed_ms",
+            [(d["address"], d.get("display_name"), d.get("account_value"), d.get("pnl_30d"),
+              int(bool(d.get("had_liquidation"))), d.get("seen_ms"), now_ms) for d in dropped])
+        conn.execute("DELETE FROM scout_departures WHERE departed_ms < ?", (now_ms - DEPARTURE_RETENTION_MS,))
+
+
+def departures_summary(conn: sqlite3.Connection, since_ms: int) -> Dict[str, int]:
+    r = conn.execute("SELECT COUNT(*), COALESCE(SUM(had_liquidation), 0) FROM scout_departures "
+                     "WHERE departed_ms >= ?", (since_ms,)).fetchone()
+    return {"departed": int(r[0] or 0), "departed_liquidated": int(r[1] or 0)}
 
 
 # ── stats ─────────────────────────────────────────────────────────────────

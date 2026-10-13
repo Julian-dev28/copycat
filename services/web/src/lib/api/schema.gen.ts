@@ -1954,6 +1954,16 @@ export interface components {
             /** Coins */
             coins?: string[];
             /**
+             * Departed 30D
+             * @default 0
+             */
+            departed_30d: number;
+            /**
+             * Departed Liquidated 30D
+             * @default 0
+             */
+            departed_liquidated_30d: number;
+            /**
              * Hip3 Count
              * @default 0
              */
@@ -2018,7 +2028,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 13
+             * @default 14
              */
             contract_version: number;
             /**
@@ -2421,6 +2431,11 @@ export interface components {
             /** Settings Hash */
             settings_hash: string;
             /**
+             * Sim Equity Usd
+             * @default 0
+             */
+            sim_equity_usd: number;
+            /**
              * Stale Settings
              * @default false
              */
@@ -2539,6 +2554,10 @@ export interface components {
             account_value_usd: number;
             /** Address */
             address: string;
+            /** Coattail Leader */
+            coattail_leader?: string | null;
+            /** Coattail Share Pct */
+            coattail_share_pct?: number | null;
             /** Coins */
             coins?: string[];
             copy_fit?: components["schemas"]["CopyFit"] | null;
@@ -2550,6 +2569,13 @@ export interface components {
             flags?: string[];
             /** Last Fill Ms */
             last_fill_ms?: number | null;
+            /** Last Liquidation Ms */
+            last_liquidation_ms?: number | null;
+            /**
+             * Liquidations 30D
+             * @default 0
+             */
+            liquidations_30d: number;
             /** Median Hold H */
             median_hold_h?: number | null;
             /** Opens Per Day */
@@ -2562,6 +2588,8 @@ export interface components {
             roi_30d_pct: number;
             /** Score */
             score: number;
+            /** Sim Capacity Note */
+            sim_capacity_note?: string | null;
             /** Sim Copies */
             sim_copies: number;
             /** Sim Copy Capacity Pct */

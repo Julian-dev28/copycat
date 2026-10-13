@@ -72,6 +72,8 @@ const SPECIAL: Record<number, Seed> = {
   15: { style: "position", flags: ["too_few_trades"] },
   19: { style: "swing", flags: ["vault"] },
   23: { style: null, flags: ["inactive"] },
+  27: { style: "intraday", flags: ["wallet_liquidated"] },   // real blowup, distinct from the sim cap at 7
+  31: { style: "scalp", flags: ["coattail"] },
 };
 
 function sizeTier(av: number): SizeTier {
@@ -174,7 +176,11 @@ function makeRow(i: number, nowMs: number): TraderRow {
   const display_name = i % 4 === 1 ? NAMES[(i >> 2) % NAMES.length] : null;
   const fit = copyFit(r, flags, trips, lastFillAgoH, FIXTURE_COHORT, quality);
   const simCopies = flags.includes("too_few_trades") ? 3 : Math.round(trips * between(r, 0.5, 0.95));
-  const skipped = Math.round(simCopies * between(r, 0, 0.2));
+  // index 15 ("too_few_trades") must keep a near-100% capacity so it never triggers a low-capacity
+  // note alongside the sample-size cap; everyone else gets occasional skips.
+  const skipped = flags.includes("too_few_trades") ? 0 : Math.round(simCopies * between(r, 0, 0.35));
+  const walletLiquidated = flags.includes("wallet_liquidated");
+  const coattail = flags.includes("coattail");
   const score: TraderScore = {
     address: addr, display_name, account_value_usd: av, pnl_30d_usd: pnl30, roi_30d_pct: roi30, pnl_all_time_usd: perf[3].pnl_usd,
     volume_30d_usd: totalVol, fills_30d: trips * 3, opens_per_day: trades_30d.opens_per_day, median_hold_h: trades_30d.median_hold_h,
@@ -183,6 +189,11 @@ function makeRow(i: number, nowMs: number): TraderRow {
     sim_liquidations: flags.includes("liquidated") ? 1 : 0, sim_copies: simCopies, sim_skipped_min_order: skipped,
     sim_fees_usd: round(simCopies * between(r, 0.02, 0.2), 2), score: round(simRet / 8, 2), flags: [...flags],
     sim_copy_capacity_pct: round((simCopies / Math.max(1, simCopies + skipped)) * 100, 1), copy_fit: fit, style, last_fill_ms: Math.round(nowMs - lastFillAgoH * HOUR),
+    liquidations_30d: walletLiquidated ? 2 : 0,
+    last_liquidation_ms: walletLiquidated ? Math.round(nowMs - 11 * 24 * HOUR) : null,
+    sim_capacity_note: skipped > 0 ? "58% of skipped opens: under the $10.50 minimum order at your size" : null,
+    coattail_leader: coattail ? address(rng(2000)) : null,
+    coattail_share_pct: coattail ? 68.0 : null,
   };
   return {
     address: addr, display_name, account_value_usd: av, size_tier: sizeTier(av), pnl_tier: pnlTier(perf[3].pnl_usd), style,
@@ -215,7 +226,10 @@ export function fixtureSettings(nowMs: number): Settings {
 }
 
 export function fixturePage(rows: TraderRow[], total: number, nowMs: number): TraderPage {
-  return { as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows };
+  return {
+    as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows,
+    sim_equity_usd: FIXTURE_SIM_EQUITY,
+  };
 }
 
 export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
@@ -231,6 +245,9 @@ export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
     coin_counts: Object.fromEntries(top),
     hip3_count: rows.filter((r) => hip3Share(r) >= 0.5).length,
     total: rows.length,
+    // demo values so the survivorship note (user_consensus P1 #7) is visible in ?demo=1 too
+    departed_30d: 11,
+    departed_liquidated_30d: 3,
   };
 }
 

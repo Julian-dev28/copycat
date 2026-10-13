@@ -40,6 +40,7 @@ from contracts.models import (
 )
 
 from . import config as C
+from . import metrics as M
 from . import query as Q
 from . import refresh as R
 from . import rows, simstage, store
@@ -119,7 +120,8 @@ def scout_page(query: Optional[Dict[str, Any]] = None) -> TraderPage:
     wanted = store.meta_get(conn, "wanted_hash")
     return TraderPage(as_of_ms=ptr["as_of_ms"], refresh_id=ptr["refresh_id"], settings_hash=ptr["settings_hash"],
                       cohort_size=ptr["cohort_size"], total=int(total), rows=out,
-                      stale_settings=bool(wanted and wanted != ptr["settings_hash"]))
+                      stale_settings=bool(wanted and wanted != ptr["settings_hash"]),
+                      sim_equity_usd=float(ptr.get("sim_equity") or 0.0))
 
 
 def scout_presets() -> ScoutPresets:
@@ -142,7 +144,9 @@ def scout_presets() -> ScoutPresets:
         for c in coins:
             counts[c] = counts.get(c, 0) + 1
     order = sorted(counts, key=lambda c: (-counts[c], c))
-    return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total)
+    dep = store.departures_summary(conn, R.now_ms() - 30 * C.DAY_MS)
+    return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total,
+                        departed_30d=dep["departed"], departed_liquidated_30d=dep["departed_liquidated"])
 
 
 # ── trader file ───────────────────────────────────────────────────────────
@@ -240,6 +244,7 @@ def scout_what_if(address: str, settings: Settings, sim_equity_usd: float,
                                 coin_max_lev=store.meta_get(conn, "coin_max_lev", {}) or {}, cache_only=True)
         u = store.universe_row(conn, a) or {}
         fl = out.fields
+        liq_count, liq_last_ms = M.real_liquidations(inp["fills"])
         score = TraderScore(
             address=a, display_name=u.get("display_name"), account_value_usd=float(u.get("account_value") or 0.0),
             pnl_30d_usd=float(u.get("pnl_30d") or 0.0), roi_30d_pct=float(u.get("roi_30d") or 0.0),
@@ -249,7 +254,9 @@ def scout_what_if(address: str, settings: Settings, sim_equity_usd: float,
             sim_liquidations=fl["sim_liquidations"], sim_copies=fl["sim_copies"],
             sim_skipped_min_order=fl["sim_skipped_min_order"], sim_fees_usd=fl["sim_fees_usd"], score=fl["score"],
             flags=fl["flags"], sim_copy_capacity_pct=fl["sim_copy_capacity_pct"], copy_fit=None,
-            last_fill_ms=max((int(f["time_ms"]) for f in inp["fills"]), default=None))
+            last_fill_ms=max((int(f["time_ms"]) for f in inp["fills"]), default=None),
+            liquidations_30d=liq_count, last_liquidation_ms=liq_last_ms,
+            sim_capacity_note=fl.get("sim_capacity_note"))
         return WhatIfResult(score=score, sim_curve=out.curve)
     finally:
         _what_if_lock.release()

@@ -41,6 +41,15 @@ from .stats import CountingVenue
 logger = logging.getLogger(__name__)
 
 SKIP_PREFIXES = ("worse_entry:", "margin_room:", "max_open_copies:", "max_leverage_unknown:")
+CAPACITY_NOTE_MAX_PCT = 80.0      # below this, explain the dominant skip reason (user_consensus P0 #2)
+
+_SKIP_REASON_TEXT = {
+    "min_order": "under the $10.50 minimum order at your size",
+    "worse_entry:": "price had already moved past your worse-entry limit",
+    "margin_room:": "not enough free margin at your settings",
+    "max_open_copies:": "already at your max open copies",
+    "max_leverage_unknown:": "max leverage unknown for a coin they traded",
+}
 
 
 def default_sizing() -> Any:
@@ -80,8 +89,9 @@ class SimOutcome:
 def _unsimulated(flags: List[str], n_fills: int, opd: float, hold: Optional[float], coins: List[str]) -> Dict[str, Any]:
     return {"sim_return_pct": 0.0, "sim_max_drawdown_pct": 0.0, "sim_liquidations": 0, "sim_copies": 0,
             "sim_skipped_min_order": 0, "sim_fees_usd": 0.0, "score": scoring.UNSCORED,
-            "sim_copy_capacity_pct": None, "flags": sorted(set(flags)), "fills_30d": n_fills,
-            "opens_per_day": opd, "median_hold_h": hold, "coins": coins, "simulated": False}
+            "sim_copy_capacity_pct": None, "sim_capacity_note": None, "flags": sorted(set(flags)),
+            "fills_30d": n_fills, "opens_per_day": opd, "median_hold_h": hold, "coins": coins,
+            "simulated": False}
 
 
 def capacity_pct(copies: int, skipped_min: int, sim_flags: Sequence[str]) -> Optional[float]:
@@ -89,6 +99,28 @@ def capacity_pct(copies: int, skipped_min: int, sim_flags: Sequence[str]) -> Opt
     other = sum(1 for f in sim_flags if f.startswith(SKIP_PREFIXES))
     den = copies + skipped_min + other
     return round(copies / den * 100.0, 4) if den > 0 else None
+
+
+def capacity_reason(copies: int, skipped_min: int, sim_flags: Sequence[str]) -> Optional[str]:
+    """One plain-language line naming the dominant reason capacity is low
+    (user_consensus P0 #2: show this before 'Add to book', not only buried
+    in an expand row). None when there is nothing to explain: no skips, or
+    capacity is already at/above CAPACITY_NOTE_MAX_PCT."""
+    counts: Dict[str, int] = {"min_order": skipped_min}
+    for prefix in SKIP_PREFIXES:
+        counts[prefix] = sum(1 for f in sim_flags if f.startswith(prefix))
+    total_skips = sum(counts.values())
+    den = copies + total_skips
+    if den <= 0 or total_skips <= 0:
+        return None
+    pct = copies / den * 100.0
+    if pct >= CAPACITY_NOTE_MAX_PCT:
+        return None
+    key, n = max(counts.items(), key=lambda kv: kv[1])
+    if n <= 0:
+        return None
+    share = round(n / total_skips * 100.0)
+    return f"{share}% of skipped opens: {_SKIP_REASON_TEXT[key]}"
 
 
 def simulate(conn: sqlite3.Connection, venue: Any, fills: List[Dict[str, Any]], settings: Settings,
@@ -114,6 +146,7 @@ def simulate(conn: sqlite3.Connection, venue: Any, fills: List[Dict[str, Any]], 
                "sim_skipped_min_order": r.sim_skipped_min_order, "sim_fees_usd": round(r.sim_fees_usd, 6),
                "score": round(sc.score, 6),
                "sim_copy_capacity_pct": capacity_pct(r.sim_copies, r.sim_skipped_min_order, r.flags),
+               "sim_capacity_note": capacity_reason(r.sim_copies, r.sim_skipped_min_order, r.flags),
                "flags": sorted(set(flags)), "fills_30d": p.n_fills, "opens_per_day": p.opens_per_day,
                "median_hold_h": p.median_hold_h, "coins": p.coins, "simulated": True}
     return SimOutcome(fields_, curve, {c: v for c, v in p.coin_max_lev.items() if v >= 1})

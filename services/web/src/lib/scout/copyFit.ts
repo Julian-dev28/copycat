@@ -13,13 +13,13 @@ import type { CopyFit } from "./types";
 export const PART_ORDER = ["sim", "sharpe", "drawdown", "consistency", "sample", "win_rate", "capacity", "recency"] as const;
 
 export const PART_META: Record<string, { label: string; hint: string }> = {
-  sim: { label: "Your copy", hint: "Sim score at your settings and equity, ranked against the cohort" },
+  sim: { label: "Your copy", hint: "Sim score at your settings and the board's sim equity (see the page note), ranked against the cohort" },
   sharpe: { label: "Sharpe", hint: "30d risk-adjusted return, ranked" },
   drawdown: { label: "Drawdown", hint: "Shallower 30d max drawdown ranks higher" },
   consistency: { label: "Green days", hint: "Share of profitable days in 30d, ranked" },
   sample: { label: "Sample size", hint: "Round trips in 30d; full marks at 50" },
   win_rate: { label: "Win rate", hint: "Share of winning round trips in 30d, ranked" },
-  capacity: { label: "Copy capacity", hint: "Share of their opens the sim could execute at your size" },
+  capacity: { label: "Copy capacity", hint: "Share of their opens the sim could execute at the board's sim equity, not necessarily your own" },
   recency: { label: "Recency", hint: "Full marks if they traded in the last 24h, zero at 7 days" },
 };
 
@@ -27,9 +27,11 @@ export const PART_META: Record<string, { label: string; hint: string }> = {
 export const CAP_RULES: { flag: string; ceiling: number | null; text: string }[] = [
   { flag: "inactive", ceiling: 0, text: "Under $1,000 or no fill in 7 days: set to 0" },
   { flag: "liquidated", ceiling: 20, text: "A copy got liquidated in the sim: capped at 20" },
+  { flag: "wallet_liquidated", ceiling: 50, text: "They were liquidated for real in the last 30d: capped at 50" },
   { flag: "too_few_trades", ceiling: 40, text: "Fewer than 5 copies in the sim: capped at 40" },
   { flag: "hft", ceiling: 50, text: "Trades too fast for a 5s poll: capped at 50" },
   { flag: "vault", ceiling: 50, text: "A vault, PnL is pooled: capped at 50" },
+  { flag: "coattail", ceiling: 50, text: "Opens often land soon after another top wallet's: capped at 50" },
   { flag: "fills_truncated", ceiling: null, text: "Only their latest 10,000 fills are visible, trade stats may undercount" },
 ];
 
