@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
 from contracts.models import (
+    CONTRACT_VERSION,
     MAX_LEADERS,
     ExposureMode,
     LeaderOverride,
@@ -69,6 +70,11 @@ class SettingsStore:
             return Settings()
         with self.path.open("r", encoding="utf-8") as f:
             data = json.load(f)
+        # Audit H4: contract_version describes the RUNNING code, never the file.
+        # A settings.json written by an older version used to echo e.g. 2 back,
+        # so the web thought the api predated v7 and dropped per-wallet leverage
+        # terms (a "follow their leverage" copy then ran at max leverage).
+        data["contract_version"] = CONTRACT_VERSION
         return Settings(**data)
 
     def own_addresses(self) -> set:

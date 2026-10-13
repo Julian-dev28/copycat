@@ -594,10 +594,17 @@
             "type": "array"
           },
           "confirm_code": {
-            "maxLength": 6,
-            "minLength": 6,
-            "title": "Confirm Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 6,
+                "minLength": 6,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Code"
           },
           "copy_request": {
             "$ref": "#/components/schemas/WalletCopyRequest"
@@ -660,7 +667,6 @@
         },
         "required": [
           "plan_id",
-          "confirm_code",
           "created_ms",
           "expires_ms",
           "request",
@@ -1508,6 +1514,10 @@
       },
       "HealthResponse": {
         "properties": {
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
@@ -1519,7 +1529,8 @@
         },
         "required": [
           "ok",
-          "version"
+          "version",
+          "contract_version"
         ],
         "title": "HealthResponse",
         "type": "object"
@@ -1994,6 +2005,102 @@
         "title": "MarginMode",
         "type": "string"
       },
+      "McpPendingPlan": {
+        "description": "v11: one live (unused, unexpired) MCP plan as the web's \"Pending MCP plans\" panel\nshows it, WITH its confirm code. Served only to the admin token.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "amount_usd": {
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "confirm_code": {
+            "title": "Confirm Code",
+            "type": "string"
+          },
+          "copied": {
+            "default": 0,
+            "title": "Copied",
+            "type": "integer"
+          },
+          "created_ms": {
+            "title": "Created Ms",
+            "type": "integer"
+          },
+          "entry_deviation_pct": {
+            "title": "Entry Deviation Pct",
+            "type": "number"
+          },
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "expires_ms": {
+            "title": "Expires Ms",
+            "type": "integer"
+          },
+          "follow": {
+            "title": "Follow",
+            "type": "boolean"
+          },
+          "leverage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leverage"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "planned_margin_usd": {
+            "default": 0.0,
+            "title": "Planned Margin Usd",
+            "type": "number"
+          },
+          "planned_notional_usd": {
+            "default": 0.0,
+            "title": "Planned Notional Usd",
+            "type": "number"
+          },
+          "trade_direction": {
+            "$ref": "#/components/schemas/TradeDirection"
+          },
+          "trading_live": {
+            "title": "Trading Live",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plan_id",
+          "confirm_code",
+          "created_ms",
+          "expires_ms",
+          "address",
+          "amount_usd",
+          "entry_deviation_pct",
+          "trade_direction",
+          "follow",
+          "executable",
+          "trading_live"
+        ],
+        "title": "McpPendingPlan",
+        "type": "object"
+      },
       "OpenOrderView": {
         "properties": {
           "coin": {
@@ -2439,7 +2546,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 9,
+            "default": 11,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -5059,6 +5166,11 @@
               }
             ],
             "title": "Target Leverage"
+          },
+          "waiting": {
+            "default": 0,
+            "title": "Waiting",
+            "type": "integer"
           }
         },
         "required": [
@@ -5136,7 +5248,8 @@
               "copy",
               "trimmed",
               "bump",
-              "skip"
+              "skip",
+              "wait"
             ],
             "title": "Status",
             "type": "string"
@@ -5606,6 +5719,7 @@
     },
     "/api/accounts/{account_id}": {
       "delete": {
+        "description": "Audit H6/M11: same guard as activate. Deleting an account drops its agent key, so\nany copy still open on it (active or not) could never be followed or closed again.\nThe vault clears active_id when the active one goes: the engine goes idle.",
         "operationId": "remove_api_accounts__account_id__delete",
         "parameters": [
           {
@@ -5615,6 +5729,16 @@
             "schema": {
               "title": "Account Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
             }
           }
         ],
@@ -6530,7 +6654,7 @@
     },
     "/api/mcp/plans": {
       "post": {
-        "description": "Build a copy plan for `address` at `amount_usd`: the engine's own\npreview at these custom terms, the cached 30-day projection if any, and\nthe warnings to read before approving. Read-only on the book: stored\nfor 120 s, used once by execute. 502/503 when the live preview fails.",
+        "description": "Build a copy plan for `address` at `amount_usd`: the engine's own\npreview at these custom terms, the cached 30-day projection if any, and\nthe warnings to read before approving. Read-only on the book: stored\nfor MCP_PLAN_TTL_S, used once by execute. 502/503 when the live preview\nfails. The response never carries the confirm code (audit H2): the human\nreads it in the web (GET /api/mcp/plans/pending) or a notification.",
         "operationId": "create_plan_api_mcp_plans_post",
         "requestBody": {
           "content": {
@@ -6565,6 +6689,32 @@
           }
         },
         "summary": "Create Plan",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/plans/pending": {
+      "get": {
+        "description": "Live plans (unused, unexpired), newest first, WITH their confirm codes, so the\nhuman can read the code in copycat and type it to Claude. Admin token only.",
+        "operationId": "pending_plans_api_mcp_plans_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McpPendingPlan"
+                  },
+                  "title": "Response Pending Plans Api Mcp Plans Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Plans",
         "tags": [
           "mcp"
         ]

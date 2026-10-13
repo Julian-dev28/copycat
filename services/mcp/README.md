@@ -94,7 +94,7 @@ also gets a permission prompt.
 
 Prompt: `copy_trader(address, amount_usd)`: research, present the strategy at
 that amount, ask leverage / entry deviation / copy-counter / follow-one-shot,
-make the plan, show it with its confirm code, execute only on an explicit yes.
+make the plan and show it; you read the confirm code in copycat (Portfolio > Pending MCP plans) and type it; Claude executes only on your explicit yes with that code. Claude never sees the code (audit H2).
 
 Prompt: `write_thesis(address)`, eight required sections, checked
 deterministically by `prompts.missing_sections()` when saving.

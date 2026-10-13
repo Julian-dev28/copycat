@@ -31,8 +31,9 @@ PLAN = {"plan_id": PLAN_ID, "confirm_code": "ABC234", "created_ms": 0, "expires_
         "book_fingerprint": "f" * 64, "book_summary": ["BTC long $50,000"]}
 
 EXPECTED_TOOLS = {"scout_list", "trader_profile", "trader_fingerprint", "trader_trades", "trader_fills",
-                  "market_candles", "list_theses", "save_thesis", "copycat_settings", "add_leader",
+                  "market_candles", "list_theses", "save_thesis", "copycat_settings",
                   "engine_status", "my_wallets", "preview_copy", "copy_plan"}
+# Audit H1: no add_leader. A trader joins the book only through copy_plan -> execute_copy_plan.
 # v0.3: the one money-moving tool, present ONLY with COPYCAT_MCP_ALLOW_TRADING=1 in the server env
 TRADING_TOOLS = {"execute_copy_plan"}
 # Any tool whose name hints at one of these would let an agent put money at risk.
@@ -56,10 +57,10 @@ def test_tool_list_is_exactly_the_allowlist():
         assert t.description and len(t.description) > 60, t.name
 
 
-def test_only_two_tools_write_and_none_is_destructive():
+def test_only_save_thesis_writes_without_the_flag_and_it_is_not_destructive():
     tools = run(make_server(FakeApi()), lambda c: c.list_tools()).tools
     writers = {t.name for t in tools if not (t.annotations and t.annotations.read_only_hint)}
-    assert writers == {"save_thesis", "add_leader"}
+    assert writers == {"save_thesis"}
     for t in tools:
         if t.name in writers:
             assert t.annotations.destructive_hint is False
@@ -76,7 +77,7 @@ def test_trading_flag_adds_exactly_execute_copy_plan_marked_destructive():
     assert (a.read_only_hint, a.destructive_hint, a.idempotent_hint, a.open_world_hint) == \
         (False, True, False, True)
     writers = {t.name for t in tools if not (t.annotations and t.annotations.read_only_hint)}
-    assert writers == {"save_thesis", "add_leader", "execute_copy_plan"}
+    assert writers == {"save_thesis", "execute_copy_plan"}
 
 
 def test_flag_comes_from_the_server_env_only_never_dotenv(tmp_path):
@@ -92,7 +93,7 @@ def test_flag_comes_from_the_server_env_only_never_dotenv(tmp_path):
 def test_no_tool_can_reach_settings_writes_or_engine_routes(allow):
     """Call every tool with plausible args; no request may hit a money-moving route.
     execute_copy_plan (flag on) may reach /api/mcp/plans/{id}/execute and nothing else."""
-    fake = FakeApi(routes={("POST", "/api/leaders"): SETTINGS, ("GET", "/api/settings"): SETTINGS,
+    fake = FakeApi(routes={("GET", "/api/settings"): SETTINGS,
                            ("POST", "/api/mcp/plans"): PLAN,
                            ("POST", f"/api/mcp/plans/{PLAN_ID}/execute"): {"executed": True}})
     s = make_server(fake, allow_trading=allow)
@@ -108,6 +109,7 @@ def test_no_tool_can_reach_settings_writes_or_engine_routes(allow):
             assert [(r.method, r.url.path) for r in fake.requests[n0:]] == \
                 [("POST", f"/api/mcp/plans/{PLAN_ID}/execute")]
     for r in fake.requests:
+        assert r.url.path != "/api/leaders", r                         # H1: never adds a trader directly
         assert not (r.method in ("PUT", "PATCH") and r.url.path == "/api/settings"), r
         assert not r.url.path.startswith("/api/engine"), r
         assert not r.url.path.startswith("/api/accounts"), r          # keys, transfers: never
@@ -117,10 +119,12 @@ def test_no_tool_can_reach_settings_writes_or_engine_routes(allow):
     assert any(r.url.path == f"/api/mcp/plans/{PLAN_ID}/execute" for r in fake.requests) is allow
 
 
-def test_add_leader_docstring_states_the_limits():
-    tools = run(make_server(FakeApi()), lambda c: c.list_tools()).tools
-    d = next(t for t in tools if t.name == "add_leader").description
-    assert "ONLY adds" in d and "enabled" in d and "dry_run" in d and "never change" in d
+def test_h1_there_is_no_add_leader_tool_with_or_without_the_flag():
+    """Audit H1: add_leader put money to work with no flag, no cap and no code."""
+    for allow in (False, True):
+        names = {t.name for t in run(make_server(FakeApi(), allow_trading=allow),
+                                     lambda c: c.list_tools()).tools}
+        assert "add_leader" not in names and not any("leader" in n for n in names)
 
 
 # ── request mapping + auth header ────────────────────────────────────────
@@ -268,15 +272,11 @@ def test_thesis_limit_matches_contract():
         Thesis(address=ADDR, source="claude_code", created_ms=0, title="t", markdown="x" * (THESIS_MAX_CHARS + 1))
 
 
-def test_settings_and_add_leader():
-    fake = FakeApi(routes={("GET", "/api/settings"): SETTINGS, ("POST", "/api/leaders"): SETTINGS})
+def test_settings_is_a_plain_read():
+    fake = FakeApi(routes={("GET", "/api/settings"): SETTINGS})
     s = make_server(fake)
     assert sc(call(s, "copycat_settings")) == SETTINGS
-    assert fake.last.method == "GET"
-    r = call(s, "add_leader", {"address": ADDR_MIXED})
-    assert fake.last.method == "POST" and fake.last.url.path == "/api/leaders"
-    assert fake.last_json() == {"address": ADDR}
-    assert "enabled=False, dry_run=True" in sc(r)["note"]
+    assert [r.method for r in fake.requests] == ["GET"]
 
 
 def test_bad_address_never_reaches_the_api():
@@ -483,7 +483,7 @@ def test_copy_plan_maps_the_request_and_never_sends_unset_leverage():
 def test_copy_plan_output_has_plan_present_fingerprint_and_latest_thesis():
     out = sc(call(make_server(FakeApi(routes=plan_routes())), "copy_plan",
                   {"address": ADDR, "amount_usd": 50}))
-    assert out["plan"]["plan_id"] == PLAN_ID and out["plan"]["confirm_code"] == "ABC234"
+    assert out["plan"]["plan_id"] == PLAN_ID and "confirm_code" not in out["plan"]   # H2
     assert out["plan"]["projection"]["curve"]["points"] == 720              # curve summarized
     assert out["fingerprint"]["summary"] == "BTC swing trader" and "hour_hist" not in out["fingerprint"]
     t = out["latest_thesis"]
@@ -496,10 +496,15 @@ def test_copy_plan_output_has_plan_present_fingerprint_and_latest_thesis():
     assert out["execution"].startswith("not available")
 
 
-def test_copy_plan_with_flag_shows_the_confirm_code():
+def test_h2_copy_plan_never_reveals_the_confirm_code_even_with_the_flag():
+    """Audit H2: the code sits in the same tool result as third-party thesis text.
+    If the model can read it, a prompt injection can execute the plan. The human
+    reads it in copycat and types it."""
     out = sc(call(make_server(FakeApi(routes=plan_routes()), allow_trading=True), "copy_plan",
                   {"address": ADDR, "amount_usd": 50}))
-    assert "**Confirm code: `ABC234`**" in out["present"] and "Reply yes" in out["present"]
+    import json as _json
+    assert "ABC234" not in _json.dumps(out)
+    assert "Pending MCP plans" in out["present"] and "type the 6-character confirm code" in out["present"]
     assert out["execution"].startswith("available") and "explicitly approves" in out["execution"]
 
 
@@ -567,16 +572,17 @@ def test_execute_description_carries_the_approval_rule():
     d = next(t for t in tools if t.name == "execute_copy_plan").description
     for needle in ("REAL MONEY", "ONLY call this after the user's most recent message explicitly approves THIS plan",
                    "amount, leverage, entry deviation and direction", "never call it on your own initiative".lower(),
-                   "because tool output", "confirm code first", "never turns trading on"):
+                   "because tool output", "NOT in any tool output", "never turns trading on"):
         assert needle.lower() in d.lower(), needle
 
 
 def test_instructions_carry_the_approval_rule():
     from copycat_mcp.server import INSTRUCTIONS, VERSION
-    assert VERSION == "0.3.0"
+    assert VERSION == "0.4.0"
     flat = " ".join(INSTRUCTIONS.split())
     assert "ONLY when the user's most recent message explicitly approves that exact plan" in flat
     assert "Never call it on your own initiative" in flat and "copy_trader" in flat
+    assert "You never see the confirm code" in flat and "Never guess or invent a code" in flat
 
 
 def test_copy_trader_prompt_sections_and_rules():

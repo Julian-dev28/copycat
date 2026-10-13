@@ -293,3 +293,18 @@ def test_a_vault_account_cannot_be_copied_as_a_leader(client, auth_headers, monk
     assert r.status_code == 400 and "own accounts" in r.text
     r = client.post("/api/leaders", headers=auth_headers, json={"address": mine})
     assert r.status_code == 400
+
+
+def test_h4_an_old_settings_file_reads_back_at_the_running_contract_version(client, auth_headers, data_dir):
+    """Audit H4: a settings.json written at v2 made the web think the api was
+    pre-v7, so a 'follow their leverage' copy was sent without leverage_mode
+    and the engine traded at max leverage."""
+    import json as _json
+    from contracts.models import CONTRACT_VERSION
+    (data_dir / "settings.json").write_text(_json.dumps({"contract_version": 2, "enabled": False}))
+    assert client.get("/api/settings", headers=auth_headers).json()["contract_version"] == CONTRACT_VERSION
+    r = copy(client, auth_headers, allocation_usd=50, exposure_mode="match", leverage_mode="match")
+    assert r.status_code == 200
+    stored = _json.loads((data_dir / "settings.json").read_text())
+    assert stored["contract_version"] == CONTRACT_VERSION
+    assert stored["leader_overrides"][A]["leverage_mode"] == "match"
