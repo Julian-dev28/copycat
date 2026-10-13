@@ -54,10 +54,20 @@ MTOK="$(cat "$T/mcp_token")"
 cat > "$T/mcp.json" <<JSON
 {"mcpServers": {"copycat": {"command": "$ROOT/services/mcp/run.sh", "args": [],
   "env": {"COPYCAT_API_URL": "http://127.0.0.1:$PORT", "COPYCAT_MCP_TOKEN": "$MTOK",
-          "COPYCAT_SKIP_DOTENV": "1"}}}}
+          "COPYCAT_SKIP_DOTENV": "1", "COPYCAT_PYTHON": "$PY"}}}}
 JSON
 echo "throwaway copycat on :$PORT, data $T"
+# --allowedTools is a pre-approval allowlist, NOT a sandbox: other tools stay
+# callable and would otherwise just prompt. Without COPYCAT_PYTHON above, a
+# worktree checkout (no .venv of its own) makes run.sh fail to launch, the
+# MCP connection never comes up, and a capable model reaches for Bash to
+# hand-roll its own stdio MCP client instead of failing loudly (seen on a
+# 2026-10-14 run before this fix: 28 Bash calls, zero mcp__copycat__* calls,
+# a real thesis saved anyway through a hand-written client). --disallowedTools
+# below makes the restriction real, so a future regression here fails
+# visibly (no thesis saved) instead of silently working around itself.
 M=(--mcp-config "$T/mcp.json" --strict-mcp-config --allowedTools "mcp__copycat__*" \
+   --disallowedTools "Bash" "Read" "Write" "Edit" "NotebookEdit" "Glob" "Grep" "WebFetch" "WebSearch" "Task" \
    --output-format stream-json --verbose --max-turns 40)
 
 FAILS=0
