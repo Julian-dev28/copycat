@@ -14,7 +14,7 @@ import { AddToBookButton, CoinBadges, scoutHref, StyleTag } from "./bits";
 import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
-import { coattailText, liquidationText } from "@/lib/scout/labels";
+import { coattailText, formatHold, liquidationText } from "@/lib/scout/labels";
 import type { SortKey, SortOrder } from "@/lib/scout/query";
 import type { PnlWindow, TraderRow } from "@/lib/scout/types";
 import { formatSignedUsdCompact, WINDOW_LABEL, windowPerf } from "@/lib/scout/window";
@@ -39,6 +39,8 @@ const COLS: { key: SortKey | null; label: string; first?: SortOrder; title?: str
   { key: "max_dd", label: "Max DD", first: "asc", title: "Their 30d max drawdown" },
   { key: "win_rate", label: "Win %", first: "desc", title: "30d round trips" },
   { key: "trips", label: "Trips", first: "desc", title: "30d round trips" },
+  { key: null, label: "Hold", align: "right", title: "Median round-trip hold time, 30d" },
+  { key: "volume", label: "Volume", first: "desc" },
   { key: null, label: "Style", align: "left" },
   { key: null, label: "Top coins", align: "left" },
   { key: "last_active", label: "Active", first: "desc" },
@@ -76,7 +78,7 @@ export function TraderTable({
             <tr>
               {COLS.map((c, i) => {
                 const active = c.key !== null && c.key === sort;
-                const label = c.key === "pnl" || c.key === "roi" ? `${c.label} ${WINDOW_LABEL[window]}` : c.label;
+                const label = c.key === "pnl" || c.key === "roi" || c.key === "volume" ? `${c.label} ${WINDOW_LABEL[window]}` : c.label;
                 return (
                   <th
                     key={i}
@@ -163,6 +165,8 @@ export function TraderTable({
                   <td className={TABLE.tdNum}>{formatPct(Math.abs(row.risk_30d.max_drawdown_pct ?? Number.NaN))}</td>
                   <td className={TABLE.tdNum}>{formatPct(row.trades_30d.win_rate_pct, 0)}</td>
                   <td className={TABLE.tdNum}>{row.trades_30d.trips}</td>
+                  <td className={clsx(TABLE.tdNum, "text-muted")}>{formatHold(row.trades_30d.median_hold_h)}</td>
+                  <td className={clsx(TABLE.tdNum, "text-muted")}>{formatUsd(perf?.volume_usd, true)}</td>
                   <td className={TABLE.td}>
                     <StyleTag style={row.style} />
                   </td>
