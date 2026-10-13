@@ -385,7 +385,8 @@ def test_write_thesis_prompt_has_every_section_and_rule():
         assert f"## {s}" in body, s
     for needle in ("trader_fingerprint", "trader_trades", "market_candles", "3-5 key entries", "save_thesis",
                    "coin, side and UTC date", "Never claim certainty from small samples",
-                   "No financial advice", "small accounts", "latency", "leverage", ADDR):
+                   "No financial advice", "small accounts", "latency", "leverage", ADDR,
+                   "Copy each heading's text verbatim", "missing_sections or order_issues"):
         assert needle in body, needle
 
 

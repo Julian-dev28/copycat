@@ -89,6 +89,9 @@ Use `trader_fills(address)` only if a round trip needs fill-level detail.
 
 ## 2. Write the thesis in markdown, with exactly these sections as `##` headings, in this order:
 {sections}
+Copy each heading's text verbatim (e.g. `## Exits`, not `## How they exit` or `## Exit strategy`):
+save_thesis checks both presence and order of these exact strings and will tell you what is wrong,
+but get it right the first time instead of relying on that.
 
 What each section must contain:
 - Edge in one sentence: the single most defensible claim about where their returns come from.
@@ -122,8 +125,9 @@ What each section must contain:
 
 ## 4. Save
 Call `save_thesis(address="{address}", title=<short title naming the style>, markdown=<the thesis>,
-author=<your model name> + " via copycat MCP")`. If it reports missing sections, fix the draft and
-save again. Then show the user the title and the "Edge in one sentence" line.
+author=<your model name> + " via copycat MCP")`. If it reports missing_sections or order_issues, fix
+the draft and save again; do not stop until both are empty. Then show the user the title and the
+"Edge in one sentence" line.
 """
 
 
