@@ -10,7 +10,9 @@ from discovery.thesis.fingerprint import (
     assign_tags,
     best_session,
     build_fingerprint,
+    coin_stats,
     equity_at,
+    hidden_coin_pnl,
     p90,
     top_profit_coin,
 )
@@ -87,6 +89,72 @@ def test_concentration_and_top_coins():
     assert fp.pnl_from_top_coin_pct == pytest.approx(26.5 / 42.5 * 100, abs=0.01)
     assert top_profit_coin(fp.top_coins)[0] == "BTC"
     assert {c.coin for c in fp.top_coins} == {"BTC", "ETH"}
+
+
+def test_coin_stats_pnl_is_trip_consistent_not_all_fills():
+    """Regression for a real bug (reconciled 2026-10-14 against a live HIP-3
+    wallet's raw fills): coin_stats used to sum closed_pnl-fee over every
+    window fill, so a coin's reported PnL could include a position opened
+    before the window or still open, something trips_analyzed/win_rate/
+    examples never counted. For a wallet with a single still-open
+    scaled-into short, that inflated "concentration" from ~28% (the real,
+    trip-backed number) to ~56% by blending in $233k from a trade the
+    fingerprint otherwise never mentions. pnl_usd and trips must now always
+    come from the same population: the counted trips."""
+    f = book()
+    # SOL: opened long before the window (its open fill is outside [ws, now]
+    # so build_trips never sees an "open" for it), then reduced for a large
+    # profit inside the window. No counted round trip on SOL at all.
+    f.append(fill(T0 - 25 * D, "SOL", "B", 5.0, 100.0, 0.0))
+    f.append(fill(T0 + 2 * D, "SOL", "A", 3.0, 150.0, 5.0, closed_pnl=1500.0))
+    fp = fp_of(f)
+    sol = next(c for c in fp.top_coins if c.coin == "SOL")
+    assert sol.trips == 0
+    assert sol.pnl_usd == 0.0          # not 1500: no counted trip earned it
+    assert sol.volume_usd > 0          # volume still reflects real trading activity
+    # concentration is unchanged from the trip-only book: SOL contributes no
+    # trip pnl, so BTC/ETH's shares (and the percentage) stay exactly as
+    # they were before this coin existed.
+    assert fp.pnl_from_top_coin_pct == pytest.approx(26.5 / 42.5 * 100, abs=0.01)
+
+
+def test_hidden_coin_pnl_surfaces_as_a_caveat():
+    stats = coin_stats([
+        fill(T0 - D, "SOL", "B", 5.0, 100.0, 0.0),
+        fill(T0 + H, "SOL", "A", 3.0, 150.0, 5.0, closed_pnl=1500.0),
+    ], [])
+    assert stats == [] or stats[0].pnl_usd == 0.0   # no trip -> no trip-based pnl
+    hidden = hidden_coin_pnl([
+        fill(T0 - D, "SOL", "B", 5.0, 100.0, 0.0),
+        fill(T0 + H, "SOL", "A", 3.0, 150.0, 5.0, closed_pnl=1500.0),
+    ], [])
+    assert hidden == [("SOL", 1500.0)]
+    # below both thresholds: not material, nothing reported
+    assert hidden_coin_pnl([fill(T0 + H, "SOL", "A", 1.0, 150.0, 5.0, closed_pnl=5.0)], []) == []
+
+    f = book()
+    f.append(fill(T0 - 25 * D, "SOL", "B", 5.0, 100.0, 0.0))
+    f.append(fill(T0 + 2 * D, "SOL", "A", 3.0, 150.0, 5.0, closed_pnl=1500.0))
+    fp = fp_of(f)
+    assert any("SOL" in c and "1,500" in c and "not one of the 5 round trips" in c for c in fp.caveats)
+
+
+def test_hidden_coin_pnl_caveats_are_capped_and_rolled_up():
+    """A coin per message past MAX_HIDDEN_PNL_CAVEATS would flood the
+    Caveats section (seen on a real HIP-3 wallet: 20+ coins). Past the cap,
+    the rest get one rollup line, and a wallet with 3+ hidden coins gets an
+    extra "treat it as a position-holder" flag."""
+    f = book()
+    for i, coin in enumerate(["SOL", "ARB", "OP", "SUI", "APT"]):
+        amt = 5000.0 - i * 1000   # 5000, 4000, 3000, 2000, 1000: all above HIDDEN_PNL_MIN_USD
+        f.append(fill(T0 - 25 * D, coin, "B", 5.0, 100.0, 0.0))
+        f.append(fill(T0 + 2 * D, coin, "A", 3.0, 150.0, 5.0, closed_pnl=amt))
+    fp = fp_of(f)
+    named = [c for c in fp.caveats if any(coin in c for coin in ["SOL", "ARB", "OP", "SUI", "APT"])
+             and "more coin" not in c]
+    assert len(named) == C.MAX_HIDDEN_PNL_CAVEATS
+    assert any(f"2 more coin" in c and "$3,000" in c for c in fp.caveats)   # APT $1000 + SUI $2000
+    assert any("position-holder" in c for c in fp.caveats)
 
 
 def test_tags_on_the_book():
