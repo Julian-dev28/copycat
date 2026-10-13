@@ -1,5 +1,6 @@
 /** Plain-words labels and thresholds for Scout. Thresholds mirror spec section 2. Pure. */
-import type { OpenOrderWire, PnlTier, RawOpenOrder, SizeTier, TradingStyle } from "./types";
+import { formatAgo } from "@/lib/format";
+import type { OpenOrderWire, PnlTier, RawOpenOrder, SizeTier, TraderScore, TradingStyle } from "./types";
 
 export const STYLE_META: Record<TradingStyle, { label: string; hint: string }> = {
   algo: { label: "Algo", hint: "Over 100 opens a day. Too fast to copy on a 5s poll." },
@@ -61,10 +62,12 @@ export function coinLabel(coin: string): { name: string; dex: string | null } {
 export const FLAG_TEXT: Record<string, string> = {
   inactive: "inactive: tiny account or no fill in 7 days",
   liquidated: "a copy got liquidated in the sim",
+  wallet_liquidated: "liquidated for real in the last 30d",
   too_few_trades: "too few trades to trust",
   hft: "trades too fast to copy",
   hft_not_simulated: "too fast to copy, not simulated",
   vault: "a vault, PnL is pooled",
+  coattail: "opens often land soon after another top wallet's",
   fills_truncated: "only the latest 10k fills are visible",
   stale: "stats could not be refreshed last cycle",
   non_perp_ignored: "spot / HIP-3 holdings ignored by the sim",
@@ -72,6 +75,27 @@ export const FLAG_TEXT: Record<string, string> = {
   candles_partial: "some price history missing",
   error: "the sim hit a data error",
 };
+
+/**
+ * Plain-language real-liquidation line for a board row (user_consensus P0
+ * #3): "Liquidated 2x in 30d (last: 3d ago)". Distinct from the sim's own
+ * "liquidated" flag (FLAG_TEXT.liquidated): this is the wallet's OWN real
+ * HL liquidation history, not what would happen to a copy. null when it
+ * never happened in the 30d window the stat covers.
+ */
+export function liquidationText(score: Pick<TraderScore, "liquidations_30d" | "last_liquidation_ms">, nowMs: number): string | null {
+  if (!score.liquidations_30d) return null;
+  const n = score.liquidations_30d;
+  return `Liquidated ${n}x in 30d (last: ${formatAgo(score.last_liquidation_ms, nowMs)})`;
+}
+
+/** "Opens often land ~68% of the time soon after 0x1234...abcd's" (user_consensus P1 #6). */
+export function coattailText(score: Pick<TraderScore, "coattail_leader" | "coattail_share_pct">): string | null {
+  if (!score.coattail_leader) return null;
+  const who = `${score.coattail_leader.slice(0, 6)}…${score.coattail_leader.slice(-4)}`;
+  const share = score.coattail_share_pct !== null && score.coattail_share_pct !== undefined ? Math.round(score.coattail_share_pct) : null;
+  return `Opens often land soon after ${who}'s${share !== null ? ` (${share}% of the time)` : ""}`;
+}
 
 /**
  * Plain words for any flag the api sends, including the prefixed ones

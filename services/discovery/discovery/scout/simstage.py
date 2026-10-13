@@ -48,7 +48,7 @@ _SKIP_REASON_TEXT = {
     "worse_entry:": "price had already moved past your worse-entry limit",
     "margin_room:": "not enough free margin at your settings",
     "max_open_copies:": "already at your max open copies",
-    "max_leverage_unknown:": "max leverage unknown for a coin he traded",
+    "max_leverage_unknown:": "max leverage unknown for a coin they traded",
 }
 
 

@@ -205,6 +205,24 @@ export function RefreshBadge({ cohort, nowMs, asOfMs }: { cohort?: number; nowMs
   );
 }
 
+/**
+ * Survivorship trail (user_consensus P1 #7): a wallet that drops out of the
+ * ranked top-300 leaves a count instead of silently vanishing, so the board
+ * doesn't read as if only winners ever existed.
+ */
+export function DeparturesNote({ departed, departedLiquidated }: { departed: number; departedLiquidated: number }) {
+  if (departed <= 0) return null;
+  return (
+    <p
+      className="text-xs text-muted"
+      title="Wallets that fell below the top-300 cutoff or stopped clearing the universe filters in the last 30 days. Some may still be trading; this board just no longer ranks them."
+    >
+      {departed} wallet{departed === 1 ? "" : "s"} left the top 300 this month
+      {departedLiquidated > 0 ? `, ${departedLiquidated} by liquidation` : ""}.
+    </p>
+  );
+}
+
 export function ApiTooOld({ what }: { what: string }) {
   const { demo } = useScoutMode();
   return (

@@ -13,7 +13,7 @@ import { AddToBookButton, CoinBadges, scoutHref, StyleTag } from "./bits";
 import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
-import { flagText, SIZE_TIER_HINT, visibleFlags } from "@/lib/scout/labels";
+import { coattailText, flagText, liquidationText, SIZE_TIER_HINT, visibleFlags } from "@/lib/scout/labels";
 import { longShortSplit } from "@/lib/scout/split";
 import type { PnlUnit } from "@/lib/scout/query";
 import type { PnlWindow, TraderRow, TraderScore } from "@/lib/scout/types";
@@ -29,7 +29,12 @@ export function WindowPnl({ row, window, unit, arrow, className }: { row: Trader
   );
 }
 
-/** "If you copied" line: the sim return plus its dip, or why the sim shows nothing. */
+/**
+ * "If you copied" line: the sim return plus its dip, or why the sim shows
+ * nothing. Below it, copy capacity with a reason when it's low
+ * (user_consensus P0 #2: this belongs on the main panel before "Add to
+ * book", not only in an expand row).
+ */
 export function IfCopied({ s, className }: { s: TraderScore; className?: string }) {
   if (s.sim_copies === 0) {
     return (
@@ -38,12 +43,21 @@ export function IfCopied({ s, className }: { s: TraderScore; className?: string 
       </span>
     );
   }
+  const cap = s.sim_copy_capacity_pct;
   return (
-    <span className={clsx("inline-flex items-baseline gap-2 text-xs", className)}>
-      <Pnl value={s.sim_return_pct} format="pct" className="num font-medium" />
-      <span className="num-sm text-muted" title="Largest peak-to-trough dip of the simulated copy">
-        max dip {formatPct(Math.abs(s.sim_max_drawdown_pct))}
+    <span className={clsx("flex flex-col gap-0.5", className)}>
+      <span className="inline-flex items-baseline gap-2 text-xs">
+        <Pnl value={s.sim_return_pct} format="pct" className="num font-medium" />
+        <span className="num-sm text-muted" title="Largest peak-to-trough dip of the simulated copy">
+          max dip {formatPct(Math.abs(s.sim_max_drawdown_pct))}
+        </span>
       </span>
+      {cap !== null && cap !== undefined ? (
+        <span className="num-sm text-muted" title="Share of their 30d opens the sim could actually execute at your settings and equity">
+          capacity {formatPct(cap, 0)}
+          {s.sim_capacity_note ? <span className="text-warn"> · {s.sim_capacity_note}</span> : null}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -91,6 +105,9 @@ export function TraderCard({
   const href = scoutHref(`/scout/${row.address}`, demo);
   const s = row.score;
   const flags = visibleFlags(row.flags);
+  const isVault = row.flags.some((f) => f.split(":")[0] === "vault");
+  const liqText = liquidationText(s, nowMs);
+  const coText = coattailText(s);
 
   return (
     <Panel interactive className={clsx("group/card relative flex flex-col gap-4 p-4 sm:p-5", inBook && "border-accent/40")}>
@@ -111,18 +128,41 @@ export function TraderCard({
       <div className="flex flex-wrap items-center gap-1.5 pl-8">
         <StyleTag style={row.style} />
         <Badge title={SIZE_TIER_HINT[row.size_tier]}>{row.size_tier}</Badge>
+        {isVault ? <Badge tone="warn" title="A vault: PnL is pooled across depositors, not yours alone">Vault</Badge> : null}
         <span className="text-xs text-muted">active {formatAgo(row.last_fill_ms, nowMs)}</span>
       </div>
 
+      {liqText || coText ? (
+        <div className="-mt-2 flex flex-col gap-0.5 pl-8">
+          {liqText ? (
+            <span className="text-[11px] font-medium text-danger" title="The wallet's own real Hyperliquid liquidation, not the copy-sim's">
+              {liqText}
+            </span>
+          ) : null}
+          {coText ? (
+            <span className="text-[11px] text-warn" title={`${coText}. Heuristic, not certain: may share no real relationship.`}>
+              {coText}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <dl className="grid grid-cols-2 gap-3">
         <div className="min-w-0">
-          <dt className="text-label text-muted">PnL {WINDOW_LABEL[window]}</dt>
+          <dt className="text-label text-muted" title="Hyperliquid's own PnL for this window. Excludes deposits and withdrawals.">
+            PnL {WINDOW_LABEL[window]}
+          </dt>
           <dd className="mt-1">
             <WindowPnl row={row} window={window} unit={unit} arrow className="num-lg" />
           </dd>
         </div>
         <div className="min-w-0 text-right">
-          <dt className="text-label text-muted">Equity</dt>
+          <dt
+            className="text-label text-muted"
+            title="Includes unrealized PnL, main perps dex. A wallet's HIP-3-only equity on another dex may not be included."
+          >
+            Equity
+          </dt>
           <dd className="num-lg mt-1 text-fg">{formatUsd(row.account_value_usd, true)}</dd>
         </div>
       </dl>

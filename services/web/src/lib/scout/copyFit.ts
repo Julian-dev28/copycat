@@ -27,9 +27,11 @@ export const PART_META: Record<string, { label: string; hint: string }> = {
 export const CAP_RULES: { flag: string; ceiling: number | null; text: string }[] = [
   { flag: "inactive", ceiling: 0, text: "Under $1,000 or no fill in 7 days: set to 0" },
   { flag: "liquidated", ceiling: 20, text: "A copy got liquidated in the sim: capped at 20" },
+  { flag: "wallet_liquidated", ceiling: 50, text: "They were liquidated for real in the last 30d: capped at 50" },
   { flag: "too_few_trades", ceiling: 40, text: "Fewer than 5 copies in the sim: capped at 40" },
   { flag: "hft", ceiling: 50, text: "Trades too fast for a 5s poll: capped at 50" },
   { flag: "vault", ceiling: 50, text: "A vault, PnL is pooled: capped at 50" },
+  { flag: "coattail", ceiling: 50, text: "Opens often land soon after another top wallet's: capped at 50" },
   { flag: "fills_truncated", ceiling: null, text: "Only their latest 10,000 fills are visible, trade stats may undercount" },
 ];
 

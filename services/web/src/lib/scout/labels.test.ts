@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
-import { biasLabel, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liqTone, normalizeOrders, STYLE_META, visibleFlags } from "./labels";
+import {
+  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, normalizeOrders, STYLE_META,
+  visibleFlags,
+} from "./labels";
 import { TRADING_STYLES } from "./types";
 
 describe("labels", () => {
@@ -79,7 +82,7 @@ describe("flagText (UX audit: raw enum keys never render)", () => {
   const API_FLAGS = [
     "vault", "hft", "hft_not_simulated", "too_few_trades", "liquidated", "liquidated:BTC", "non_perp_ignored",
     "max_leverage_unknown:ETH", "candles_partial:SOL", "error:fills_read_failed", "error:sim:ValueError",
-    "inactive", "fills_truncated", "stale",
+    "inactive", "fills_truncated", "stale", "wallet_liquidated", "coattail",
   ];
   it("has words for every api flag, with no snake_case left", () => {
     for (const f of API_FLAGS) {
@@ -107,5 +110,31 @@ describe("flagText (UX audit: raw enum keys never render)", () => {
   });
   it("flag texts use they/their, not he/his", () => {
     for (const t of Object.values(FLAG_TEXT)) expect(t).not.toMatch(/\b(he|his|him)\b/i);
+  });
+});
+
+describe("liquidationText (user_consensus P0 #3: real liquidation, not the sim's)", () => {
+  const NOW = Date.UTC(2026, 9, 14);
+  const DAY = 86_400_000;
+  it("null when the wallet was never really liquidated", () => {
+    expect(liquidationText({ liquidations_30d: 0, last_liquidation_ms: null }, NOW)).toBeNull();
+  });
+  it("plain language with count and recency", () => {
+    expect(liquidationText({ liquidations_30d: 2, last_liquidation_ms: NOW - 3 * DAY }, NOW)).toBe("Liquidated 2x in 30d (last: 3d ago)");
+    expect(liquidationText({ liquidations_30d: 1, last_liquidation_ms: NOW - DAY }, NOW)).toBe("Liquidated 1x in 30d (last: 1d ago)");
+  });
+});
+
+describe("coattailText (user_consensus P1 #6)", () => {
+  it("null without a leader", () => {
+    expect(coattailText({ coattail_leader: null, coattail_share_pct: null })).toBeNull();
+  });
+  it("names the leader (shortened) and the share", () => {
+    const t = coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: 68.4 });
+    expect(t).toBe("Opens often land soon after 0x04a9…95aa's (68% of the time)");
+  });
+  it("drops the share clause when it's missing", () => {
+    expect(coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: null }))
+      .toBe("Opens often land soon after 0x04a9…95aa's");
   });
 });

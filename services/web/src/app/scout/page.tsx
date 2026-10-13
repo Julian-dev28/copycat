@@ -14,7 +14,7 @@ import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControl
 import { BoardTicker } from "@/components/scout/BoardTicker";
 import { TraderCard } from "@/components/scout/TraderCard";
 import { TraderTable } from "@/components/scout/TraderTable";
-import { ApiTooOld, RefreshBadge } from "@/components/scout/bits";
+import { ApiTooOld, DeparturesNote, RefreshBadge } from "@/components/scout/bits";
 import { useNow } from "@/hooks/useNow";
 import { useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders } from "@/hooks/useScout";
 import { isApiTooOld } from "@/lib/scout/api";
@@ -170,6 +170,7 @@ function ScoutBoard() {
         </Notice>
       ) : null}
 
+      {presets.data ? <DeparturesNote departed={presets.data.departed} departedLiquidated={presets.data.departedLiquidated} /> : null}
       <PresetRow state={state} presets={presets.data} update={update} />
       <Toolbar state={state} update={update} onOpenFilters={() => setFiltersOpen(true)} onClearFilters={() => navigate(clearFilters(state))} />
       <FilterSheet

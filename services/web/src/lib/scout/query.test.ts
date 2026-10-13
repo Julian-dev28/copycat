@@ -109,15 +109,19 @@ describe("parseAmount", () => {
 
 describe("normalizePresets", () => {
   it("reads the contract shape", () => {
-    expect(normalizePresets({ coins: ["BTC", "xyz:TSLA"], coin_counts: { BTC: 40 }, hip3_count: 12, total: 280 })).toEqual({
+    expect(normalizePresets({
+      coins: ["BTC", "xyz:TSLA"], coin_counts: { BTC: 40 }, hip3_count: 12, total: 280,
+      departed_30d: 12, departed_liquidated_30d: 4,
+    })).toEqual({
       coins: [{ coin: "BTC", traders: 40 }, { coin: "xyz:TSLA", traders: 0 }], hip3: 12, total: 280,
+      departed: 12, departedLiquidated: 4,
     });
   });
 
   it("reads the draft shape and degrades on junk", () => {
     expect(normalizePresets({ coins: [{ coin: "ETH", traders: 3 }, { coin: "bad coin!" }], hip3: 2 }).coins).toEqual([{ coin: "ETH", traders: 3 }]);
-    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0 });
-    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0 });
+    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 });
+    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 });
   });
 });
 

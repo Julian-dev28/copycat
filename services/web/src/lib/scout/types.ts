@@ -241,6 +241,9 @@ export interface ScoutPresetsWire {
   coin_counts: Record<string, number>;
   hip3_count: number;
   total: number;
+  /** v13 (user_consensus P1 #7): wallets that fell out of the ranked top-300 in 30d. */
+  departed_30d?: number;
+  departed_liquidated_30d?: number;
 }
 
 /** What the preset row renders; lib/scout/query.ts::normalizePresets builds it from the wire shape. */
@@ -248,6 +251,8 @@ export interface ScoutPresets {
   coins: { coin: string; traders: number }[];
   hip3: number;
   total: number;
+  departed: number;
+  departedLiquidated: number;
 }
 
 // ── Strategy (contract v3.1): fingerprint, evidence trades, theses ──────────
