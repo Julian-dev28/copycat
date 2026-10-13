@@ -190,11 +190,28 @@ def fill_view(f: Dict[str, Any]) -> LeaderFillView:
 
 
 def recent_fills(conn: sqlite3.Connection, address: str, before_ms: Optional[int], limit: int) -> List[LeaderFillView]:
-    """Newest first, strictly before before_ms (None = now), from the fills cache."""
+    """Newest first, strictly before before_ms (None = now), from the fills cache.
+
+    A page never cuts a millisecond in half. The next page's cursor is this
+    page's oldest fill's time_ms, read back EXCLUSIVE (`hi = before_ms - 1`
+    on the next call): if that oldest fill's millisecond holds more rows
+    than `limit`, trimming to exactly `limit` would strand the rest at that
+    exact ms -- the next page's exclusive cursor would skip past all of
+    them, the same silent gap HL's own userFillsByTime pagination guards
+    against (services/hl/hl/venue.py `fills`). A TWAP or a leader with
+    aggregateByTime fills across many coins/orders at one tick can plausibly
+    put 50+ fills on one millisecond, so the page grows past `limit` rather
+    than losing any."""
     hi = (before_ms - 1) if before_ms is not None else 2**62
     # through discovery.db's accessor, never its table name (the fills table is that module's to change)
     rows = discovery_db.get_cached_fills(conn, address, 0, hi)
-    return [fill_view(r) for r in rows[-int(limit):][::-1]]
+    if not rows:
+        return []
+    cut = max(0, len(rows) - int(limit))
+    boundary_t = rows[cut]["time_ms"]
+    while cut > 0 and rows[cut - 1]["time_ms"] == boundary_t:
+        cut -= 1
+    return [fill_view(r) for r in rows[cut:][::-1]]
 
 
 def _profile_sim(conn: sqlite3.Connection, address: str, ptr: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
