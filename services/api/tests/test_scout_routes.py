@@ -272,7 +272,7 @@ def test_what_if_discovery_busy_409_and_lock_released(client: TestClient, auth_h
 def test_presets(client: TestClient, auth_headers: dict) -> None:
     r = client.get("/api/scout/presets", headers=auth_headers)
     assert r.json() == {"refresh_id": "r1", "coins": ["BTC"], "coin_counts": {"BTC": 2},
-                        "hip3_count": 1, "total": 2}
+                        "hip3_count": 1, "total": 2, "departed_30d": 0, "departed_liquidated_30d": 0}
 
 
 def test_status_and_refresh(client: TestClient, auth_headers: dict) -> None:

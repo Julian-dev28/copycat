@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from contracts.models import (
     AccountRisk,
@@ -31,11 +31,12 @@ from contracts.models import (
 )
 
 from .. import db as discovery_db
+from . import coattail as CT
 from . import config as C
 from . import copy_fit, store
 from . import metrics as M
 
-HIDE_FLAGS = ("liquidated", "hft", "vault", "inactive")
+HIDE_FLAGS = ("liquidated", "wallet_liquidated", "hft", "vault", "inactive", "coattail")
 _WIN = (("1d", PnlWindow.day), ("7d", PnlWindow.week), ("30d", PnlWindow.month), ("all", PnlWindow.all_time))
 _PW = {"day": PnlWindow.day, "week": PnlWindow.week, "month": PnlWindow.month, "allTime": PnlWindow.all_time}
 _SFX = {PnlWindow.day: "1d", PnlWindow.week: "7d", PnlWindow.month: "30d", PnlWindow.all_time: "all"}
@@ -53,19 +54,25 @@ def _unsim_fields(stats: Dict[str, Any]) -> Dict[str, Any]:
     t30 = (stats.get("trades") or {}).get("30d") or {}
     return {"sim_return_pct": 0.0, "sim_max_drawdown_pct": 0.0, "sim_liquidations": 0, "sim_copies": 0,
             "sim_skipped_min_order": 0, "sim_fees_usd": 0.0, "score": -200.0, "sim_copy_capacity_pct": None,
-            "flags": ["not_simulated"], "fills_30d": int(stats.get("fills_30d") or 0),
+            "sim_capacity_note": None, "flags": ["not_simulated"], "fills_30d": int(stats.get("fills_30d") or 0),
             "opens_per_day": float(t30.get("opens_per_day") or 0.0), "median_hold_h": t30.get("median_hold_h"),
             "coins": coins, "simulated": False}
 
 
 def _flags(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], stats_meta: Dict[str, Any],
-           now_ms: int) -> List[str]:
+           now_ms: int, is_coattail: bool = False) -> List[str]:
     f = set(stats.get("flags") or []) | set(sim.get("flags") or [])
     if u.get("is_vault"):
         f.add("vault")
     stale_age = now_ms - int(stats_meta.get("updated_ms") or 0) > 3 * C.STAGE_B_EVERY_S * 1000
     if int(stats_meta.get("fail_count") or 0) >= C.FAILS_BEFORE_SKIP or stale_age:
         f.add("stale")
+    # user_consensus P0 #3: the wallet's OWN real liquidations, surfaced as its own flag
+    # (distinct from "liquidated", which is the copy-SIM getting liquidated).
+    if int(stats.get("liquidations_30d") or 0) > 0:
+        f.add("wallet_liquidated")
+    if is_coattail:
+        f.add("coattail")
     return sorted(f)
 
 
@@ -83,7 +90,8 @@ def fit_input(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], fla
 
 
 def make_row(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], sim_curve: Sequence[Dict[str, Any]],
-             flags: Sequence[str], fit: Optional[CopyFit]) -> TraderRow:
+             flags: Sequence[str], fit: Optional[CopyFit],
+             coattail: Optional[Tuple[str, float, int]] = None) -> TraderRow:
     style = TradingStyle(stats["style"]) if stats.get("style") else None
     all_flags = sorted(set(flags) | set(fit.caps if fit else []))
     score = TraderScore(
@@ -97,7 +105,12 @@ def make_row(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], sim_
         sim_copies=int(sim["sim_copies"]), sim_skipped_min_order=int(sim["sim_skipped_min_order"]),
         sim_fees_usd=float(sim["sim_fees_usd"]), score=float(sim["score"]), flags=all_flags,
         sim_copy_capacity_pct=sim.get("sim_copy_capacity_pct"), copy_fit=fit, style=style,
-        last_fill_ms=stats.get("last_fill_ms"))
+        last_fill_ms=stats.get("last_fill_ms"),
+        liquidations_30d=int(stats.get("liquidations_30d") or 0),
+        last_liquidation_ms=stats.get("last_liquidation_ms"),
+        sim_capacity_note=sim.get("sim_capacity_note"),
+        coattail_leader=coattail[0] if coattail else None,
+        coattail_share_pct=round(coattail[1] * 100.0, 1) if coattail else None)
     av = float(u.get("account_value") or 0.0)
     return TraderRow(
         address=u["address"], display_name=u.get("display_name"), account_value_usd=av,
@@ -156,23 +169,43 @@ def _load_sims(conn: sqlite3.Connection, settings_hash: str, sim_equity: float) 
             for r in rows}
 
 
+def _coattail_map(conn: sqlite3.Connection, addresses: Sequence[str],
+                  now_ms: int) -> Dict[str, Tuple[str, float, int]]:
+    """Cohort-wide coattail detection (user_consensus P1 #6) over each
+    wallet's cached 30d fills. Pure CPU over data stage B already fetched:
+    no HL calls. Any address whose fills can't be read is skipped, never
+    treated as "no opens" (that would falsely clear a real coattail match
+    for everyone it leads)."""
+    ws = now_ms - C.WINDOW_DAYS * C.DAY_MS
+    opens: List[CT.Open] = []
+    for a in addresses:
+        try:
+            fills = discovery_db.get_cached_fills(conn, a, ws, now_ms)
+        except Exception:
+            continue
+        opens.extend(CT.opens_from_fills(a, fills))
+    return CT.detect_coattails(opens)
+
+
 def build(conn: sqlite3.Connection, refresh_id: str, settings_hash: str, sim_equity: float, now_ms: int) -> int:
     """Write a full board for refresh_id, then switch to it. Returns the cohort size."""
     uni = store.universe(conn)
     stats = _load_stats(conn, [u["address"] for u in uni])
     sims = _load_sims(conn, settings_hash, sim_equity)
     cohort = [u for u in uni if u["address"] in stats]
+    coattails = _coattail_map(conn, [u["address"] for u in cohort], now_ms)
     prepared = []
     for u in cohort:
         a = u["address"]
         st = stats[a]["stats"]
         sim = (sims.get(a) or {}).get("fields") or _unsim_fields(st)
-        flags = _flags(u, st, sim, stats[a]["meta"], now_ms)
+        flags = _flags(u, st, sim, stats[a]["meta"], now_ms, is_coattail=a in coattails)
         prepared.append((u, st, sim, (sims.get(a) or {}).get("curve") or [], flags))
     fits = copy_fit.compute([fit_input(u, st, sim, fl) for u, st, sim, _, fl in prepared], now_ms)
     out = []
     for u, st, sim, curve, flags in prepared:
-        row = make_row(u, st, sim, curve, flags, fits[u["address"]])
+        a = u["address"]
+        row = make_row(u, st, sim, curve, flags, fits[a], coattail=coattails.get(a))
         out.append(sql_row(row, refresh_id, settings_hash, u, st))
     store.write_rows(conn, out)
     store.switch(conn, refresh_id, settings_hash, now_ms, len(out), sim_equity)

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 from discovery.scout import public
+from discovery.scout import refresh as R
 from discovery.scout.query import ScoutQueryError
-from test_scout_world import BOARD, CC, A, B, D, E, G, q, world
+from test_scout_world import BOARD, DAY, EQUITY, NOW, CC, A, B, D, E, G, build_venue, q, settings, world
 
 
 @pytest.fixture
@@ -104,3 +105,24 @@ def test_empty_board_before_first_build(tmp_path):
     public.configure(db_path=tmp_path / "empty.db")
     p = public.scout_page(q())
     assert p.total == 0 and p.rows == [] and public.scout_presets().total == 0
+
+
+def test_wallet_liquidated_flag_is_real_not_sim(tmp_path, monkeypatch):
+    """user_consensus P0 #3: a wallet that was ACTUALLY liquidated (HL fill
+    dir "Liquidated ...") shows liquidations_30d/last_liquidation_ms and the
+    "wallet_liquidated" flag on its row, and Copy Fit is capped -- all from
+    one extra fill, with no change to the copy-sim's own sim_liquidations."""
+    monkeypatch.setenv("COPYCAT_SCOUT_PROGRESS_DIR", str(tmp_path / "progress"))
+    v = build_venue()
+    liq_ms = NOW - 2 * DAY
+    v.set_fills(A, v._fills[A] + [{"time_ms": liq_ms, "coin": "BTC", "px": 100.0, "sz": 1.0, "side": "A",
+                                   "dir": "Liquidated Isolated Long", "start_position": 1.0,
+                                   "closed_pnl": -500.0, "fee": 1.0}])
+    db = tmp_path / "discovery.db"
+    public.configure(db_path=db, venue=v)
+    R.run_refresh(v, settings(), EQUITY, db_path=db)
+    row = {r.address: r for r in public.scout_page(q()).rows}[A]
+    assert row.score.liquidations_30d == 1 and row.score.last_liquidation_ms == liq_ms
+    assert "wallet_liquidated" in row.flags and "wallet_liquidated" in row.score.copy_fit.caps
+    assert row.score.copy_fit.value <= 50
+    assert row.score.sim_liquidations == 0                     # the copy-sim itself never got liquidated

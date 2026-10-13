@@ -77,6 +77,25 @@ def test_scout_and_discover_simulate_identically(conn):
     assert f["sim_fees_usd"] == pytest.approx(round(r.sim_fees_usd, 6))
     assert f["coins"] == ["BTC", "ETH"] and f["fills_30d"] == len(fills)
     assert out.coin_max_lev == {"BTC": 20, "ETH": 20}
+    # capacity ~71% (10 of 14) is below the note threshold: the dominant (only) skip
+    # reason here is worse_entry, all 4 of them -> 100% share of the skips shown.
+    assert f["sim_capacity_note"] == "100% of skipped opens: price had already moved past your worse-entry limit"
+
+
+def test_capacity_reason_dominant_cause_and_threshold():
+    """user_consensus P0 #2: one plain-language line naming the dominant
+    skip reason, only when capacity is actually low."""
+    # no skips at all: nothing to explain
+    assert simstage.capacity_reason(10, 0, []) is None
+    # capacity 9/10 = 90% >= CAPACITY_NOTE_MAX_PCT (80): still nothing to explain
+    assert simstage.capacity_reason(9, 1, []) is None
+    # capacity 4/10 = 40%, all from the $10.50 minimum
+    assert simstage.capacity_reason(4, 6, []) == "100% of skipped opens: under the $10.50 minimum order at your size"
+    # mixed: 2 min-order + 6 worse_entry = 8 skips, worse_entry dominates (75% of the 8)
+    note = simstage.capacity_reason(2, 2, ["worse_entry:BTC"] * 6)
+    assert note == "75% of skipped opens: price had already moved past your worse-entry limit"
+    # capacity 0 (no copies, no skips): nothing to explain either (den == 0)
+    assert simstage.capacity_reason(0, 0, []) is None
 
 
 def test_leverage_match_uses_stored_leverage_like_discover_reads_it(conn):

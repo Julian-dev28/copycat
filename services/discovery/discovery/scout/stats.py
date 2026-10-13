@@ -165,12 +165,17 @@ def compute_stats(portfolio: Any, fills: List[Dict[str, Any]], now_ms: int) -> D
     perp, other = M.positions.split_perp(fills30)
     if other:
         flags.append("non_perp_ignored")
+    liq_count, liq_last_ms = M.real_liquidations(fills30)
     return {
         "risk": risk, "trades": trades, "style": style.value if style else None,
         "coins": [c.model_dump(mode="json") for c in coins],
         "hip3_share": round(M.hip3_share(coins), 6),
         "last_fill_ms": M.last_fill_ms(fills),
         "fills_30d": len(fills30),
+        # v13 (user_consensus P0 #3): the wallet's OWN real liquidations, 30d window,
+        # distinct from the copy-sim's sim_liquidations.
+        "liquidations_30d": liq_count,
+        "last_liquidation_ms": liq_last_ms,
         "calendar": [p.model_dump(mode="json") for p in calendar],
         "longest_win_streak_days": M.longest_win_streak_days(calendar),
         "recent_trips": [t.model_dump(mode="json") for t in trips[-C.RECENT_MAX:]][::-1],

@@ -58,6 +58,19 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _had_real_liquidation(conn: Any, address: str) -> bool:
+    """A departing wallet's last known (not sim) liquidation state, from its
+    last stage-B stats (user_consensus P1 #7: classify departures, not just
+    count them). False when there are no stats at all, never an error."""
+    st = store.stats_row(conn, address)
+    if not st or not st.get("stats_json"):
+        return False
+    try:
+        return bool((json.loads(st["stats_json"]) or {}).get("liquidations_30d"))
+    except (ValueError, TypeError):
+        return False
+
+
 def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
     if done <= 0 or total <= 0 or elapsed_s <= 0:
         return None
@@ -173,8 +186,14 @@ def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: R
     if "A" in opts.stages:
         t = time.monotonic()
         prog.begin("leaderboard", 1)
+        prev = {r["address"]: r for r in store.universe(conn)}
         sel = universe.run_stage_a(venue, now_ms(), book)
         if sel is not None:
+            new_addrs = {r["address"] for r in sel}
+            dropped = [dict(r, had_liquidation=_had_real_liquidation(conn, a))
+                      for a, r in prev.items() if a not in new_addrs]
+            if dropped:
+                store.record_departures(conn, dropped, now_ms())
             store.replace_universe(conn, sel, keep_sources=("ondemand",))
             store.meta_set(conn, {"last_a_ms": now_ms()})
         elif not store.universe(conn):

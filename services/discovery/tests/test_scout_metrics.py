@@ -132,4 +132,18 @@ def test_account_risk_and_positions():
 
 def test_tiers():
     assert [M.size_tier(v).value for v in (9_999, 10_000, 100_000, 1e6, 1e7)] == ["S", "M", "L", "XL", "XXL"]
+
+
+def test_real_liquidations_distinct_from_ordinary_closes():
+    """user_consensus P0 #3: the wallet's OWN real liquidations (HL `dir`
+    "Liquidated ..."), not the copy-sim's. An ordinary close is never
+    counted; only fills whose dir actually starts with "Liquidated" are."""
+    fills = [
+        dict(fill(NOW - 3 * DAY, "BTC", 100.0, 1.0, "B", 0.0), dir="Open Long"),
+        dict(fill(NOW - 2 * DAY, "BTC", 90.0, 1.0, "A", 1.0), dir="Close Long"),       # ordinary close, not a liq
+        dict(fill(NOW - DAY, "ETH", 50.0, 2.0, "A", 2.0), dir="Liquidated Isolated Long"),
+    ]
+    assert M.real_liquidations(fills) == (1, NOW - DAY)
+    assert M.real_liquidations([dict(f, dir="Close Long") for f in fills[:1]]) == (0, None)
+    assert M.real_liquidations([]) == (0, None)
     assert [M.pnl_tier(v).value for v in (-1, 0, 1e5, 1e6)] == ["losing", "up", "strong", "elite"]

@@ -2467,6 +2467,16 @@
             "title": "Coins",
             "type": "array"
           },
+          "departed_30d": {
+            "default": 0,
+            "title": "Departed 30D",
+            "type": "integer"
+          },
+          "departed_liquidated_30d": {
+            "default": 0,
+            "title": "Departed Liquidated 30D",
+            "type": "integer"
+          },
           "hip3_count": {
             "default": 0,
             "title": "Hip3 Count",
@@ -2634,7 +2644,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 12,
+            "default": 13,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -4178,6 +4188,28 @@
             "title": "Address",
             "type": "string"
           },
+          "coattail_leader": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coattail Leader"
+          },
+          "coattail_share_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coattail Share Pct"
+          },
           "coins": {
             "items": {
               "type": "string"
@@ -4228,6 +4260,22 @@
             ],
             "title": "Last Fill Ms"
           },
+          "last_liquidation_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Liquidation Ms"
+          },
+          "liquidations_30d": {
+            "default": 0,
+            "title": "Liquidations 30D",
+            "type": "integer"
+          },
           "median_hold_h": {
             "anyOf": [
               {
@@ -4258,6 +4306,17 @@
           "score": {
             "title": "Score",
             "type": "number"
+          },
+          "sim_capacity_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sim Capacity Note"
           },
           "sim_copies": {
             "title": "Sim Copies",

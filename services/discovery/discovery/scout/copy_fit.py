@@ -10,10 +10,19 @@ copy-sim as the dominant term, then gates and caps. Pure: no I/O, no clock
 Gates and caps, after the blend, in this order (each adds its flag to caps):
     account value < $1,000 or no fill in 7 d   fit = 0          inactive
     sim liquidations > 0                       fit <= 20        liquidated
+    wallet's OWN real liquidation, 30d         fit <= 50        wallet_liquidated
     sim copies < 5                             fit <= 40        too_few_trades
     style algo (hft)                           fit <= 50        hft
     vault                                      fit <= 50        vault
+    coattail-rider (lags another wallet)       fit <= 50        coattail
     fills truncated                            no cap           fills_truncated (warning only)
+
+`wallet_liquidated` and `liquidated` are different signals, both real:
+`liquidated` is the copy-SIM getting liquidated at the user's settings;
+`wallet_liquidated` is the trader himself having a real HL liquidation fill
+in the last 30d (user_consensus_2026-10 P0 #3 / trust checklist: a wallet's
+own blowup history must be visible, not just implied by a capped score). A
+wallet can trip either, both, or neither.
 A cap's flag is listed whenever its condition holds, even when the blend
 was already under the cap: the page explains the ceiling either way.
 
@@ -50,10 +59,12 @@ INACTIVE_MIN_AV = 1_000.0
 INACTIVE_DAYS = 7
 SAMPLE_FULL_TRIPS = 50
 CAP_LIQUIDATED = 20.0
+CAP_WALLET_LIQUIDATED = 50.0
 CAP_TOO_FEW = 40.0
 MIN_COPIES = 5
 CAP_HFT = 50.0
 CAP_VAULT = 50.0
+CAP_COATTAIL = 50.0
 
 
 @dataclass
@@ -137,6 +148,9 @@ def compute(cohort: Sequence[FitInput], now_ms: int) -> Dict[str, CopyFit]:
         if c.sim_liquidations > 0:
             fit = min(fit, CAP_LIQUIDATED)
             caps.append("liquidated")
+        if "wallet_liquidated" in c.flags:
+            fit = min(fit, CAP_WALLET_LIQUIDATED)
+            caps.append("wallet_liquidated")
         if c.sim_copies < MIN_COPIES:
             fit = min(fit, CAP_TOO_FEW)
             caps.append("too_few_trades")
@@ -146,6 +160,9 @@ def compute(cohort: Sequence[FitInput], now_ms: int) -> Dict[str, CopyFit]:
         if "vault" in c.flags:
             fit = min(fit, CAP_VAULT)
             caps.append("vault")
+        if "coattail" in c.flags:
+            fit = min(fit, CAP_COATTAIL)
+            caps.append("coattail")
         if "fills_truncated" in c.flags:
             caps.append("fills_truncated")
         out[c.address] = CopyFit(value=round(fit, 2), parts={k: round(v, 6) for k, v in parts.items()},

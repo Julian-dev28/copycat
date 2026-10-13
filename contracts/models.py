@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 12  # v12: EngineEvent.account (audit M10: events are per trading account),
+CONTRACT_VERSION = 13  # v13: TraderScore.liquidations_30d/last_liquidation_ms (the wallet's OWN real
+#                        liquidations, distinct from sim_liquidations), sim_capacity_note,
+#                        coattail_leader/coattail_share_pct; ScoutPresets.departed_30d/departed_liquidated_30d
+#                        (user_consensus_2026-10 P0/P1: leaderboard trust gaps)
+# v12: EngineEvent.account (audit M10: events are per trading account),
 #                        EngineStatus.day_pnl_unreliable_since_ms (S5), HealthResponse.builds/stale (M12)
 # v11: CopyPlan.confirm_code never in api responses (None), McpPendingPlan,
 #                        HealthResponse.contract_version; Settings.contract_version server-set
@@ -296,6 +300,18 @@ class TraderScore(BaseModel):
     copy_fit: Optional["CopyFit"] = None
     style: Optional["TradingStyle"] = None
     last_fill_ms: Optional[int] = None
+    # v13: the wallet's OWN real liquidations (HL fill dir "Liquidated *"), 30d window.
+    # Distinct from sim_liquidations (what WOULD happen to a copy at your settings):
+    # a wallet can show sim_liquidations=0 and still have blown up for real.
+    liquidations_30d: int = 0
+    last_liquidation_ms: Optional[int] = None
+    # v13: one-line reason the sim's copy_capacity is low (dominant skip cause), None when
+    # capacity is high or there is nothing to explain.
+    sim_capacity_note: Optional[str] = None
+    # v13: coattail-rider check (user_consensus P1 #6): set when most of this wallet's
+    # opens land 1-120s after another top-ranked wallet's same-coin/same-side open.
+    coattail_leader: Optional[str] = None
+    coattail_share_pct: Optional[float] = None
 
 
 class DiscoveryRun(BaseModel):
@@ -522,6 +538,12 @@ class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /
     coin_counts: Dict[str, int] = Field(default_factory=dict)  # coin -> traders with it in top coins
     hip3_count: int = 0                  # traders with any HIP-3 coin in top coins
     total: int = 0                       # rows in the "all" tab
+    # v13 (user_consensus P1 #7): wallets that fell out of the ranked universe in the
+    # last 30d, so the board can say "N wallets left the top 300" instead of silently
+    # showing only survivors. departed_liquidated_30d is the subset whose last known
+    # stats showed a real (not sim) liquidation before it dropped off.
+    departed_30d: int = 0
+    departed_liquidated_30d: int = 0
 
 
 TraderScore.model_rebuild()

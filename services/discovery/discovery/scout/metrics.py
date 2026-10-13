@@ -457,5 +457,17 @@ def last_fill_ms(fills: Iterable[Dict[str, Any]]) -> Optional[int]:
     return max(ts) if ts else None
 
 
+def real_liquidations(fills: Iterable[Dict[str, Any]]) -> Tuple[int, Optional[int]]:
+    """The wallet's OWN real liquidations in the given fills (HL's `dir` is
+    "Liquidated Isolated Long/Short" or "Liquidated Cross Long/Short" on a
+    liquidation fill; the venue layer's separate `liquidation` bool, when
+    present, is not relied on here so this also works on fills cached before
+    that field existed). Distinct from the copy-sim's own `sim_liquidations`:
+    this says the trader himself got liquidated, whatever your settings are.
+    Returns (count, last_ms); (0, None) when none in the given fills."""
+    ts = [int(f["time_ms"]) for f in fills if str(f.get("dir") or "").startswith("Liquidated")]
+    return len(ts), (max(ts) if ts else None)
+
+
 def _r(x: Optional[float], nd: int = 4) -> Optional[float]:
     return None if x is None else round(x, nd)
