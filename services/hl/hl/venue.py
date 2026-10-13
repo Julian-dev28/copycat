@@ -653,6 +653,76 @@ class HlVenue:
                            f"result truncated at {cursor}")
         return out + held
 
+    def funding(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
+        """userFunding over [start_ms, end_ms] (both inclusive), paginated.
+
+        One row per (coin, settlement) the account held through: HL settles
+        funding continuously and batches every coin's settlement for the
+        account into one `time` per tick (curled 2026-10-14: 5 coins all at
+        the same `time_ms`, ms 0 apart). Row shape: {"time": ms, "hash": ...,
+        "delta": {"type": "funding", "coin": "BTC", "usdc": "-0.13", "szi": ...,
+        "fundingRate": ..., "nSamples": ...}}. `usdc` is HL's own sign:
+        positive = credited to the account (received), negative = debited
+        (paid) -- the same convention a round trip nets funding with
+        (`discovery.positions.funding_by_trip`).
+
+        Pagination: HL caps userFunding at 500 rows per page (measured
+        2026-10-14, vs 2000 for userFillsByTime), oldest first. Same same-ms
+        carry-over rule as `fills`: the next page starts AT the last row's
+        time, rows at that exact ms are dropped from this page and re-read
+        whole from the next one, so a settlement batch split across two
+        wallets' worth of coins is never cut in half.
+
+        Returns None if any page's fetch failed, or a page's own cursor is
+        unparseable: a silently truncated list is worse than a clear failure.
+        """
+        PAGE_SIZE = 500
+        MAX_PAGES = 50  # 25k-row ceiling, far above any realistic 30d-window yield
+        out: List[Dict[str, Any]] = []
+        held: List[Dict[str, Any]] = []
+        cursor = int(start_ms)
+        end_ms = int(end_ms)
+        for _ in range(MAX_PAGES):
+            held = []
+            raw = http_post("/info", {"type": "userFunding", "user": user, "startTime": cursor, "endTime": end_ms})
+            if raw is None:
+                logger.error(f"[hl.venue] funding: userFunding failed for user={user} startTime={cursor}")
+                return None
+            if not isinstance(raw, list):
+                logger.error(f"[hl.venue] funding: unexpected userFunding response shape for user={user}")
+                return None
+            page: List[Dict[str, Any]] = []
+            for r in raw:
+                try:
+                    d = r["delta"]
+                    page.append({"time_ms": int(r["time"]), "coin": str(d["coin"]), "usdc": float(d["usdc"]),
+                                "funding_rate": float(d.get("fundingRate") or 0.0)})
+                except (KeyError, TypeError, ValueError) as exc:
+                    logger.warning(f"[hl.venue] funding: dropping unparseable row for {user}: {exc}")
+            if len(raw) < PAGE_SIZE:
+                out.extend(page)
+                break
+            try:
+                first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
+            except (KeyError, TypeError, ValueError):
+                logger.error(f"[hl.venue] funding: page cursor unreadable for user={user}, aborting pagination")
+                return None
+            if first_time >= last_time:
+                logger.warning(f"[hl.venue] funding: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
+                               f"user={user}; rows past the cap at that ms are lost")
+                out.extend(page)
+                cursor = last_time + 1
+            else:
+                out.extend(p for r, p in zip(raw, page) if int(r["time"]) < last_time)
+                held = [p for r, p in zip(raw, page) if int(r["time"]) >= last_time]
+                cursor = last_time
+            if cursor > end_ms:
+                break
+        else:
+            logger.warning(f"[hl.venue] funding: hit MAX_PAGES={MAX_PAGES} for user={user}; "
+                           f"result truncated at {cursor}")
+        return out + held
+
     def leaderboard(self) -> Optional[List[Dict[str, Any]]]:
         """GET the public HL leaderboard snapshot for the active network.
 

@@ -1657,6 +1657,11 @@ export interface components {
             dir: string;
             /** Fee Usd */
             fee_usd: number;
+            /**
+             * Liquidation
+             * @default false
+             */
+            liquidation: boolean;
             /** Notional Usd */
             notional_usd: number;
             /** Px */
@@ -1909,6 +1914,21 @@ export interface components {
             entry_px: number;
             /** Exit Px */
             exit_px: number;
+            /**
+             * Fee Usd
+             * @default 0
+             */
+            fee_usd: number;
+            /**
+             * Funding Usd
+             * @default 0
+             */
+            funding_usd: number;
+            /**
+             * Gross Pnl Usd
+             * @default 0
+             */
+            gross_pnl_usd: number;
             /** Hold H */
             hold_h: number;
             /** Max Notional Usd */
@@ -1998,7 +2018,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 12
+             * @default 13
              */
             contract_version: number;
             /**

@@ -95,3 +95,48 @@ def test_identical_twap_fills_at_the_same_ms_are_all_kept(conn):
     venue.set_fills(w, [fill(1_000, sz=1.0, start_position=0.0), fill(1_000, sz=1.0, start_position=1.0),
                         fill(1_000, sz=1.0, start_position=2.0)])
     assert len(fills_cache.sync_fills(conn, venue, w, window_days=1, now_ms=10_000)) == 3
+
+
+def test_liquidation_flag_round_trips_through_the_cache(conn):
+    """HL's own liquidation flag (hl.venue.fills) must survive the cache,
+    not just the in-memory fill dict (regression: it was fetched and then
+    dropped before insert_fills)."""
+    venue = FakeVenue()
+    w = "0xliq"
+    f = fill(1_000)
+    f["liquidation"] = True
+    venue.set_fills(w, [f])
+    out = fills_cache.sync_fills(conn, venue, w, window_days=1, now_ms=10_000)
+    assert bool(out[0]["liquidation"]) is True   # sqlite stores it as an INTEGER, not a Python bool
+
+
+def test_liquidation_column_migrates_onto_a_pre_existing_fills_v2_table(tmp_path):
+    """A real data/discovery.db predates this column: connect() must add it
+    (ALTER TABLE, not a fresh CREATE) and insert_fills/get_cached_fills must
+    keep working against that migrated table."""
+    import sqlite3
+
+    path = tmp_path / "old_schema.db"
+    pre = sqlite3.connect(str(path))
+    pre.execute("""
+        CREATE TABLE fills_v2 (
+            wallet TEXT NOT NULL, time_ms INTEGER NOT NULL, coin TEXT NOT NULL, px REAL NOT NULL,
+            sz REAL NOT NULL, side TEXT NOT NULL, dir TEXT, start_position REAL NOT NULL,
+            closed_pnl REAL NOT NULL DEFAULT 0, fee REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (wallet, time_ms, coin, side, sz, px, start_position)
+        )""")
+    pre.execute("INSERT INTO fills_v2 (wallet, time_ms, coin, px, sz, side, dir, start_position) "
+                "VALUES ('0xold', 500, 'BTC', 100.0, 1.0, 'B', 'Open Long', 0.0)")
+    pre.commit()
+    pre.close()
+
+    conn = db.connect(path)
+    pre_existing = db.get_cached_fills(conn, "0xold", 0, 1000)
+    assert pre_existing[0]["liquidation"] == 0   # migrated column defaults to 0, not NULL/missing
+
+    db.insert_fills(conn, "0xnew", [fill(600, coin="ETH")])
+    f = fill(700, coin="SOL")
+    f["liquidation"] = True
+    db.insert_fills(conn, "0xnew", [f])
+    rows = {r["coin"]: r["liquidation"] for r in db.get_cached_fills(conn, "0xnew", 0, 1000)}
+    assert rows == {"ETH": 0, "SOL": 1}

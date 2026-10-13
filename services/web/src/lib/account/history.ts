@@ -35,6 +35,7 @@ export function normalizeFills(raw: unknown): LeaderFillView[] {
       notional_usd: num(r.notional_usd) ?? px * sz,
       closed_pnl_usd: num(r.closed_pnl_usd ?? r.closedPnl) ?? 0,
       fee_usd: num(r.fee_usd ?? r.fee) ?? 0,
+      liquidation: Boolean(r.liquidation),
     });
   }
   return out.sort((a, b) => b.time_ms - a.time_ms);

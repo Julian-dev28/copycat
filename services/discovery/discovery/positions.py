@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 Kind = Literal["open", "add", "reduce", "close"]
 Side = Literal["long", "short"]
@@ -190,6 +190,28 @@ def final_positions(fills: List[Dict[str, Any]]) -> Dict[str, float]:
     for f in sorted(fills, key=lambda r: r["time_ms"]):
         last[f["coin"]] = f
     return {c: float(f["start_position"]) + _signed(f) for c, f in last.items()}
+
+
+def index_funding_by_coin(funding: Optional[Sequence[Dict[str, Any]]]) -> Dict[str, List[Tuple[int, float]]]:
+    """Group HL `userFunding` rows ({time_ms, coin, usdc, ...}) by coin, sorted
+    by time, for repeated window sums (`funding_by_trip`). None/empty in ->
+    empty out: a wallet with no funding reads (old stats, a failed fetch)
+    nets 0, never fabricated."""
+    out: Dict[str, List[Tuple[int, float]]] = {}
+    for f in funding or []:
+        out.setdefault(str(f["coin"]), []).append((int(f["time_ms"]), float(f["usdc"])))
+    for coin in out:
+        out[coin].sort()
+    return out
+
+
+def funding_by_trip(by_coin: Dict[str, List[Tuple[int, float]]], coin: str, opened_ms: int, closed_ms: int) -> float:
+    """Net funding (HL's sign: positive = received, negative = paid) settled
+    for `coin` while this trip's position was open: [opened_ms, closed_ms).
+    Half-open so a settlement at the exact close instant (already flat)
+    lands on whichever trip opens next, never double-counted. A coin absent
+    from `by_coin` (no funding events at all, or an un-synced cache) nets 0."""
+    return sum(usdc for t, usdc in by_coin.get(coin, ()) if opened_ms <= t < closed_ms)
 
 
 def trip_spans(by_coin: Dict[str, List[PositionEvent]], window_end_ms: int) -> Dict[str, List[Tuple[int, int]]]:

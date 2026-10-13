@@ -247,13 +247,17 @@ def window_perf_from_portfolio(port: Dict[str, Dict[str, Any]], name: str) -> Tu
 
 # ── round trips (#15 to #19) ──────────────────────────────────────────────
 
-def round_trips(fills: Sequence[Dict[str, Any]]) -> List[RoundTrip]:
+def round_trips(fills: Sequence[Dict[str, Any]], funding: Optional[Sequence[Dict[str, Any]]] = None) -> List[RoundTrip]:
     """Flat to flat per coin over perp fills (`positions.reconstruct`, so a
     flip is a close then an open). A trip already open at the first fill we
     have, or still open at the last, is dropped: it is never fabricated.
-    net = sum(closed_pnl) - sum(fee) over the trip's fills; on a flip the
-    fill's fee and closed_pnl belong to the closing trip."""
+    gross = sum(closed_pnl) over the trip's fills (on a flip the fill's fee
+    and closed_pnl belong to the closing trip); funding = net HL `userFunding`
+    settled for the coin while this trip's position was open
+    (`positions.funding_by_trip`), 0 when `funding` is None (not fetched).
+    net = gross - fee + funding."""
     perp, _ = positions.split_perp(list(fills))
+    funding_idx = positions.index_funding_by_coin(funding)
     trips: List[RoundTrip] = []
     for coin, events in positions.reconstruct(perp).items():
         cur: Optional[Dict[str, Any]] = None
@@ -275,13 +279,16 @@ def round_trips(fills: Sequence[Dict[str, Any]]) -> List[RoundTrip]:
                 cur["out_ntl"] += e.delta_sz * e.px
             cur["max_ntl"] = max(cur["max_ntl"], abs(e.end_position) * e.px, abs(e.start_position) * e.px)
             if e.kind == "close":
-                net = cur["pnl"] - cur["fee"]
+                fund = positions.funding_by_trip(funding_idx, coin, cur["opened"], e.time_ms)
+                net = cur["pnl"] - cur["fee"] + fund
                 trips.append(RoundTrip(
                     coin=coin, side=cur["side"], opened_ms=cur["opened"], closed_ms=e.time_ms,
                     hold_h=round((e.time_ms - cur["opened"]) / C.HOUR_MS, 6),
                     entry_px=cur["in_ntl"] / cur["in_sz"] if cur["in_sz"] else e.px,
                     exit_px=cur["out_ntl"] / cur["out_sz"] if cur["out_sz"] else e.px,
-                    max_notional_usd=round(cur["max_ntl"], 2), net_pnl_usd=round(net, 6), win=net > 0))
+                    max_notional_usd=round(cur["max_ntl"], 2), gross_pnl_usd=round(cur["pnl"], 6),
+                    fee_usd=round(cur["fee"], 6), funding_usd=round(fund, 6),
+                    net_pnl_usd=round(net, 6), win=net > 0))
                 cur = None
     trips.sort(key=lambda t: (t.closed_ms, t.coin))
     return trips

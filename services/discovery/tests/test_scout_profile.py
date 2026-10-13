@@ -5,7 +5,7 @@ import threading
 
 import pytest
 from discovery.scout import public
-from test_scout_world import EQUITY, A, q, settings, world
+from test_scout_world import EQUITY, NOW, A, q, settings, world
 
 from contracts.models import LeaderOverride, PnlWindow, SizingMode, TraderProfile
 
@@ -33,6 +33,28 @@ def test_fills_paging_newest_first(w):
     nxt = public.scout_fills(A, first[-1].time_ms, 15)
     assert len(first) == 15 and first[0].time_ms > first[-1].time_ms > nxt[0].time_ms
     assert len(public.scout_fills(A, None, 1000)) == 40 and public.scout_fills("junk", None, 5) == []
+
+
+def test_fill_view_carries_hls_liquidation_flag(w):
+    """Regression: HL's own liquidation flag was fetched by hl.venue.fills,
+    cached by discovery.db.insert_fills, then silently dropped before it
+    reached LeaderFillView. A copier must be able to see which closing fill
+    was a forced liquidation, not an ordinary close."""
+    from discovery import db as discovery_db
+    from discovery.scout import rows as R
+
+    liq_ms = NOW + 60_000   # after every fixture fill (all close ~5d before NOW): sorts newest
+    conn = discovery_db.connect(w["db"])
+    discovery_db.insert_fills(conn, A, [
+        {"time_ms": liq_ms, "coin": "BTC", "px": 100.0, "sz": 1.0, "side": "A",
+         "dir": "Close Long", "start_position": 1.0, "closed_pnl": -50.0, "fee": 0.1, "liquidation": True},
+    ])
+    out = R.recent_fills(conn, A, None, 1)
+    assert out[0].time_ms == liq_ms and out[0].liquidation is True
+
+    live = public.scout_fills(A, None, 1000)
+    assert all(hasattr(f, "liquidation") for f in live)
+    assert not any(f.liquidation for f in live if f.time_ms != liq_ms)  # the fixture fills aren't liquidations
 
 
 def test_orders_live_cached_and_failure_raises(w):

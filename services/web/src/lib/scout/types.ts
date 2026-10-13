@@ -127,6 +127,12 @@ export interface RoundTrip {
   entry_px: number;
   exit_px: number;
   max_notional_usd: number;
+  /** Sum(closed_pnl) over the trip's fills, before fee/funding. */
+  gross_pnl_usd: number;
+  fee_usd: number;
+  /** Net HL funding settled while the position was open. HL's sign: + = received, - = paid. */
+  funding_usd: number;
+  /** gross_pnl_usd - fee_usd + funding_usd. */
   net_pnl_usd: number;
   win: boolean;
 }
@@ -154,6 +160,8 @@ export interface LeaderFillView {
   notional_usd: number;
   closed_pnl_usd: number;
   fee_usd: number;
+  /** HL's own liquidation flag on this fill. */
+  liquidation: boolean;
 }
 
 export interface TraderProfile {

@@ -54,6 +54,7 @@ W_PORTFOLIO = 20
 W_ACCOUNT_STATE = 8               # clearinghouseState x dexes (2 each) + spot (2), typical 3 dexes
 W_EXTRAS = 22                     # spotClearinghouseState 2 + delegatorSummary 20
 W_FILLS_PAGE = 120                # hl charges 20 + 2000/20 up front per userFillsByTime page
+W_FUNDING_PAGE = 45               # hl charges 20 + 500/20 up front per userFunding page
 W_CANDLES = 20                    # + bars/60, added per call
 W_OPEN_ORDERS = 20
 

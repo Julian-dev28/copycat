@@ -185,7 +185,8 @@ def fill_view(f: Dict[str, Any]) -> LeaderFillView:
     px, sz = float(f["px"]), float(f["sz"])
     return LeaderFillView(time_ms=int(f["time_ms"]), coin=f["coin"], side="B" if f["side"] == "B" else "A",
                           dir=f.get("dir") or "", px=px, sz=sz, notional_usd=round(abs(px * sz), 2),
-                          closed_pnl_usd=float(f.get("closed_pnl") or 0.0), fee_usd=float(f.get("fee") or 0.0))
+                          closed_pnl_usd=float(f.get("closed_pnl") or 0.0), fee_usd=float(f.get("fee") or 0.0),
+                          liquidation=bool(f.get("liquidation", False)))
 
 
 def recent_fills(conn: sqlite3.Connection, address: str, before_ms: Optional[int], limit: int) -> List[LeaderFillView]:

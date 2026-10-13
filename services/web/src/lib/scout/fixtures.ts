@@ -253,9 +253,13 @@ function fillsFor(row: TraderRow, nowMs: number, count: number, beforeMs: number
     const side = r() < 0.5 ? "B" : "A";
     const closing = r() < 0.45;
     const dir = closing ? (side === "B" ? "Close Short" : "Close Long") : side === "B" ? "Open Long" : "Open Short";
+    // A closing fill is liquidated roughly 1 in 40 times (deterministic per address/clock): rare
+    // enough to look real, common enough that demo mode exercises the liquidation badge.
+    const liq = closing && r() < 0.025;
     out.push({
       time_ms: t, coin, side, dir, px, sz: round(notional / px, 4), notional_usd: notional,
       closed_pnl_usd: closing ? round(notional * between(r, -0.04, 0.07), 2) : 0, fee_usd: round(notional * 0.00035, 4),
+      liquidation: liq,
     });
   }
   return out;
@@ -375,8 +379,13 @@ export function fixtureProfile(row: TraderRow, nowMs: number): TraderProfile {
     const win = r() < (row.trades_30d.win_rate_pct ?? 50) / 100;
     const move = between(r, 0.002, 0.05) * (win ? 1 : -1) * (side === "long" ? 1 : -1);
     const maxN = round(row.account_value_usd * between(r, 0.02, 0.5), 0);
-    const net = round(maxN * Math.abs(move) * (win ? 1 : -1) - maxN * 0.0007, 2);
-    recent_trips.push({ coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry, exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, net_pnl_usd: net, win: net > 0 });
+    const gross = round(maxN * Math.abs(move) * (win ? 1 : -1), 2);
+    const fee = round(maxN * 0.0007, 2);
+    // Funding scales with hold time (HL settles roughly hourly); sign is a coin flip, same
+    // order of magnitude as the live `funding_since_open_usd` fixture a few lines up.
+    const funding = round(maxN * between(r, -0.0006, 0.0006) * (hold / 24), 2);
+    const net = round(gross - fee + funding, 2);
+    recent_trips.push({ coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry, exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, gross_pnl_usd: gross, fee_usd: fee, funding_usd: funding, net_pnl_usd: net, win: net > 0 });
   }
   const coins: CoinStat[] = [...row.top_coins];
   for (const c of COINS) {

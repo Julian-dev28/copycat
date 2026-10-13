@@ -369,6 +369,70 @@ def test_fills_drops_unparseable_fill_but_keeps_the_rest(monkeypatch):
     assert out[0]["time_ms"] == 10
 
 
+# ── funding ───────────────────────────────────────────────────────────────────
+
+def _funding_row(t, coin="BTC", usdc=-0.5, rate=0.0000125):
+    return {"time": t, "hash": "0x0", "delta": {"type": "funding", "coin": coin, "usdc": str(usdc),
+                                                "szi": "1.0", "fundingRate": str(rate), "nSamples": 24}}
+
+
+def test_funding_single_page(monkeypatch):
+    page = [_funding_row(1000, usdc=-0.13), _funding_row(2000, usdc=0.76)]
+    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: page)
+    out = HlVenue().funding("0xabc", 0, 3000)
+    assert len(out) == 2
+    assert out[0] == {"time_ms": 1000, "coin": "BTC", "usdc": -0.13, "funding_rate": 0.0000125}
+    assert out[1]["usdc"] == 0.76
+
+
+class _HlFundingServer:
+    """Fake userFunding: rows with startTime <= time <= endTime, oldest
+    first, cut at 500 rows even mid-millisecond (HL's real cap)."""
+
+    def __init__(self, corpus):
+        self.corpus = corpus
+        self.calls = []
+
+    def __call__(self, path, payload, **kw):
+        self.calls.append(dict(payload))
+        rows = [f for f in self.corpus if payload["startTime"] <= f["time"] <= payload["endTime"]]
+        return rows[:500]
+
+
+def test_funding_pages_by_last_time_not_offset(monkeypatch):
+    corpus = [_funding_row(t, usdc=t) for t in range(600)]
+    srv = _HlFundingServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    out = HlVenue().funding("0xabc", 0, 10_000)
+    assert [c["startTime"] for c in srv.calls] == [0, 499]   # next cursor = last row's time, re-read whole
+    assert [f["time_ms"] for f in out] == list(range(600))   # no loss, no duplicate
+    assert "aggregateByTime" not in srv.calls[0]              # userFunding has no such param
+    assert srv.calls[0]["type"] == "userFunding"
+
+
+def test_funding_full_page_at_one_millisecond_falls_back_to_plus_one(monkeypatch, caplog):
+    corpus = [_funding_row(7, usdc=i) for i in range(500)] + [_funding_row(8, usdc=9999)]
+    srv = _HlFundingServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    out = HlVenue().funding("0xabc", 0, 100)
+    assert [c["startTime"] for c in srv.calls] == [0, 8]
+    assert len(out) == 501 and "one millisecond" in caplog.text
+
+
+def test_funding_none_on_fetch_failure(monkeypatch):
+    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: None)
+    assert HlVenue().funding("0xabc", 0, 1000) is None
+
+
+def test_funding_drops_unparseable_row_but_keeps_the_rest(monkeypatch):
+    bad = {"time": 5, "delta": {"coin": "BTC"}}  # missing usdc
+    good = _funding_row(10)
+    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: [bad, good])
+    out = HlVenue().funding("0xabc", 0, 1000)
+    assert len(out) == 1
+    assert out[0]["time_ms"] == 10
+
+
 # ── leaderboard ───────────────────────────────────────────────────────────────
 
 class _FakeLbResponse:

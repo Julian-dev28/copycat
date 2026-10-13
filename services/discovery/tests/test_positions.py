@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import pytest
-from discovery.positions import coins_traded, median_hold_hours, merged_timeline, opens_per_day, reconstruct
+from discovery.positions import (
+    coins_traded,
+    funding_by_trip,
+    index_funding_by_coin,
+    median_hold_hours,
+    merged_timeline,
+    opens_per_day,
+    reconstruct,
+)
 
 
 def fill(time_ms, coin, px, sz, side, start_position, fee=0.0, closed_pnl=0.0):
@@ -128,3 +136,50 @@ def test_final_positions_and_trip_spans():
              fill(20, "ETH", 10.0, 2.0, "A", 0.0)]
     assert final_positions(fills) == {"BTC": 0.0, "ETH": -2.0}
     assert trip_spans(reconstruct(fills), 99) == {"BTC": [(0, 10)], "ETH": [(20, 99)]}
+
+
+# ── funding attribution (round-trip funding netting, user research P0) ─────
+
+def test_index_funding_by_coin_groups_and_sorts():
+    rows = [{"time_ms": 300, "coin": "BTC", "usdc": 1.0}, {"time_ms": 100, "coin": "ETH", "usdc": -2.0},
+            {"time_ms": 200, "coin": "BTC", "usdc": -0.5}]
+    idx = index_funding_by_coin(rows)
+    assert idx == {"BTC": [(200, -0.5), (300, 1.0)], "ETH": [(100, -2.0)]}
+
+
+def test_index_funding_by_coin_handles_none_and_empty():
+    assert index_funding_by_coin(None) == {}
+    assert index_funding_by_coin([]) == {}
+
+
+def test_funding_by_trip_sums_only_settlements_inside_the_window():
+    idx = index_funding_by_coin([
+        {"time_ms": 50, "coin": "BTC", "usdc": 9.0},     # before the trip opened: excluded
+        {"time_ms": 100, "coin": "BTC", "usdc": -0.3},   # at open instant: included (half-open, >=)
+        {"time_ms": 150, "coin": "BTC", "usdc": 0.2},
+        {"time_ms": 200, "coin": "BTC", "usdc": 5.0},    # at close instant: excluded (already flat, < closed_ms)
+        {"time_ms": 150, "coin": "ETH", "usdc": 100.0},  # different coin: never mixed in
+    ])
+    assert funding_by_trip(idx, "BTC", 100, 200) == pytest.approx(-0.1)
+
+
+def test_funding_by_trip_zero_for_coin_never_seen():
+    idx = index_funding_by_coin([{"time_ms": 150, "coin": "ETH", "usdc": 100.0}])
+    assert funding_by_trip(idx, "BTC", 0, 1000) == 0.0
+
+
+def test_funding_by_trip_adjoining_trips_each_get_their_own_settlements():
+    """Two round trips on the same coin back to back: a settlement at the
+    boundary between them belongs to the trip that was open at that exact
+    instant (the one STARTING there), never both and never neither."""
+    idx = index_funding_by_coin([
+        {"time_ms": 100, "coin": "BTC", "usdc": 1.0},    # trip 1's open instant
+        {"time_ms": 150, "coin": "BTC", "usdc": 2.0},    # inside trip 1
+        {"time_ms": 200, "coin": "BTC", "usdc": 3.0},    # trip 1 closes / trip 2 opens here
+        {"time_ms": 250, "coin": "BTC", "usdc": 4.0},    # inside trip 2
+    ])
+    trip1 = funding_by_trip(idx, "BTC", 100, 200)
+    trip2 = funding_by_trip(idx, "BTC", 200, 300)
+    assert trip1 == pytest.approx(3.0)    # 1.0 + 2.0
+    assert trip2 == pytest.approx(7.0)    # 3.0 + 4.0
+    assert trip1 + trip2 == pytest.approx(10.0)   # every settlement counted exactly once
