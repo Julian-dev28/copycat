@@ -36,7 +36,7 @@ import re
 import signal
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from contracts import build as build_mod
 from contracts.models import (
@@ -101,7 +101,13 @@ def read_stops() -> Dict[str, bool]:
     JSON does not parse is read as close_positions true (the contract
     default; the api writes atomically, so this is a hand-edited file).
     Names that are not a 0x address are ignored."""
-    out: Dict[str, bool] = {}
+    return {a: close for a, (close, _raw) in read_stop_flags().items()}
+
+
+def read_stop_flags() -> Dict[str, Tuple[bool, str]]:
+    """Like read_stops, plus each flag's raw text, so the flag can be cleared
+    only if it is still the one this cycle acted on (audit M4)."""
+    out: Dict[str, Tuple[bool, str]] = {}
     d = _stop_dir()
     if not d.is_dir():
         return out
@@ -110,18 +116,31 @@ def read_stops() -> Dict[str, bool]:
         if not _ADDR_RE.match(addr):
             continue
         try:
-            raw = json.loads(f.read_text() or "{}")
-            out[addr] = bool(raw.get("close_positions", True)) if isinstance(raw, dict) else True
-        except (OSError, ValueError):
-            out[addr] = True
+            text = f.read_text()
+        except OSError:
+            out[addr] = (True, "")
+            continue
+        try:
+            raw = json.loads(text or "{}")
+            out[addr] = (bool(raw.get("close_positions", True)) if isinstance(raw, dict) else True, text)
+        except ValueError:
+            out[addr] = (True, text)
     return out
 
 
-def _clear_stop(addr: str) -> None:
+def _clear_stop(addr: str, seen: Optional[str] = None) -> bool:
+    """Delete the stop flag. With `seen` (the text read at cycle start), only
+    when the file still holds that text: a stop re-posted mid-cycle (say
+    close_positions false -> true) is a NEW request and stays for the next
+    cycle (audit M4). Returns True when the flag was removed."""
+    path = _stop_dir() / f"{addr}.flag"
     try:
-        (_stop_dir() / f"{addr}.flag").unlink()
+        if seen is not None and path.read_text() != seen:
+            return False
+        path.unlink()
+        return True
     except FileNotFoundError:
-        pass
+        return False
 
 
 class EngineAlreadyRunning(RuntimeError):
@@ -205,11 +224,12 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
                     reason=f"close-all complete: closed {len(close_all_summary['closed'])} "
                            f"copies, entries disabled"))
 
+        stop_flags = read_stop_flags()
         summary = core.run_cycle(settings, venue, state, our_address, now_ms, log_event,
-                                 stops=read_stops(), creds=creds,
+                                 stops={a: c for a, (c, _t) in stop_flags.items()}, creds=creds,
                                  switched_in=switched_from is not None)
         for addr in summary.get("stops_done") or []:
-            _clear_stop(addr)
+            _clear_stop(addr, stop_flags.get(addr, (True, None))[1])
         summary["close_all"] = close_all_summary
         duration_ms = int((time.monotonic() - t0) * 1000)
         summary["ts_ms"] = now_ms

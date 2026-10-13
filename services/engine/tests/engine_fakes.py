@@ -28,6 +28,7 @@ class FakeVenue:
         self.closes: List[str] = []
         self.levs: Dict[str, Dict[str, Any]] = {}
         self.fail_market: Set[str] = set()
+        self.reject_error: Dict[str, str] = {}    # market() on these coins: clean rejection with this error
         self.fail_close: bool = False
         # contract v2 behaviors
         # partial fills: coin -> fraction of the requested size that fills (ok False when < 1)
@@ -48,6 +49,10 @@ class FakeVenue:
         # userNonFundingLedgerUpdates: user -> rows ({time, hash, delta}); None = read fails
         self.ledger: Dict[str, Optional[List[Dict[str, Any]]]] = {}
         self.ledger_calls: List[tuple] = []
+        # userFillsByTime: user -> raw HL fill rows; unset = read fails (None)
+        self.user_fills: Dict[str, List[Dict[str, Any]]] = {}
+        self.fills_calls: List[tuple] = []
+        self.close_cloids: List[Optional[str]] = []
 
     # ── setup helpers (not part of the Venue protocol) ──────────────────
 
@@ -129,7 +134,11 @@ class FakeVenue:
         return notional_usd / mid if mid else 0.0
 
     def fills(self, user: str, start_ms: int, end_ms: int):
-        return None
+        rows = self.user_fills.get(user)
+        if rows is None:
+            return None
+        self.fills_calls.append((user, start_ms, end_ms))
+        return [f for f in rows if start_ms <= int(f.get("time", 0)) <= end_ms]
 
     def leaderboard(self):
         return None
@@ -158,6 +167,8 @@ class FakeVenue:
         self.slippages.append(max_slippage_pct)
         if coin in self.fail_market:
             return {"ok": False, "error": "rejected"}
+        if coin in self.reject_error:
+            return {"ok": False, "ambiguous": False, "error": self.reject_error[coin]}
         self.orders.append((coin, is_buy, round(size, 6), reduce_only))
         if coin in self.ambiguous:
             return {"ok": False, "ambiguous": True, "error": "timeout"}
@@ -173,6 +184,7 @@ class FakeVenue:
         if self.fail_close:
             return {"ok": False, "error": "failed"}
         self.closes.append(coin)
+        self.close_cloids.append(cloid)
         if coin in self.close_ambiguous:
             return {"ok": False, "ambiguous": True, "error": "timeout"}
         if coin in self.close_filled:

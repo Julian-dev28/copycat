@@ -523,3 +523,15 @@ def test_main_wallet_key_surfaces_as_ok_false_with_instructions(monkeypatch):
 def test_agent_key_different_from_account_passes_check():
     assert sdk.check_agent_key("0x" + "11" * 32, ACCOUNT) is None
     assert "not a valid private key" in sdk.check_agent_key("0xzz", ACCOUNT)
+
+
+def test_s10_taker_fee_rate_applies_referral_and_staking_discounts(monkeypatch):
+    from hl import venue as hv
+    monkeypatch.setattr(hv, "http_post", lambda path, body: {
+        "userCrossRate": "0.0004", "activeReferralDiscount": "0.04",
+        "activeStakingDiscount": {"bpsOfMaxSupply": "0.0", "discount": "0.1"}})
+    assert abs(hv.HlVenue().taker_fee_rate("0x" + "1" * 40) - 0.0004 * 0.96 * 0.9) < 1e-12
+    monkeypatch.setattr(hv, "http_post", lambda path, body: None)
+    assert hv.HlVenue().taker_fee_rate("0x" + "1" * 40) is None
+    monkeypatch.setattr(hv, "http_post", lambda path, body: {"userCrossRate": "2"})
+    assert hv.HlVenue().taker_fee_rate("0x" + "1" * 40) is None

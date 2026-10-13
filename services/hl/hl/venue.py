@@ -836,6 +836,24 @@ class HlVenue:
             logger.error(f"[hl.venue] ledger_updates: unexpected failure for user={user}: {exc}")
             return None
 
+    def taker_fee_rate(self, user: str) -> Optional[float]:
+        """The account's effective perp taker rate as a fraction (0.00045 =
+        4.5 bps): HL `userFees.userCrossRate` (volume tier included) after
+        the active referral and staking discounts. None on any failure.
+        Shape curled 2026-10-14: {"userCrossRate": "0.00045",
+        "activeReferralDiscount": "0.0", "activeStakingDiscount": {"discount": "0.0", ...}}."""
+        raw = http_post("/info", {"type": "userFees", "user": user})
+        try:
+            rate = float(raw["userCrossRate"])
+            ref = float(raw.get("activeReferralDiscount") or 0.0)
+            stk = raw.get("activeStakingDiscount") or {}
+            stake = float(stk.get("discount") or 0.0) if isinstance(stk, dict) else 0.0
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not (0.0 < rate < 0.01) or not (0.0 <= ref < 1.0) or not (0.0 <= stake < 1.0):
+            return None
+        return rate * (1.0 - ref) * (1.0 - stake)
+
     # ── writes ───────────────────────────────────────────────────────────
 
     def pin_credentials(self) -> Optional[env.Credentials]:

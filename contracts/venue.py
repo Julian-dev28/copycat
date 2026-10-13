@@ -95,6 +95,9 @@ class Venue(Protocol):
         # raw HL {"type":"userNonFundingLedgerUpdates"} rows ({time, hash, delta}) with
         # time >= start_ms, oldest first, every page read. None on failure or when the
         # rows did not fit in the page budget (never a silently truncated list).
+    def taker_fee_rate(self, user: str) -> Optional[float]: ...
+        # optional: effective perp taker fee as a fraction (HL userFees, tier and
+        # discounts applied). None on failure; callers check hasattr and fall back.
     # writes (need COPYCAT_AGENT_KEY; return ok False with error otherwise)
     def set_leverage(self, coin: str, leverage: int, is_cross: bool) -> OrderResult: ...  # strict: ok only on HL status "ok"
     def market(self, coin: str, is_buy: bool, size: float, mid: float,

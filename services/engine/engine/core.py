@@ -79,6 +79,7 @@ _FULL_FILL_TOL = 1e-6
 _MARKS_KEY = "last_marks"                 # coin -> last seen liq/mark px of OUR copy
 _VANISH_PENDING_KEY = "vanish_pending"    # coin -> ts_ms of the first read it was missing
 _PENDING_REDUCES_KEY = "pending_reduces"  # coin -> ambiguous reduce awaiting resolution
+_PENDING_CLOSES_KEY = "pending_closes"    # coin -> {cloid, sent_ms} of an ambiguous close (audit S7)
 _LAST_DRY_RUN_KEY = "last_dry_run"
 _CATCH_UP_KEY = "catch_up"                # coin -> unfilled remainder of a liquidity-split entry
 # v9 one-shot wallets: leader -> {"invested_ms", "coins": {coin: +1 long / -1 short}}, the
@@ -88,6 +89,43 @@ STOP_REASON = "stop wallet"
 VANISHED_REASON = "our copy vanished (liquidated or closed outside copycat)"
 # order_status values that mean "not settled yet, ask again next cycle"
 _UNSETTLED = (None, "open")
+# Audit M2: a CLEAN rejection that a later cycle can pass (rate limit, the
+# book past our slippage cap, margin freed by a close, an IOC with nothing to
+# match) is retried instead of ignoring the coin until he goes flat. Each
+# retry re-runs the worse-entry check against the new mid. After
+# _TRANSIENT_MAX_TRIES within _TRANSIENT_WINDOW_MS the coin is ignored as before.
+_TRANSIENT_REJECT = re.compile(
+    r"\b429\b|rate.?limit|too many requests|slippage cap|insufficient margin|not enough margin"
+    r"|could not immediately match|no liquidity",
+    re.IGNORECASE)
+_TRANSIENT_KEY = "transient_rejects"      # coin -> [tries, first_ms]
+_TRANSIENT_MAX_TRIES = 12
+_TRANSIENT_WINDOW_MS = 10 * 60_000
+
+
+def is_transient_reject(error: Any) -> bool:
+    return bool(_TRANSIENT_REJECT.search(str(error or "")))
+
+
+def _note_transient(state: EngineState, coin: str, now_ms: int) -> int:
+    """Count one transient rejection for `coin`; returns the tries in the window."""
+    book = state.get_kv(_TRANSIENT_KEY)
+    book = book if isinstance(book, dict) else {}
+    tries, first = book.get(coin) or [0, now_ms]
+    if now_ms - int(first) > _TRANSIENT_WINDOW_MS:
+        tries, first = 0, now_ms
+    book[coin] = [int(tries) + 1, int(first)]
+    state.set_kv(_TRANSIENT_KEY, book)
+    return int(tries) + 1
+
+
+def _clear_transient(state: EngineState, coin: str) -> None:
+    book = state.get_kv(_TRANSIENT_KEY)
+    if isinstance(book, dict) and coin in book:
+        del book[coin]
+        state.set_kv(_TRANSIENT_KEY, book)
+
+
 # "unknown" right after sending can mean HL has not processed the order yet;
 # only believe it once the order is this old.
 _UNKNOWN_GRACE_MS = 30_000
@@ -146,6 +184,7 @@ class _Cycle:
         self.out = out
         self.dry = settings.dry_run
         self.our_positions: Dict[str, Any] = {}
+        self.our_address = ""
         self.available: Dict[str, float] = {}
         self.shared_margin = False   # unified/portfolio margin: one pool repeated under every dex key
         self.equity_usd = 0.0
@@ -201,6 +240,9 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     # Audit B2: every write this cycle signs with these credentials and is
     # refused by the venue if the active account changed mid-cycle.
     cy.creds = creds
+    cy.our_address = our_address
+    if not settings.dry_run:
+        _refresh_fee_rate(cy)
 
     last_dry = state.get_kv(_LAST_DRY_RUN_KEY)
     if last_dry is not None and bool(last_dry) != settings.dry_run:
@@ -642,7 +684,15 @@ def _do_close(cy: _Cycle, coin: str, leader: str) -> bool:
         return True
     want = abs(_szi(cy.our_positions, coin))
     pos = dict(cy.our_positions.get(coin) or {})
-    res = cy.venue.close(coin, cloid=new_cloid(), **_wkw(cy))
+    cloid = new_cloid()
+    res = cy.venue.close(coin, cloid=cloid, **_wkw(cy))
+    if res.get("ambiguous") and _filled(res) <= 0:
+        pc = state.get_kv(_PENDING_CLOSES_KEY)
+        pc = pc if isinstance(pc, dict) else {}
+        prior = pc.get(coin) or {}
+        pc[coin] = {"cloids": sorted(set(prior.get("cloids") or []) | {cloid}),
+                    "sent_ms": int(prior.get("sent_ms") or cy.now_ms)}
+        state.set_kv(_PENDING_CLOSES_KEY, pc)
     if not _full(res, want):
         if _filled(res) > 0:
             _book_fill(state, cy.venue, leader, coin, pos, res, _filled(res), cy.now_ms)
@@ -654,8 +704,15 @@ def _do_close(cy: _Cycle, coin: str, leader: str) -> bool:
             reason = f"close failed, retrying next cycle: {res.get('error')}"
         cy.skip(coin, reason)
         return False
-    _book_fill(state, cy.venue, leader, coin, pos, res, _close_size(res, want), cy.now_ms)
+    took = _close_size(res, want)
+    if took > 0:
+        _book_fill(state, cy.venue, leader, coin, pos, res, took, cy.now_ms)
+    else:
+        # Already flat when we went to close: an earlier ambiguous close
+        # filled, or HL / the user closed it. Book what HL realized (S7).
+        _book_vanished(cy, leader, coin, cy.now_ms)
     state.delete_copy(coin)
+    _drop_pending_close(state, coin)
     _set_catch_up(state, coin, None)
     cy.our_positions.pop(coin, None)
     out["closed"].append(coin)
@@ -1002,8 +1059,12 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
     if copy is None:
         lev_res = venue.set_leverage(coin, lev, actual_cross, **_wkw(cy))
         if not lev_res.get("ok"):
+            if is_transient_reject(lev_res.get("error")) and _note_transient(state, coin, cy.now_ms) <= _TRANSIENT_MAX_TRIES:
+                cy.skip(coin, f"set_leverage rejected ({lev_res.get('error')}), retrying next cycle")
+                return "retry"
+            _clear_transient(state, coin)
             ignored.add(coin)
-            cy.skip(coin, "set_leverage failed")
+            cy.skip(coin, f"set_leverage failed: {lev_res.get('error')}")
             return "skip"
 
     size = venue.size_for(coin, ntl, mid)
@@ -1026,7 +1087,15 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
                 _set_catch_up(state, coin, None)   # never re-send blind
             return "skip"                # an open keeps its pending row; an add is not re-sent
         if copy is None:
-            state.delete_copy(coin)
+            state.delete_copy(coin)        # clean rejection: nothing reached the book
+        if not catch_up and is_transient_reject(res.get("error")):
+            tries = _note_transient(state, coin, cy.now_ms)
+            if tries <= _TRANSIENT_MAX_TRIES:
+                cy.skip(coin, f"order rejected ({res.get('error')}), retrying next cycle "
+                              f"({tries}/{_TRANSIENT_MAX_TRIES})")
+                return "retry"
+            _clear_transient(state, coin)
+        if copy is None:
             ignored.add(coin)
         cy.skip(coin, f"order rejected: {res.get('error')}")
         return "skip"
@@ -1044,9 +1113,10 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         ntl = filled * px
         if short >= HL_MIN_ORDER_USD:
             carry += short
+    _clear_transient(state, coin)
     _spend_margin(cy, dex, ntl / lev)
     cy.alloc_spent[leader] = cy.alloc_spent.get(leader, 0.0) + ntl / lev
-    open_fee = fill_fee_usd(res, ntl)
+    open_fee = fill_fee_usd(res, ntl, fee_bps(state))
     if open_fee:
         state.book_pnl(leader, -open_fee, open_fee, cy.now_ms)
     if copy is None:
@@ -1261,6 +1331,10 @@ def _resolve_pending(cy: _Cycle) -> None:
         st = _order_status(cy, p["cloid"])
         if not _settled(st, int(p.get("sent_ms") or 0), cy.now_ms):
             continue
+        if not _dex_was_read(cy, coin):
+            # Audit M9: a read that did not cover this dex says "flat" for every
+            # coin on it; that is not a fill. Resolve on a read that saw it.
+            continue
         size_after = abs(_szi(cy.our_positions, coin))
         ls = state.get_leader(p["leader"])
         if ls is not None:
@@ -1269,9 +1343,14 @@ def _resolve_pending(cy: _Cycle) -> None:
             state.put_leader(ls)
         filled = max(0.0, p["size_before"] - size_after)
         if filled > 0:
-            booked = ({"szi": p["szi"], "entry_px": p["entry_px"]} if p.get("entry_px")
-                      else cy.our_positions.get(coin) or {})
-            _book_fill(state, venue, p["leader"], coin, booked, {}, filled, cy.now_ms)
+            real = _realized_from_fills(cy, coin, int(p.get("sent_ms") or 0) - 60_000,
+                                        {p["cloid"]}, include_uncloided=False)
+            if real is not None:
+                state.book_pnl(p["leader"], real[0], real[1], cy.now_ms)
+            else:
+                booked = ({"szi": p["szi"], "entry_px": p["entry_px"]} if p.get("entry_px")
+                          else cy.our_positions.get(coin) or {})
+                _book_fill(state, venue, p["leader"], coin, booked, {}, filled, cy.now_ms)
         cy.event("reduce" if filled > 0 else "skip", leader=p["leader"], coin=coin,
                  reason=f"ambiguous reduce settled ({st}): filled {filled:.6g} of {p['order_size']:.6g}")
         del pending[coin]
@@ -1310,12 +1389,35 @@ def _reconcile_vanished(cy: _Cycle) -> None:
             continue
         state.delete_copy(c.coin)
         _ignore_while_leader_holds(state, c.leader, c.coin)
+        _book_vanished(cy, c.leader, c.coin, int(pending[c.coin]))
         liq = (marks.get(c.coin) or {}).get("liq_px")
         reason = (f"{VANISHED_REASON}, last liq px {liq:.6g}" if isinstance(liq, (int, float))
                   else f"{VANISHED_REASON}, last liq px unknown")
         cy.out["vanished"].append(c.coin)
         cy.event("skip", leader=c.leader, coin=c.coin, reason=reason)
     state.set_kv(_VANISH_PENDING_KEY, still_pending)
+
+
+def _drop_pending_close(state: EngineState, coin: str) -> None:
+    pc = state.get_kv(_PENDING_CLOSES_KEY)
+    if isinstance(pc, dict) and coin in pc:
+        del pc[coin]
+        state.set_kv(_PENDING_CLOSES_KEY, pc)
+
+
+def _book_vanished(cy: _Cycle, leader: str, coin: str, first_missing_ms: int) -> None:
+    """Audit S7: a copy that left our account without a confirmed close (an
+    ambiguous close that did fill, a liquidation, a manual close) books what
+    HL says it realized: fills of the parked close cloids plus fills with no
+    cloid, from a little before the first read that missed it."""
+    pc = cy.state.get_kv(_PENDING_CLOSES_KEY)
+    pc = pc if isinstance(pc, dict) else {}
+    parked = pc.pop(coin, None) or {}
+    cy.state.set_kv(_PENDING_CLOSES_KEY, pc)
+    start = min(int(parked.get("sent_ms") or first_missing_ms), first_missing_ms) - 10 * 60_000
+    real = _realized_from_fills(cy, coin, start, set(parked.get("cloids") or []), include_uncloided=True)
+    if real is not None:
+        cy.state.book_pnl(leader, real[0], real[1], cy.now_ms)
 
 
 def _ignore_while_leader_holds(state: EngineState, leader: str, coin: str) -> None:
@@ -1362,6 +1464,7 @@ def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
                        _close_size(res, want), now_ms)
             _set_catch_up(state, c.coin, None)
             state.delete_copy(c.coin)
+            _drop_pending_close(state, c.coin)
             pending_reduces.pop(c.coin, None)
             _ignore_while_leader_holds(state, c.leader, c.coin)
             out["closed"].append(c.coin)
@@ -1392,17 +1495,44 @@ def _close_size(res: Dict[str, Any], want: float) -> float:
 
 
 TAKER_FEE_BPS = float(os.environ.get("COPYCAT_TAKER_FEE_BPS", "4.5"))   # HL base tier taker
+_FEE_RATE_KEY = "taker_fee_bps"           # {"bps", "ts_ms"}: the account's real HL taker rate (S10)
+_FEE_RATE_TTL_MS = 60 * 60_000
 
 
-def fill_fee_usd(res: Dict[str, Any], notional_usd: float) -> float:
-    """Fee for one fill: the one HL reported, else an estimate at the taker
-    rate. HL order responses carry no fee, and every copy order is an IOC
-    (taker), so the estimate is the right default; a volume-tier discount
-    makes it a slight overstatement, which is the safe direction for PnL."""
+def _refresh_fee_rate(cy: "_Cycle") -> None:
+    """Audit S10: read the account's real taker rate (volume tier, referral
+    and staking discounts) at most hourly; keep the last good one on failure."""
+    cur = cy.state.get_kv(_FEE_RATE_KEY)
+    if isinstance(cur, dict) and cy.now_ms - int(cur.get("ts_ms") or 0) < _FEE_RATE_TTL_MS:
+        return
+    fn = getattr(cy.venue, "taker_fee_rate", None)
+    if fn is None or not cy.our_address:
+        return
+    try:
+        rate = fn(cy.our_address)
+    except Exception:
+        logger.warning("taker fee rate read failed", exc_info=True)
+        rate = None
+    if rate is not None and 0.0 < float(rate) < 0.01:
+        cy.state.set_kv(_FEE_RATE_KEY, {"bps": float(rate) * 10_000, "ts_ms": cy.now_ms})
+
+
+def fee_bps(state: Optional[EngineState]) -> float:
+    """The account's taker rate in bps when known, else COPYCAT_TAKER_FEE_BPS."""
+    cur = state.get_kv(_FEE_RATE_KEY) if state is not None else None
+    bps = _float_or_none(cur.get("bps")) if isinstance(cur, dict) else None
+    return bps if bps is not None and bps > 0 else TAKER_FEE_BPS
+
+
+def fill_fee_usd(res: Dict[str, Any], notional_usd: float, bps: Optional[float] = None) -> float:
+    """Fee for one fill: the one HL reported, else notional x the taker rate
+    (`bps`: the account's real rate from `fee_bps(state)`, default
+    COPYCAT_TAKER_FEE_BPS). HL order responses carry no fee, and every copy
+    order is an IOC (taker)."""
     reported = _float_or_none(res.get("fee")) or _float_or_none(res.get("fee_usd"))
     if reported:
         return abs(reported)
-    return abs(notional_usd) * TAKER_FEE_BPS / 10_000
+    return abs(notional_usd) * (TAKER_FEE_BPS if bps is None else bps) / 10_000
 
 
 def _book_fill(state: EngineState, venue: Venue, leader: str, coin: str, pos: Dict[str, Any],
@@ -1430,9 +1560,45 @@ def _book_fill(state: EngineState, venue: Venue, leader: str, coin: str, pos: Di
     if px <= 0:
         logger.warning("no fill px or mid for %s, realized PnL not booked", coin)
         return
-    fee = fill_fee_usd(res, px * size)
+    fee = fill_fee_usd(res, px * size, fee_bps(state))
     sign = 1.0 if szi > 0 else -1.0
     state.book_pnl(leader, (px - entry) * size * sign - fee, fee, now_ms)
+
+
+def _realized_from_fills(cy: _Cycle, coin: str, start_ms: int, cloids: Set[str],
+                         include_uncloided: bool) -> Optional[Tuple[float, float, int]]:
+    """Audit S7: realized PnL straight from OUR fills on `coin` since
+    `start_ms` (HL's closedPnl, which uses HL's own entry, minus the fee HL
+    charged). Only fills whose cloid is in `cloids`, plus, with
+    `include_uncloided`, fills without one (a liquidation or a manual close);
+    fills of copycat's other orders were already booked when they returned.
+    Returns (pnl, fee, n_fills), or None when the read failed or found
+    nothing, so the caller falls back to its estimate."""
+    fills_fn = getattr(cy.venue, "fills", None)
+    if not cy.our_address or fills_fn is None:
+        return None
+    try:
+        rows = fills_fn(cy.our_address, max(0, int(start_ms)), cy.now_ms)
+    except Exception:
+        logger.warning("fills read failed for %s", coin, exc_info=True)
+        return None
+    if not rows:
+        return None
+    pnl = fee = 0.0
+    n = 0
+    for f in rows:
+        if not isinstance(f, dict) or f.get("coin") != coin:
+            continue
+        cl = f.get("cloid")
+        if not ((cl and cl in cloids) or (not cl and include_uncloided)):
+            continue
+        cp, fe = _float_or_none(f.get("closedPnl")), _float_or_none(f.get("fee"))
+        if cp is None:
+            continue
+        pnl += cp
+        fee += abs(fe or 0.0)
+        n += 1
+    return (pnl - fee, fee, n) if n else None
 
 
 def _run_stop(cy: _Cycle, addr: str, close_positions: bool) -> bool:
@@ -1685,7 +1851,11 @@ def _build_positions(state: EngineState, our_account: Dict[str, Any],
         out.append(CopyPosition(
             coin=c.coin, leader=c.leader, side="long" if szi >= 0 else "short", size=szi,
             entry_px=entry_px, mark_px=mark_px, notional_usd=round(notional_usd, 4),
-            leverage=c.leverage, is_cross=c.is_cross,
+            # Audit S9: HL's actual leverage and margin type (the user may change
+            # them on HL, HL may clamp), not what we requested at open.
+            leverage=_actual_leverage(raw, c.leverage),
+            is_cross=((raw.get("leverage") or {}).get("type") == "cross") if isinstance(raw.get("leverage"), dict)
+            and (raw.get("leverage") or {}).get("type") else c.is_cross,
             unrealized_pnl_usd=float(raw.get("unrealizedPnl") or 0.0),
             liquidation_px=liq_px,
             opened_ms=c.opened_ms, sizing_mode=SizingMode(c.sizing_mode),
@@ -1693,6 +1863,12 @@ def _build_positions(state: EngineState, our_account: Dict[str, Any],
     live = {c.coin for c in copies}
     state.set_kv(_MARKS_KEY, {k: v for k, v in marks.items() if k in live})
     return out
+
+
+def _actual_leverage(raw: Dict[str, Any], requested: int) -> int:
+    lev = raw.get("leverage")
+    v = _float_or_none(lev.get("value")) if isinstance(lev, dict) else None
+    return max(1, int(round(v))) if v and v > 0 else requested
 
 
 def _float_or_none(v: Any) -> Optional[float]:
