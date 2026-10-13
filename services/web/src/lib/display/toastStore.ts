@@ -21,7 +21,20 @@ export const TOAST_MAX = 3;
 
 type Listener = () => void;
 
-export function createToastStore(clock: { set: typeof setTimeout; clear: typeof clearTimeout } = { set: setTimeout, clear: clearTimeout }) {
+/**
+ * `setTimeout`/`clearTimeout` are brand-checked natives in real browsers: a
+ * bare reference called as `clock.set(...)` (receiver = the plain `clock`
+ * object, not `window`) throws "Illegal invocation" in Chromium/V8, though
+ * not under jsdom (vitest's default clock below never hit this: it mocks
+ * the globals in place, so `clock.set` and a bare call behave the same
+ * there). `.bind(globalThis)` pins the receiver so the call shape at the
+ * use site no longer matters. Found by the e2e demo lane running in a real
+ * browser: every `toast(...)` call threw before its first `emit()`, so no
+ * toast ever reached <Toaster> (regression test: toastStore.test.ts).
+ */
+const BOUND_CLOCK = { set: setTimeout.bind(globalThis), clear: clearTimeout.bind(globalThis) };
+
+export function createToastStore(clock: { set: typeof setTimeout; clear: typeof clearTimeout } = BOUND_CLOCK) {
   let items: Toast[] = [];
   let nextId = 1;
   const timers = new Map<number, { handle: ReturnType<typeof setTimeout> | null; remaining: number; startedAt: number }>();

@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, gotoDemo, trackErrors } from "../../fixtures";
+import { test, expect, gotoDemo } from "../../fixtures";
 
 const invest = (page: Page) => page.getByRole("textbox", { name: /^Invest/ });
 const backtest = (page: Page) => page.getByRole("region", { name: /backtest/i });
@@ -32,24 +32,32 @@ async function setLeverage(page: Page, key: "Home" | "End") {
 }
 
 test.describe("demo Trade", () => {
-  test.afterEach(async ({ writes }) => {
+  test.afterEach(async ({ writes, errors }) => {
     expect(writes, "demo mode must never send a non-GET request").toEqual([]);
+    // Every Trade flow goes through this: a hydration crash or a native call
+    // with the wrong receiver (e.g. the toastStore "Illegal invocation" bug,
+    // only reproducible in a real browser, not jsdom) must fail every test
+    // in this file, not just the one that happened to assert on it by hand.
+    expect(errors, "no uncaught page error").toEqual([]);
   });
 
   test("custom copy lands in Running with the invested amount", async ({ page }) => {
-    const errors = trackErrors(page);
     await gotoDemo(page, "/");
     const copy = page.getByRole("button", { name: "Copy trader" });
     await expect(copy).toBeDisabled();
     await invest(page).fill("100");
     await expect(copy).toBeEnabled();
     await copy.click();
-    await expect(page.getByRole("status").filter({ hasText: /Copying/ })).toContainText("$100.00");
+    // Two separate confirmations: the ticket's own inline line, and the toast
+    // (toastStore regression: a real browser threw "Illegal invocation" on
+    // every toast before it reached its first subscriber notification, so
+    // the toast queue was silently empty and <Toaster> never rendered one).
+    await expect(page.getByTestId("ticket-action-bar").getByRole("status")).toContainText("$100.00");
+    await expect(page.getByLabel("Notifications").getByRole("status")).toContainText("$100.00");
     await expect(copiesTab(page, "Running")).toHaveAccessibleName(/Running 1/);
     const row = firstCopyRow(page);
     await expect(row).toContainText("$100.00");
     await expect(row).toContainText(/Custom/);
-    expect(errors).toEqual([]);
   });
 
   test("global copy uses Settings terms", async ({ page }) => {
@@ -97,7 +105,9 @@ test.describe("demo Trade", () => {
     await only.click();
     await only.fill("ETH");
     await only.press("Enter");
-    await expect(page.getByText(/ETH/).first()).toBeVisible();
+    // Scoped to the chip itself: a bare `getByText(/ETH/)` also matches the
+    // (closed) suggestion listbox option sharing the same "ETH" text node shape.
+    await expect(page.getByRole("button", { name: "Remove ETH from Only these coins" })).toBeVisible();
   });
 
   test("pause, resume, log drawer, share card, stop and close, archive", async ({ page }) => {
@@ -142,7 +152,7 @@ test.describe("demo Trade", () => {
 
   test("paste an address selects that wallet", async ({ page }) => {
     await gotoDemo(page, "/");
-    await page.getByRole("textbox", { name: "Search wallets" }).fill("0x2222222222222222222222222222222222222222");
+    await page.getByRole("textbox", { name: "Search traders" }).fill("0x2222222222222222222222222222222222222222");
     await page.getByRole("button", { name: /^0x22…2222/ }).click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("0x2222");
   });

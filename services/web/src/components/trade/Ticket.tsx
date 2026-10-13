@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { CheckCircle2, ChevronUp, PauseCircle, ScrollText } from "lucide-react";
 import { Badge, Button, SegmentedControl, Tooltip, toast } from "@/components/ui";
@@ -9,7 +9,7 @@ import { LABELS } from "@/lib/labels";
 import { problemText } from "@/lib/trade/apiState";
 import { algoWarning } from "@/lib/trade/algo";
 import { walletStatus } from "@/lib/trade/lifecycle";
-import { actionSummary, allocationBreakdown, disabledReason, effectiveLeverageText } from "@/lib/trade/ticketView";
+import { actionSummary, allocationBreakdown, disabledReason, effectiveLeverageText, leverageMismatch } from "@/lib/trade/ticketView";
 import type { TraderProfile, TraderRow } from "@/lib/scout/types";
 import type { TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
 import { AlgoWarning, CoinFilterFields, DirectionSwitch } from "./TicketExtras";
@@ -19,7 +19,7 @@ import { AmountField } from "./AmountField";
 import { LeverageField } from "./LeverageField";
 import { AdvancedFields } from "./AdvancedFields";
 import { PreviewBox } from "./PreviewBox";
-import { LiveCopyDialog, StopDialog, SwitchSourceDialog } from "./TicketDialogs";
+import { LeverageMismatchDialog, LiveCopyDialog, StopDialog, SwitchSourceDialog } from "./TicketDialogs";
 import { TicketBanners } from "./TicketBanners";
 import { GlobalSummary } from "./GlobalSummary";
 import { useCopyWallet, useStopWallet } from "./hooks";
@@ -72,7 +72,9 @@ export function Ticket({
 }) {
   const copy = useCopyWallet();
   const stop = useStopWallet();
-  const [confirm, setConfirm] = useState<"live" | "switch" | null>(null);
+  const [confirm, setConfirm] = useState<"live" | "switch" | "leverage" | null>(null);
+  /** Stages already confirmed in this submit chain; cleared on cancel or once the request goes out. */
+  const confirmedStages = useRef(new Set<"live" | "switch" | "leverage">());
   const [stopOpen, setStopOpen] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
@@ -90,16 +92,20 @@ export function Ticket({
   const breakdown = custom ? allocationBreakdown(t.amount, preview) : null;
   const summary = actionSummary(preview);
   const cap = settings?.max_position_leverage;
+  const mismatch = preview ? leverageMismatch(preview.liq, preview.hisLeverage, d.mode) : null;
 
   function finish(msg: string) {
     setDone(msg);
     toast.success(msg);
   }
 
-  function submit(confirmed = false) {
+  function submit() {
     if (!t.body || t.action === "unchanged") return;
-    if (!confirmed && t.switching) return setConfirm("switch");
-    if (!confirmed && t.action === "copy" && live) return setConfirm("live");
+    const done = confirmedStages.current;
+    if (!done.has("switch") && t.switching) return setConfirm("switch");
+    if (!done.has("leverage") && mismatch?.severe) return setConfirm("leverage");
+    if (!done.has("live") && t.action === "copy" && live) return setConfirm("live");
+    confirmedStages.current = new Set();
     const body = t.body;
     const verb = t.action === "copy" ? (t.eff.direction === "counter" ? "Countering" : "Copying") : "Updated";
     const terms =
@@ -377,10 +383,28 @@ export function Ticket({
         open={confirm === "live"}
         name={label}
         amount={custom ? t.amount : null}
-        onCancel={() => setConfirm(null)}
-        onConfirm={() => {
+        onCancel={() => {
+          confirmedStages.current = new Set();
           setConfirm(null);
-          submit(true);
+        }}
+        onConfirm={() => {
+          confirmedStages.current.add("live");
+          setConfirm(null);
+          submit();
+        }}
+      />
+      <LeverageMismatchDialog
+        open={confirm === "leverage"}
+        name={label}
+        mismatch={mismatch}
+        onCancel={() => {
+          confirmedStages.current = new Set();
+          setConfirm(null);
+        }}
+        onConfirm={() => {
+          confirmedStages.current.add("leverage");
+          setConfirm(null);
+          submit();
         }}
       />
       <SwitchSourceDialog
@@ -388,10 +412,14 @@ export function Ticket({
         name={label}
         to={d.source}
         live={live}
-        onCancel={() => setConfirm(null)}
-        onConfirm={() => {
+        onCancel={() => {
+          confirmedStages.current = new Set();
           setConfirm(null);
-          submit(true);
+        }}
+        onConfirm={() => {
+          confirmedStages.current.add("switch");
+          setConfirm(null);
+          submit();
         }}
       />
       <StopDialog

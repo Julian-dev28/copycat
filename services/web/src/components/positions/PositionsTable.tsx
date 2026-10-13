@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { CopyPosition } from "@/lib/api/types";
-import { formatLeverage, formatPrice, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
+import { formatAgo, formatLeverage, formatPrice, formatSignedPct, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
+import { roePct } from "@/lib/positions/view";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
@@ -14,11 +15,18 @@ const COLUMNS: { label: string; numeric?: boolean }[] = [
   { label: "Mark", numeric: true },
   { label: "Notional", numeric: true },
   { label: "Leverage", numeric: true },
-  { label: "uPnL", numeric: true },
+  { label: "uPnL (ROE)", numeric: true },
   { label: "Liq. px", numeric: true },
+  { label: "Opened", numeric: true },
 ];
 
-export function PositionsTable({ positions, loading }: { positions: CopyPosition[]; loading?: boolean }) {
+/** "+$5.00 (+25.0%)": HL's own positions table shows uPnL and ROE together, one column. */
+function pnlRoeText(p: CopyPosition): string {
+  const roe = roePct(p);
+  return roe === null ? formatSignedUsd(p.unrealized_pnl_usd) : `${formatSignedUsd(p.unrealized_pnl_usd)} (${formatSignedPct(roe)})`;
+}
+
+export function PositionsTable({ positions, loading, nowMs }: { positions: CopyPosition[]; loading?: boolean; nowMs?: number }) {
   const totalPnl = positions.reduce((sum, p) => sum + p.unrealized_pnl_usd, 0);
   return (
     <Panel>
@@ -40,7 +48,11 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
       ) : positions.length === 0 ? (
         <p className="border-t border-border px-5 py-10 text-center text-sm text-muted">
           No open copies. When a trader you copy opens a position, the copy shows up here within one cycle.{" "}
-          <Link href="/copy" className="text-accent underline-offset-2 hover:underline">
+          {/* axe link-in-text-block: text-accent against the surrounding muted
+              text is only 1.32:1, well under the 3:1 a color-only link needs,
+              so the link must also carry its own non-color signal: underline,
+              not only on hover. */}
+          <Link href="/copy" className="text-accent underline underline-offset-2">
             Check your copies
           </Link>
         </p>
@@ -58,7 +70,7 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
                     </span>
                   </div>
                   <span className={`font-num font-semibold ${p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
-                    {formatSignedUsd(p.unrealized_pnl_usd)}
+                    {pnlRoeText(p)}
                   </span>
                 </div>
                 <dl className="font-num grid grid-cols-3 gap-2 text-xs">
@@ -66,13 +78,16 @@ export function PositionsTable({ positions, loading }: { positions: CopyPosition
                   <MiniStat label="Entry" value={formatPrice(p.entry_px)} />
                   <MiniStat label="Liq." value={formatPrice(p.liquidation_px)} />
                 </dl>
-                <span className="flex items-center gap-1 text-xs text-muted">
-                  from <AddressChip address={p.leader} />
+                <span className="flex items-center justify-between gap-1 text-xs text-muted">
+                  <span className="flex items-center gap-1">
+                    from <AddressChip address={p.leader} />
+                  </span>
+                  {nowMs ? <span>opened {formatAgo(p.opened_ms, nowMs)}</span> : null}
                 </span>
               </li>
             ))}
           </ul>
-          <PositionsDesktopTable positions={positions} />
+          <PositionsDesktopTable positions={positions} nowMs={nowMs} />
         </>
       )}
     </Panel>
@@ -88,7 +103,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PositionsDesktopTable({ positions }: { positions: CopyPosition[] }) {
+function PositionsDesktopTable({ positions, nowMs }: { positions: CopyPosition[]; nowMs?: number }) {
   return (
     <div className="hidden overflow-x-auto border-t border-border md:block">
       <table className="w-full min-w-[820px] text-sm">
@@ -122,10 +137,11 @@ function PositionsDesktopTable({ positions }: { positions: CopyPosition[] }) {
               <td className="font-num px-3 py-2.5 text-right whitespace-nowrap">
                 {formatLeverage(p.leverage)} <span className="text-xs text-muted">{p.is_cross ? "cross" : "iso"}</span>
               </td>
-              <td className={`font-num px-3 py-2.5 text-right ${p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
-                {formatSignedUsd(p.unrealized_pnl_usd)}
+              <td className={`font-num px-3 py-2.5 text-right whitespace-nowrap ${p.unrealized_pnl_usd >= 0 ? "text-up" : "text-down"}`}>
+                {pnlRoeText(p)}
               </td>
-              <td className="font-num px-3 py-2.5 pr-5 text-right">{formatPrice(p.liquidation_px)}</td>
+              <td className="font-num px-3 py-2.5 text-right">{formatPrice(p.liquidation_px)}</td>
+              <td className="font-num px-3 py-2.5 pr-5 text-right whitespace-nowrap">{nowMs ? formatAgo(p.opened_ms, nowMs) : "—"}</td>
             </tr>
           ))}
         </tbody>

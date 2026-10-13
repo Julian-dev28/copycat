@@ -77,7 +77,7 @@ export function ProjectionPanel({
         <div className="h-[90px] animate-pulse rounded bg-surface-2" />
       )}
       <p className="text-[11px] text-muted">
-        Backtest of his past trades{direction === "counter" ? ", inverted" : ""}, not a promise. Real copies enter later and pay fees and slippage.
+        Backtest of his past trades{direction === "counter" ? ", inverted" : ""}, not a promise. Real copies enter later and pay fees, slippage and funding over the time a position stays open.
         {estimate ? " Estimate from his equity index: your api has no projection route yet." : proj?.note ? ` ${proj.note}` : ""}
       </p>
     </section>

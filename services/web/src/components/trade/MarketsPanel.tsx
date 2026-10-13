@@ -79,7 +79,18 @@ export function MarketsPanel({
         />
       </div>
 
-      <div className="max-h-[22rem] min-h-0 flex-1 overflow-y-auto md:max-h-[34rem] xl:max-h-none">
+      {/* Each tab's `aria-controls` names this element (`${base}-panel-${id}`, see
+          ui/Tabs.tsx): without it the id has nothing to point to and axe flags
+          every tab button (aria-valid-attr-value, critical). One div serves
+          as the panel for whichever tab is active; its content (the sticky
+          sub-header, list and "show more") already changes with `tab`. */}
+      <div
+        id={`markets-panel-${tab}`}
+        role="tabpanel"
+        aria-labelledby={`markets-tab-${tab}`}
+        tabIndex={0}
+        className="max-h-[22rem] min-h-0 flex-1 overflow-y-auto md:max-h-[34rem] xl:max-h-none"
+      >
         <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_2rem] items-center gap-2 border-b border-border bg-surface-2 px-3 py-1.5 text-label text-muted">
           <span>Trader</span>
           <span className="text-right" title="Equity index: 100 thirty days ago, deposits and withdrawals removed">Index</span>

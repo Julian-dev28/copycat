@@ -7,6 +7,8 @@ import {
   disabledReason,
   effectiveLeverageText,
   fullBookShortfall,
+  leverageMismatch,
+  leverageMismatchText,
   liqText,
   liqTone,
 } from "./ticketView";
@@ -87,5 +89,35 @@ describe("action bar summary (#8)", () => {
     expect(disabledReason({ ...base, amountText: "5", error: "Minimum $10" })).toBe("Minimum $10");
     expect(disabledReason({ ...base, hasBody: true })).toBeNull();
     expect(disabledReason({ ...base, hasBody: true, action: "unchanged" })).toBe("Nothing changed yet");
+  });
+});
+
+describe("leverageMismatch (user_consensus_2026-10-14.md P0 #4)", () => {
+  it("warns when your cushion is tighter than theirs, and flags it severe past half their cushion", () => {
+    // leader effective 3x: ~32.3% cushion. You at 10x: 9.0% cushion (exactly the research doc's example).
+    const m = leverageMismatch({ kind: "isolated", pct: 9, leverage: 10 }, 3, "target");
+    expect(m).not.toBeNull();
+    expect(m!.theirLeverage).toBe(3);
+    expect(m!.theirPct).toBeCloseTo(32.33, 1);
+    expect(m!.severe).toBe(true);
+    expect(leverageMismatchText(m!)).toBe(
+      "You liquidate on a ~9.0% move; they run an effective 3.0x (~32.3% cushion). A move they'd survive could wipe your copy.",
+    );
+  });
+  it("is tighter but not severe once your cushion is still over half of theirs", () => {
+    const m = leverageMismatch({ kind: "isolated", pct: 24, leverage: 4 }, 3, "target");
+    expect(m?.severe).toBe(false);
+  });
+  it("is null once your cushion is as wide as theirs or wider", () => {
+    expect(leverageMismatch({ kind: "isolated", pct: 49, leverage: 2 }, 3, "target")).toBeNull();
+  });
+  it("is null for cross margin (no single comparable number) or an unknown/zero leader leverage", () => {
+    expect(leverageMismatch({ kind: "cross", pct: 10 }, 3, "target")).toBeNull();
+    expect(leverageMismatch({ kind: "unknown" }, 3, "target")).toBeNull();
+    expect(leverageMismatch({ kind: "isolated", pct: 9, leverage: 10 }, null, "target")).toBeNull();
+    expect(leverageMismatch({ kind: "isolated", pct: 9, leverage: 10 }, 0, "target")).toBeNull();
+  });
+  it("is null in match mode even where the numbers would otherwise be severe: each copy already opens at the leader's own per-coin leverage there", () => {
+    expect(leverageMismatch({ kind: "isolated", pct: 9, leverage: 10 }, 3, "match")).toBeNull();
   });
 });

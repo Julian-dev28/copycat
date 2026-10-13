@@ -2,6 +2,10 @@
  * Shared fixtures. `baseURL` is the throwaway web server global-setup started.
  * Demo-mode pages get a write guard: every non-GET request that leaves the page
  * (to anything, not only the api) is recorded and fails the test at teardown.
+ * `errors` is the same shape for uncaught page errors (hydration crashes,
+ * render throws, a native call made with the wrong receiver e.g. a bare
+ * `setTimeout` reference invoked as `obj.method()`, which jsdom tolerates
+ * but a real browser's brand check does not: found this way in toastStore.ts).
  */
 import { test as base, expect, type Page, type Request } from "@playwright/test";
 import { readState, type StackState } from "./harness/stack";
@@ -9,6 +13,7 @@ import { readState, type StackState } from "./harness/stack";
 export interface Fixtures {
   stack: StackState;
   writes: string[];
+  errors: string[];
 }
 
 export const test = base.extend<Fixtures>({
@@ -28,6 +33,13 @@ export const test = base.extend<Fixtures>({
     await use(writes);
     page.off("request", onReq);
   },
+  errors: async ({ page }, use) => {
+    const errors: string[] = [];
+    const onErr = (e: Error) => errors.push(String(e));
+    page.on("pageerror", onErr);
+    await use(errors);
+    page.off("pageerror", onErr);
+  },
 });
 
 export { expect };
@@ -43,7 +55,7 @@ export async function gotoDemo(page: Page, route: string, extra = ""): Promise<v
   await page.locator("main").waitFor();
 }
 
-/** Collect uncaught page errors (hydration crashes, render throws). */
+/** Collect uncaught page errors (hydration crashes, render throws). Prefer the `errors` fixture in new tests: it is torn down for you and easy to assert on in one `afterEach`. */
 export function trackErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));

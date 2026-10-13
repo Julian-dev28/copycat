@@ -126,7 +126,9 @@ export function YourWallets({
             <thead>
               <tr>
                 {["Wallet", "Invested", "Leverage", "Exposure", "uPnL", "Realized", "ROE", "Copies", "Status", ""].map((h, i) => (
-                  <th key={i} scope="col" className={clsx(TH, i === 0 ? "text-left" : "text-right")}>{h}</th>
+                  <th key={i} scope="col" className={clsx(TH, i === 0 ? "text-left" : "text-right")}>
+                    {h || <span className="sr-only">Actions</span>}
+                  </th>
                 ))}
               </tr>
             </thead>

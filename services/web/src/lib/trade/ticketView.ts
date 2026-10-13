@@ -1,13 +1,19 @@
 /**
  * Pure view logic for the Trade ticket and the trader's positions table
- * (UX_AUDIT.md Top 10 #3, #5, #8, #10). Components stay thin: they render
- * what these functions decide.
+ * (UX_AUDIT.md Top 10 #3, #5, #8, #10; user_consensus_2026-10-14.md P0 #4).
+ * Components stay thin: they render what these functions decide.
  */
 import { formatUsd } from "@/lib/format";
+import { estimateLiquidationDistance } from "@/lib/liquidation";
 import type { LiqEstimate, TicketPreview } from "./ticket";
+import type { ExposureMode } from "./types";
 
 function money(n: number): string {
   return formatUsd(n, Math.abs(n) >= 100_000);
+}
+
+function pctText(pct: number): string {
+  return `${pct.toFixed(pct < 1 ? 2 : 1)}%`;
 }
 
 /* ---------- #10: where the allocation goes ---------- */
@@ -112,4 +118,44 @@ export function disabledReason(o: { hasBody: boolean; action: "copy" | "update" 
   if (o.hasBody) return null;
   if (o.custom && !o.amountText.trim()) return "Enter an amount";
   return o.error ?? "Not ready yet";
+}
+
+/* ---------- P0 (user_consensus_2026-10-14.md #4): your leverage vs their effective leverage ---------- */
+
+export interface LeverageMismatch {
+  /** Your liquidation distance at your chosen (capped) leverage, isolated. */
+  yourPct: number;
+  /** Their own estimated liquidation distance, from their effective (gross notional / their equity) leverage, isolated. */
+  theirPct: number;
+  /** Their effective leverage: gross notional / their equity (TicketPreview.hisLeverage). */
+  theirLeverage: number;
+  /** Your cushion is at most half of theirs: confirm before the copy opens (the most common documented way a copier is liquidated on a move the leader survives). */
+  severe: boolean;
+}
+
+/**
+ * Only meaningful in "Set leverage" (target) mode: a chosen number,
+ * independent of the leader's own. In "Follow their leverage" (match) mode
+ * each copy already opens at the leader's own per-coin leverage by
+ * construction, so comparing it against his blended portfolio ratio
+ * (gross notional / equity, across coins this ticket may not even copy)
+ * would flag the safest, most faithful mode as if it were the risky one.
+ *
+ * Null when there is nothing comparable to warn about: match mode, cross
+ * margin (no single isolated number), their leverage unknown, or your
+ * cushion is already as wide as theirs or wider. The leader's own margin
+ * mode is unknown from a position read alone, so "their effective
+ * leverage" is always treated as isolated here; that is an approximation,
+ * stated in the warning text, not a silent exact number.
+ */
+export function leverageMismatch(liq: LiqEstimate, theirLeverage: number | null | undefined, mode: ExposureMode): LeverageMismatch | null {
+  if (mode !== "target" || liq.kind !== "isolated" || theirLeverage == null || !Number.isFinite(theirLeverage) || theirLeverage <= 0) return null;
+  const theirPct = estimateLiquidationDistance(theirLeverage, "isolated").adverseMovePct;
+  if (theirPct == null || liq.pct >= theirPct) return null;
+  return { yourPct: liq.pct, theirPct, theirLeverage, severe: liq.pct <= theirPct / 2 };
+}
+
+/** "You liquidate on a ~9.0% move; they run an effective 3.0x (~32.3% cushion)." */
+export function leverageMismatchText(m: LeverageMismatch): string {
+  return `You liquidate on a ~${pctText(m.yourPct)} move; they run an effective ${m.theirLeverage.toFixed(1)}x (~${pctText(m.theirPct)} cushion). A move they'd survive could wipe your copy.`;
 }

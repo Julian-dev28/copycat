@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { formatUsd } from "@/lib/format";
 import { ARCHIVE_WORD, archiveConfirmed } from "@/lib/trade/lifecycle";
+import { leverageMismatchText, type LeverageMismatch } from "@/lib/trade/ticketView";
 
 /** First copy of a wallet while trading is live: real orders go out, say so once. */
 export function LiveCopyDialog({ open, name, amount, onCancel, onConfirm }: { open: boolean; name: string; amount: number | null; onCancel: () => void; onConfirm: () => void }) {
@@ -24,6 +25,30 @@ export function LiveCopyDialog({ open, name, amount, onCancel, onConfirm }: { op
         <>
           <Button variant="ghost" onClick={onCancel}>Cancel</Button>
           <Button variant="primary" onClick={onConfirm}>Copy for real</Button>
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * user_consensus_2026-10-14.md P0 #4: your chosen leverage gives a tighter
+ * liquidation cushion than the leader's own effective leverage, past half of
+ * theirs. The most common documented way a copier is liquidated on a move
+ * the leader survives, so it gets its own confirm step, not just the banner
+ * in the preview.
+ */
+export function LeverageMismatchDialog({ open, name, mismatch, onCancel, onConfirm }: { open: boolean; name: string; mismatch: LeverageMismatch | null; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title="Tighter liquidation than theirs?"
+      description={mismatch ? <>Copying {name} at this leverage: {leverageMismatchText(mismatch)}</> : null}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>Lower my leverage</Button>
+          <Button variant="primary" onClick={onConfirm}>Copy at this leverage anyway</Button>
         </>
       }
     />
