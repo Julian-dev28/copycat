@@ -213,7 +213,8 @@ def test_get_exchange_failure_is_not_ambiguous(venue, monkeypatch):
 def test_full_fill_ok_with_size_and_price(venue):
     v, _, _, _ = venue
     assert v.market("BTC", True, 1.0, 100.0) == {"ok": True, "ambiguous": False,
-                                                  "filled_sz": 1.0, "avg_px": 100.5}
+                                                  "filled_sz": 1.0, "avg_px": 100.5,
+                                                  "oid": 77}   # oid: realized PnL from our fills
 
 
 def test_partial_fill_is_not_ok_but_reports_filled_size(venue):
@@ -352,7 +353,7 @@ def closing(venue, monkeypatch):
 
     def use(sequence):
         stub = _Positions(sequence)
-        monkeypatch.setattr(HlVenue, "account_state", lambda self, user: stub(self, user))
+        monkeypatch.setattr(HlVenue, "account_state", lambda self, user, also_dexes=None: stub(self, user))
         return stub
 
     return v, fake, use
@@ -370,7 +371,7 @@ def test_close_long_sells_reduce_only_with_cloid_and_confirms_flat(closing):
     fake.result = _filled(total_sz="2.0", avg_px="99.95")
     stub = use([2.0, 0])
     out = v.close("BTC", cloid=CLOID)
-    assert out == {"ok": True, "filled_sz": 2.0, "avg_px": 99.95}
+    assert out == {"ok": True, "filled_sz": 2.0, "avg_px": 99.95, "oid": 77}   # oid: realized PnL from our fills
     c = fake.calls[0]
     assert c["is_buy"] is False and c["sz"] == 2.0 and c["reduce_only"] is True
     assert c["cloid"].to_raw() == CLOID

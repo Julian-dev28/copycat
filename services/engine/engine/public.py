@@ -129,6 +129,19 @@ class EngineAlreadyRunning(RuntimeError):
     would each diff the same leaders and both place the same orders."""
 
 
+def _pin_credentials() -> Any:
+    """hl.env.pin_credentials(), or None when hl is not importable (tests that
+    run the engine with a fake venue and no hl package on the path)."""
+    try:
+        from hl import env as hl_env
+    except Exception:
+        return None
+    try:
+        return hl_env.pin_credentials()
+    except Exception:
+        return None
+
+
 def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
     """Run exactly one cycle against `venue` and return a summary dict
     (opened/added/reduced/closed/skipped + leaders_ok/leaders_total +
@@ -153,8 +166,17 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
     # Re-resolved every cycle: activating another account in the vault switches
     # the engine at the next cycle, onto that account's own state db.
     our_address = account_mod.resolve_our_address()
-    switch.note_account(data_dir, our_address, now_ms, log_event)
+    switched_from = switch.note_account(data_dir, our_address, now_ms, log_event)
     if not our_address:
+        return _idle_cycle(now_ms, t0)
+    # Audit B2: pin (account, agent key) once for the whole cycle. Every write
+    # signs with these; the venue refuses a write if the active account changes
+    # mid-cycle. A pin for a different account than the one we read means a
+    # switch landed between the two reads: skip this cycle, the next one is clean.
+    creds = _pin_credentials()
+    if creds is not None and creds.account != our_address.lower():
+        log_event(EngineEvent(ts_ms=now_ms, action="error",
+                              reason="active account changed while the cycle started; skipped"))
         return _idle_cycle(now_ms, t0)
     account_mod.adopt_legacy_db(our_address)
 
@@ -170,7 +192,8 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
             # normal cycle with entries forced off so exits keep mirroring
             # and nothing new opens while the flag stands. The api already
             # flipped `enabled` false in settings.json (it is the only writer).
-            close_all_summary = core.close_all(venue, state, our_address, now_ms, log_event)
+            close_all_summary = core.close_all(venue, state, our_address, now_ms, log_event,
+                                               creds=creds)
             settings = settings.model_copy(update={"enabled": False})
             if close_all_summary["remaining"] == 0:
                 try:
@@ -183,7 +206,8 @@ def run_cycle(venue: Venue, now_ms: Optional[int] = None) -> dict:
                            f"copies, entries disabled"))
 
         summary = core.run_cycle(settings, venue, state, our_address, now_ms, log_event,
-                                 stops=read_stops())
+                                 stops=read_stops(), creds=creds,
+                                 switched_in=switched_from is not None)
         for addr in summary.get("stops_done") or []:
             _clear_stop(addr)
         summary["close_all"] = close_all_summary

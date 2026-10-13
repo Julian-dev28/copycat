@@ -187,15 +187,27 @@ class SharedTokenBucket:
     """
 
     def __init__(self, path: Path, capacity: float, refill_per_sec: float,
-                 priority: str = "engine", reserve_frac: float = DEFAULT_RESERVE_FRAC):
+                 priority: Optional[str] = "engine", reserve_frac: float = DEFAULT_RESERVE_FRAC):
+        """`priority=None`: follow COPYCAT_HL_PRIORITY at EVERY acquire (the
+        process-wide default limiter). Audit M1: reading it once at import let
+        the api run at "engine" priority when hl happened to be imported (via
+        the vault) before the env var was set, so a big MCP plan preview could
+        eat the engine's reserve."""
         self.path = Path(path)
         self._capacity = float(capacity)
         self._refill = float(refill_per_sec)
-        self.priority = priority if priority in PRIORITIES else "engine"
-        self._reserve = (max(0.0, min(1.0, float(reserve_frac))) * self._capacity
-                         if self.priority == "background" else 0.0)
+        self._pinned = priority if priority in PRIORITIES else (None if priority is None else "engine")
+        self._reserve_frac = max(0.0, min(1.0, float(reserve_frac)))
         self._thread_lock = threading.Lock()
         self._fallback: Optional[TokenBucket] = None
+
+    @property
+    def priority(self) -> str:
+        return self._pinned or globals()["priority"]()
+
+    @property
+    def _reserve(self) -> float:
+        return self._reserve_frac * self._capacity if self.priority == "background" else 0.0
 
     # -- file state ---------------------------------------------------------
 
@@ -315,7 +327,7 @@ def build_default_limiter():
         path=data_dir() / BUCKET_FILENAME,
         capacity=_env_float("COPYCAT_HL_RATE_CAPACITY", 1200.0),
         refill_per_sec=_env_float("COPYCAT_HL_RATE_REFILL_PER_SEC", 20.0),
-        priority=priority(),
+        priority=None,             # dynamic: COPYCAT_HL_PRIORITY at every acquire (audit M1)
         reserve_frac=_env_float("COPYCAT_HL_RESERVE_FRAC", DEFAULT_RESERVE_FRAC),
     )
 

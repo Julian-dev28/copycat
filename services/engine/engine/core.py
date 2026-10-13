@@ -137,6 +137,7 @@ class _Cycle:
 
     def __init__(self, settings: Settings, venue: Venue, state: EngineState, now_ms: int,
                  log_event: LogEvent, out: Dict[str, Any]):
+        self.creds: Any = None   # hl.env.Credentials pinned for this cycle (audit B2)
         self.settings = settings
         self.venue = venue
         self.state = state
@@ -177,7 +178,8 @@ class _Cycle:
 
 def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address: str,
               now_ms: int, log_event: LogEvent,
-              stops: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
+              stops: Optional[Dict[str, bool]] = None, creds: Any = None,
+              switched_in: bool = False) -> Dict[str, Any]:
     """One full cycle. Everything it does goes through `venue` and `state`.
     Returns a plain summary dict; `engine.public.run_cycle` wraps this with
     settings reload, the SQLite `EngineStatus` snapshot and the one-line log.
@@ -196,6 +198,9 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     }
     stops = {a.lower(): bool(c) for a, c in (stops or {}).items()}
     cy = _Cycle(settings, venue, state, now_ms, log_event, out)
+    # Audit B2: every write this cycle signs with these credentials and is
+    # refused by the venue if the active account changed mid-cycle.
+    cy.creds = creds
 
     last_dry = state.get_kv(_LAST_DRY_RUN_KEY)
     if last_dry is not None and bool(last_dry) != settings.dry_run:
@@ -204,7 +209,7 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
         state.set_kv(_CATCH_UP_KEY, {})
     state.set_kv(_LAST_DRY_RUN_KEY, settings.dry_run)
 
-    our_account = venue.account_state(our_address) if our_address else None
+    our_account = _read_our_account(venue, state, our_address)
     if our_account is None:
         out["skipped"]["all"] = "our account read failed"
         cy.event("error", reason="our account read failed")
@@ -238,9 +243,13 @@ def run_cycle(settings: Settings, venue: Venue, state: EngineState, our_address:
     # Local copy: a coin we close this cycle is flat for the rest of it.
     cy.our_positions = dict(our_account["positions"])
     cy.raw_positions = dict(our_account.get("raw_positions") or {})
+    dr = our_account.get("dexes_read")
+    cy.dexes_read = set(dr) if isinstance(dr, (list, tuple, set)) else None
 
     configured = [a for a in settings.leaders if a not in stops]
     configured_set = set(configured)
+    if switched_in:
+        _note_account_start(state, configured, now_ms)
     for leader in configured:
         es = settings.for_leader(leader)
         # any wallet with invested_ms (custom allocation, or a global copy, whose
@@ -338,7 +347,7 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
     cy.one_shot = _one_shot_coins(cy, leader, es, now_pos)
     lstate = state.get_leader(leader)
     if lstate is None:
-        if es.only_new_positions:          # per-wallet override, else the Settings tab
+        if es.only_new_positions or _baseline_on_this_account(cy, leader, es):
             state.put_leader(LeaderState(leader, {c: p["szi"] for c, p in now_pos.items()},
                                          sorted(now_pos.keys()), cy.now_ms))
             cy.event("baseline", leader=leader,
@@ -633,7 +642,7 @@ def _do_close(cy: _Cycle, coin: str, leader: str) -> bool:
         return True
     want = abs(_szi(cy.our_positions, coin))
     pos = dict(cy.our_positions.get(coin) or {})
-    res = cy.venue.close(coin, cloid=new_cloid())
+    res = cy.venue.close(coin, cloid=new_cloid(), **_wkw(cy))
     if not _full(res, want):
         if _filled(res) > 0:
             _book_fill(state, cy.venue, leader, coin, pos, res, _filled(res), cy.now_ms)
@@ -705,7 +714,7 @@ def _do_reduce(cy: _Cycle, coin: str, leader: str, prev: float, cur: float,
     order_size = venue.size_for(coin, reduce_size * mid, mid)
     cloid = new_cloid()
     res = venue.market(coin, is_buy, order_size, mid, reduce_only=True, cloid=cloid,
-                       max_slippage_pct=cy.settings.for_leader(leader).max_slippage_pct)
+                       max_slippage_pct=cy.settings.for_leader(leader).max_slippage_pct, **_wkw(cy))
     if _filled(res) > 0 or (_full(res, order_size) and "filled_sz" not in res):
         _book_fill(state, venue, leader, coin, pos, res,
                    _filled(res) if "filled_sz" in res else order_size, cy.now_ms)
@@ -991,7 +1000,7 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         return "done"
 
     if copy is None:
-        lev_res = venue.set_leverage(coin, lev, actual_cross)
+        lev_res = venue.set_leverage(coin, lev, actual_cross, **_wkw(cy))
         if not lev_res.get("ok"):
             ignored.add(coin)
             cy.skip(coin, "set_leverage failed")
@@ -1005,7 +1014,8 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         # ours" forever and copycat would never close it.
         state.put_copy(Copy(coin, leader, cy.now_ms, lev, actual_cross, es.sizing_mode.value,
                             pending_cloid=cloid, direction=direction))
-    res = venue.market(coin, is_long, size, mid, cloid=cloid, max_slippage_pct=es.max_slippage_pct)
+    res = venue.market(coin, is_long, size, mid, cloid=cloid, max_slippage_pct=es.max_slippage_pct,
+                       **_wkw(cy))
     filled = _filled(res)
     if not res.get("ok") and filled <= 0:
         if res.get("ambiguous"):
@@ -1128,6 +1138,80 @@ def _catch_up(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, now_pos: D
 
 # ── cycle-start reconciles ──────────────────────────────────────────────────
 
+_ACCOUNT_START_KEY = "account_started"   # {"ms": first cycle on this account db, "leaders": [...]}
+
+
+def _note_account_start(state: EngineState, configured: List[str], now_ms: int) -> None:
+    """On the first cycle after the engine switched INTO this account, remember
+    when and which traders were configured then (audit H7). Overwritten on every
+    switch-in; traders this account already tracks are unaffected (they have a
+    leader state), and a fresh install (no switch) never baselines."""
+    state.set_kv(_ACCOUNT_START_KEY, {"ms": now_ms, "leaders": sorted(configured)})
+
+
+def _baseline_on_this_account(cy: "_Cycle", leader: str, es: Settings) -> bool:
+    """Audit H7: when the engine starts trading an account (a new account, or a
+    switch to another one), traders that were ALREADY configured are baselined:
+    their current positions count as pre-existing on this account, exactly like
+    only_new_positions. Otherwise activating account B would instantly copy
+    every trader's whole current book onto B. A trader invested in on this
+    account after it started (invested_ms later than the start) copies normally."""
+    start = cy.state.get_kv(_ACCOUNT_START_KEY)
+    if not isinstance(start, dict) or leader not in (start.get("leaders") or []):
+        return False
+    started = int(start.get("ms") or 0)
+    return es.invested_ms is None or int(es.invested_ms) <= started
+
+
+def _wkw(cy: "_Cycle") -> Dict[str, Any]:
+    """Write kwargs for this cycle's pinned credentials (audit B2). Empty when
+    nothing was pinned, so venues without the parameter (test fakes) still work."""
+    return {"creds": cy.creds} if getattr(cy, "creds", None) is not None else {}
+
+
+def _order_status(cy: "_Cycle", cloid: str) -> Optional[str]:
+    creds = getattr(cy, "creds", None)
+    if creds is not None:
+        try:
+            return cy.venue.order_status(cloid, account=creds.account)
+        except TypeError:          # a venue without the account parameter
+            pass
+    return cy.venue.order_status(cloid)
+
+
+def _copy_dexes(state: EngineState) -> List[str]:
+    """Every non-main dex we hold, or are opening, a copy on."""
+    dexes = {c.coin.split(":", 1)[0] for c in state.all_copies() if ":" in c.coin}
+    catch = state.get_kv(_CATCH_UP_KEY) or {}
+    dexes |= {str(k).split(":", 1)[0] for k in catch if ":" in str(k)}
+    return sorted(dexes)
+
+
+def _read_our_account(venue: Venue, state: EngineState, our_address: str) -> Optional[Dict[str, Any]]:
+    """Our account read, ALWAYS including every dex we hold a copy on (audit B1:
+    the active-dex cache could skip a fresh HIP-3 copy's dex for up to 300 s,
+    and the copy was then forgotten as "vanished")."""
+    if not our_address:
+        return None
+    dexes = _copy_dexes(state)
+    if dexes:
+        try:
+            return venue.account_state(our_address, also_dexes=dexes)
+        except TypeError:          # a venue without also_dexes (older fakes)
+            pass
+    return venue.account_state(our_address)
+
+
+def _dex_was_read(cy: "_Cycle", coin: str) -> bool:
+    """True when this cycle's account read covered `coin`'s dex. Venues that do
+    not report `dexes_read` are assumed to read everything."""
+    read = getattr(cy, "dexes_read", None)
+    if read is None:
+        return True
+    dex = coin.split(":", 1)[0] if ":" in coin else ""
+    return dex in read
+
+
 def _resolve_pending(cy: _Cycle) -> None:
     """Settle orders whose outcome was unknown last cycle (ambiguous result,
     or the process died between writing the pending row and the result).
@@ -1154,9 +1238,16 @@ def _resolve_pending(cy: _Cycle) -> None:
                      notional_usd=round(abs(szi) * float(raw.get("entry_px") or 0.0), 2),
                      leverage=c.leverage, reason="confirmed after an ambiguous order result")
             continue
-        st = venue.order_status(c.pending_cloid)
+        st = _order_status(cy, c.pending_cloid)
         if not _settled(st, c.opened_ms, cy.now_ms):
             cy.skip(c.coin, "open order outcome unknown, resolving", leader=c.leader)
+            continue
+        if st == "filled" or not _dex_was_read(cy, c.coin):
+            # Audit B1: HL says it filled (or this read never covered its dex) but we
+            # did not see the position: the read missed it. Keep the row pending and
+            # look again; deleting it would leave a real position unmanaged.
+            cy.skip(c.coin, f"open {st or 'unknown'} but not visible in this read; re-checking",
+                    leader=c.leader)
             continue
         state.delete_copy(c.coin)
         _ignore_while_leader_holds(state, c.leader, c.coin)
@@ -1167,7 +1258,7 @@ def _resolve_pending(cy: _Cycle) -> None:
     if not pending:
         return
     for coin, p in list(pending.items()):
-        st = venue.order_status(p["cloid"])
+        st = _order_status(cy, p["cloid"])
         if not _settled(st, int(p.get("sent_ms") or 0), cy.now_ms):
             continue
         size_after = abs(_szi(cy.our_positions, coin))
@@ -1209,6 +1300,11 @@ def _reconcile_vanished(cy: _Cycle) -> None:
     for c in state.all_copies():
         if c.pending_cloid or _szi(cy.our_positions, c.coin) != 0.0:
             continue
+        if not _dex_was_read(cy, c.coin):
+            # Audit B1: a copy on a dex this read did not cover is unknown, not gone.
+            if c.coin in pending:
+                still_pending[c.coin] = int(pending[c.coin])
+            continue
         if c.coin not in pending:
             still_pending[c.coin] = cy.now_ms
             continue
@@ -1238,7 +1334,7 @@ def _ignore_while_leader_holds(state: EngineState, leader: str, coin: str) -> No
 # ── emergency close-all ─────────────────────────────────────────────────────
 
 def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
-              log_event: LogEvent) -> Dict[str, Any]:
+              log_event: LogEvent, creds: Any = None) -> Dict[str, Any]:
     """Reduce-only close of every row in the real `copies` table (pending
     rows included: `close` is a no-op on a flat coin). Driven by
     `data/close_all.flag` (see `engine.public.run_cycle`).
@@ -1252,12 +1348,12 @@ def close_all(venue: Venue, state: EngineState, our_address: str, now_ms: int,
     reported in `remaining`; the caller keeps the flag so the next cycle
     retries. Returns `{"closed": [...], "failed": {coin: reason}, "remaining": n}`."""
     out: Dict[str, Any] = {"closed": [], "failed": {}, "remaining": 0}
-    acct = venue.account_state(our_address) if our_address else None
+    acct = _read_our_account(venue, state, our_address)
     positions = (acct or {}).get("positions") or {}
     pending_reduces = state.get_kv(_PENDING_REDUCES_KEY) or {}
     for c in state.all_copies():
         want = abs(_szi(positions, c.coin))
-        res = venue.close(c.coin, cloid=new_cloid())
+        res = venue.close(c.coin, cloid=new_cloid(), **({'creds': creds} if creds is not None else {}))
         if _filled(res) > 0 and not _full(res, want):
             _book_fill(state, venue, c.leader, c.coin, positions.get(c.coin) or {}, res,
                        _filled(res), now_ms)
@@ -1360,7 +1456,7 @@ def _run_stop(cy: _Cycle, addr: str, close_positions: bool) -> bool:
             continue
         want = abs(_szi(cy.our_positions, c.coin))
         pos = dict(cy.our_positions.get(c.coin) or {})
-        res = venue.close(c.coin, cloid=new_cloid())
+        res = venue.close(c.coin, cloid=new_cloid(), **_wkw(cy))
         if _full(res, want):
             _book_fill(state, venue, addr, c.coin, pos, res, _close_size(res, want), cy.now_ms)
             state.delete_copy(c.coin)
@@ -1499,6 +1595,11 @@ def _day_pnl_good(state: EngineState, today: str, value: float) -> Tuple[float, 
     return value, True
 
 
+UNRELIABLE_GRACE_MS = 60 * 60_000      # audit M3: max time the loss limit may be blind
+_UNRELIABLE_SINCE_KEY = "day_pnl_unreliable_since_ms"
+_DEGRADED_LOGGED_KEY = "loss_limit_degraded_logged"
+
+
 def _halt_check(state: EngineState, settings: Settings, day_pnl_usd: Optional[float],
                 log_event: LogEvent, now_ms: int, reliable: bool = True) -> Optional[str]:
     """`daily_loss_limit_usd` is always <= 0 by the contract; 0 means off.
@@ -1510,12 +1611,29 @@ def _halt_check(state: EngineState, settings: Settings, day_pnl_usd: Optional[fl
     resume on a phantom gain."""
     was_halted = bool(state.get_kv("halted") or False)
     limit_on = settings.daily_loss_limit_usd < 0
+    if reliable:
+        state.set_kv(_UNRELIABLE_SINCE_KEY, None)
+    elif state.get_kv(_UNRELIABLE_SINCE_KEY) is None:
+        state.set_kv(_UNRELIABLE_SINCE_KEY, now_ms)
     if limit_on and not reliable:
-        if not was_halted:
-            return None
-        return (state.get_kv(_HALTED_REASON_KEY)
-                or f"daily loss limit ${settings.daily_loss_limit_usd:.2f} hit") + \
-            " (day PnL unreliable now; holding)"
+        if was_halted:
+            return (state.get_kv(_HALTED_REASON_KEY)
+                    or f"daily loss limit ${settings.daily_loss_limit_usd:.2f} hit") + \
+                " (day PnL unreliable now; holding)"
+        # Audit M3: an unreliable day PnL must not silently switch the loss limit
+        # off for the rest of the day. After UNRELIABLE_GRACE_MS without a reliable
+        # read, new opens/adds pause (exits always continue) until one arrives.
+        since_kv = state.get_kv(_UNRELIABLE_SINCE_KEY)
+        since = int(since_kv) if since_kv is not None else now_ms
+        if now_ms - since >= UNRELIABLE_GRACE_MS:
+            reason = (f"daily loss limit degraded: day PnL unreliable for "
+                      f"{(now_ms - since) // 60_000} min; new copies paused until it can be read")
+            if not state.get_kv(_DEGRADED_LOGGED_KEY):
+                log_event(EngineEvent(ts_ms=now_ms, action="halt", reason=reason))
+                state.set_kv(_DEGRADED_LOGGED_KEY, True)
+            return reason
+        return None
+    state.set_kv(_DEGRADED_LOGGED_KEY, None)
     halted_reason: Optional[str] = None
     if limit_on and day_pnl_usd is not None and day_pnl_usd <= settings.daily_loss_limit_usd:
         halted_reason = (f"daily loss limit ${settings.daily_loss_limit_usd:.2f} hit "

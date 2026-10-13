@@ -273,3 +273,16 @@ def test_shared_fallback_charge(tmp_path):
     b = _shared(blocker / "hl_rate.bucket")
     b.charge(30)
     assert b._fallback is not None and b.tokens() == pytest.approx(70)
+
+
+def test_m1_default_limiter_follows_the_env_priority_at_every_acquire(monkeypatch, tmp_path):
+    """Audit M1: priority must not be frozen at import time."""
+    from hl import rate_limit as rl
+    b = rl.SharedTokenBucket(tmp_path / "b", capacity=100, refill_per_sec=1, priority=None,
+                             reserve_frac=0.4)
+    monkeypatch.setenv("COPYCAT_HL_PRIORITY", "engine")
+    assert b.priority == "engine" and b._reserve == 0.0
+    monkeypatch.setenv("COPYCAT_HL_PRIORITY", "background")
+    assert b.priority == "background" and b._reserve == 40.0
+    pinned = rl.SharedTokenBucket(tmp_path / "c", capacity=100, refill_per_sec=1, priority="engine")
+    assert pinned.priority == "engine"                       # explicit pin is kept

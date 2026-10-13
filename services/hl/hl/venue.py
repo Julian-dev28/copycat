@@ -301,6 +301,10 @@ def _write_guard(creds: Optional[env.Credentials]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _exchange_for(creds: Optional[env.Credentials]) -> Any:
+    return sdk.get_exchange(creds) if creds is not None else sdk.get_exchange()
+
+
 class HlVenue:
     """Stateless wrapper over hl.http / hl.meta / hl.sdk -- every cache and
     rate limiter lives at module scope in those modules, so instantiating
@@ -860,7 +864,7 @@ class HlVenue:
             use_cross = False
 
         try:
-            exchange = sdk.get_exchange(creds)
+            exchange = _exchange_for(creds)
             result = exchange.update_leverage(leverage, coin, is_cross=use_cross)
         except Exception as exc:
             logger.error(f"[hl.venue] set_leverage({coin}, is_cross={use_cross}) failed: {exc}")
@@ -913,7 +917,7 @@ class HlVenue:
             price_str, err = _ioc_limit(coin, is_buy, mid, sz_dec, max_slippage_pct)
             if err:
                 return {"ok": False, "error": err, "ambiguous": False}
-            exchange = sdk.get_exchange(creds)
+            exchange = _exchange_for(creds)
         except Exception as exc:
             logger.error(f"[hl.venue] market({coin}) failed before send: {exc}")
             return {"ok": False, "error": str(exc), "ambiguous": False}

@@ -108,7 +108,8 @@ def test_sigterm_mid_cycle_finishes_the_cycle_then_stops_without_sleeping(data_d
 def test_events_logged_before_a_mid_cycle_crash_are_kept(data_dir, monkeypatch):
     from contracts.models import EngineEvent
 
-    def crashing(settings, venue, state, our_address, now_ms, log_event, stops=None):
+    def crashing(settings, venue, state, our_address, now_ms, log_event, stops=None, creds=None,
+                 switched_in=False):
         log_event(EngineEvent(ts_ms=now_ms, action="open", coin="BTC"))
         raise RuntimeError("boom after the order went through")
 
