@@ -7,17 +7,19 @@ import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
  * border and the fill, no lift. `enter` fades it in once on first paint
  * (index = 40ms stagger); otherwise it reveals on first scroll into view.
  */
-export interface PanelProps extends HTMLAttributes<HTMLDivElement> {
+export interface PanelProps extends HTMLAttributes<HTMLElement> {
   interactive?: boolean;
   /** Stagger index for the first-paint entrance (0-3). Omit for no entrance. */
   enter?: number;
   /** Fade in on first scroll into view (components/shell/Reveal.tsx). Default on; off for panels that must never blink (dialogs, sticky ticket). */
   reveal?: boolean;
+  /** Render as a different element, e.g. "article" for one card in a list of independent items (screen readers get a landmark to navigate by). Default "div". */
+  as?: "div" | "article" | "section";
 }
 
-export function Panel({ className, interactive, enter, reveal = true, style, ...rest }: PanelProps) {
+export function Panel({ className, interactive, enter, reveal = true, style, as: Tag = "div", ...rest }: PanelProps) {
   return (
-    <div
+    <Tag
       data-enter={enter === undefined ? undefined : ""}
       data-reveal={reveal && enter === undefined ? "" : undefined}
       style={enter === undefined ? style : ({ ...style, "--enter-i": Math.min(enter, 3) } as CSSProperties)}

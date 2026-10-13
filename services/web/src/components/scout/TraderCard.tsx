@@ -110,7 +110,7 @@ export function TraderCard({
   const coText = coattailText(s);
 
   return (
-    <Panel interactive className={clsx("group/card relative flex flex-col gap-4 p-4 sm:p-5", inBook && "border-accent/40")}>
+    <Panel as="article" interactive className={clsx("group/card relative flex flex-col gap-4 p-4 sm:p-5", inBook && "border-accent/40")}>
       <header className="flex items-start gap-3">
         <span className="num-sm mt-1 w-5 flex-shrink-0 text-right text-muted">{rank}</span>
         {/* fixed height whether or not they have a display name, so rows line up across the grid */}

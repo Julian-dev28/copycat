@@ -20,9 +20,10 @@ test.describe("demo Scout", () => {
     await page.getByRole("radiogroup", { name: "PnL window" }).getByRole("radio", { name: "7d" }).click();
     await expect(cards.first()).toBeVisible();
 
-    // open the 2nd card's file (not the already-copied first one)
+    // open the 2nd card's file (not the already-copied first one): TraderCard's link
+    // text is "Open trader" (bits.tsx/TraderCard.tsx), not "trader file"
     const card = cards.nth(1);
-    const fileLink = card.getByRole("link", { name: /trader file/i });
+    const fileLink = card.getByRole("link", { name: /open trader/i });
     const href = await fileLink.getAttribute("href");
     expect(href).toMatch(/^\/scout\/0x[0-9a-f]{40}\?demo=1$/);
     await fileLink.click();
