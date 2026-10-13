@@ -44,6 +44,20 @@ export function liqTone(pct: number | null | undefined): RiskTone {
   return "ok";
 }
 
+/**
+ * HL's own `cumFunding.sinceOpen` (TraderPositionView.funding_since_open_usd)
+ * is reported positive = PAID by the trader (a cost) -- the opposite
+ * convention from every other money figure here (positive = good). This
+ * negates it for display so the sign and color both read the normal way:
+ * positive/green when funding was a net benefit to the position, negative/red
+ * when it cost the position money. Regression: the Positions tab used to
+ * color a real $851 funding COST green (`>= 0` on the raw, unpaid-flipped
+ * value), the exact opposite of what happened to the trader's money.
+ */
+export function netFundingSinceOpen(raw: number): number {
+  return -raw;
+}
+
 /** 0.4h -> "24m", 5.5h -> "5.5h", 50h -> "2.1d". */
 export function formatHold(hours: number | null | undefined): string {
   if (hours === null || hours === undefined || !Number.isFinite(hours)) return "—";
