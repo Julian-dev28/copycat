@@ -16,6 +16,7 @@ import { PerformanceChart } from "./PerformanceChart";
 import { PnlCalendar } from "./PnlCalendar";
 import { StatTiles } from "./StatTiles";
 import { TopCoins } from "./TopCoins";
+import { TradeBreakdown } from "./TradeBreakdown";
 import { WhatIfPanel } from "./WhatIfPanel";
 
 function Message({ title, children, spin }: { title: string; children: React.ReactNode; spin?: boolean }) {
@@ -79,6 +80,12 @@ export function TraderFile({ address }: { address: string }) {
             <PanelHeader title="Top coins" description="30d volume share and PnL" />
             <div className="px-4 pb-4">
               <TopCoins coins={base.coins.length ? base.coins : base.row.top_coins} />
+            </div>
+          </Panel>
+          <Panel>
+            <PanelHeader title="Trade breakdown" description="Long/short split, largest trades, timing" />
+            <div className="px-4 pb-4">
+              <TradeBreakdown trips={base.recent_trips} accountValueUsd={base.row.account_value_usd} />
             </div>
           </Panel>
         </div>
