@@ -5,7 +5,7 @@ import { LoadError } from "@/components/PageStates";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { ApiTooOld } from "@/components/scout/bits";
 import { isApiTooOld } from "@/lib/scout/api";
-import { hasClaudeThesis, keyNumbers, orderTheses } from "@/lib/scout/file/strategy";
+import { hasClaudeThesis, isStale, keyNumbers, orderTheses } from "@/lib/scout/file/strategy";
 import { EvidenceTable } from "./EvidenceTable";
 import { useFingerprint, useTheses } from "./hooks";
 import { StrategyHeatmap } from "./StrategyHeatmap";
@@ -84,7 +84,7 @@ export function StrategyTab({ address }: { address: string }) {
         <h2 className="text-sm font-semibold">Theses</h2>
         {theses.isError ? <LoadError what="the theses" error={theses.error} onRetry={() => theses.refetch()} /> : null}
         {list.map((t) => (
-          <ThesisCard key={t.source} thesis={t} />
+          <ThesisCard key={t.source} thesis={t} stale={isStale(t, f)} />
         ))}
         {theses.data && !list.length ? <p className="text-sm text-muted">No thesis yet.</p> : null}
         {theses.data && !hasClaudeThesis(list) ? <ThesisHint address={address} /> : null}

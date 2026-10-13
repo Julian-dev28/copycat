@@ -69,6 +69,54 @@ export function thesisCommand(address: string): string {
   return `/copycat-thesis ${address.toLowerCase()}`;
 }
 
+/** A thesis is stale once a newer fingerprint exists than the one it was
+ * written against (the number it cites may no longer match what the tab
+ * shows above it). A thesis saved before fingerprint_as_of_ms existed, or
+ * whose link is unknown, is never flagged: we only claim staleness we can
+ * prove. */
+export function isStale(thesis: Thesis, fp: StrategyFingerprint): boolean {
+  const basis = thesis.fingerprint_as_of_ms;
+  return typeof basis === "number" && basis < fp.as_of_ms;
+}
+
+/** URL-safe anchor id from a heading's text: lowercase, non-alnum runs
+ * become one hyphen, no leading/trailing hyphen. Pure, so the TOC list and
+ * SafeMarkdown's heading ids are always the same string for the same text. */
+export function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export interface TocEntry {
+  id: string;
+  text: string;
+  level: 2 | 3;
+}
+
+/** `##`/`###` headings parsed straight from the markdown source (not the
+ * rendered tree), in order, each with its slug. Duplicate headings get a
+ * -2, -3, ... suffix so every id is unique within one thesis. */
+export function buildToc(markdown: string): TocEntry[] {
+  const out: TocEntry[] = [];
+  const seen = new Map<string, number>();
+  for (const line of markdown.split("\n")) {
+    const m = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (!m) continue;
+    const text = m[2].trim();
+    const base = slugify(text) || "section";
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    out.push({ id: n === 0 ? base : `${base}-${n + 1}`, text, level: m[1].length === 2 ? 2 : 3 });
+  }
+  return out;
+}
+
+/** Long enough that a reader benefits from jumping straight to a section. */
+export const TOC_MIN_HEADINGS = 4;
+
 export function contextChips(c: StrategyFingerprint["examples"][number]["context"]): string[] {
   const out: string[] = [];
   if (c.trend_aligned === true) out.push("with trend");

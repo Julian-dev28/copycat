@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api/client";
 import { demoFile, isBusy, parseFingerprint, whatIfErrorText } from "./source";
 import { fixtureFingerprint, fixtureTheses } from "./fixtures";
 import { buildingText, fileView } from "./state";
-import { contextChips, hasClaudeThesis, keyNumbers, orderTheses, thesisCommand } from "./strategy";
+import { buildToc, contextChips, hasClaudeThesis, isStale, keyNumbers, orderTheses, slugify, thesisCommand } from "./strategy";
 
 const NOW = Date.UTC(2026, 9, 4, 12, 0);
 const ADDR = "0xe2823659be02e0f48a4660e4da008b5e1abfdf29";
@@ -19,6 +19,37 @@ describe("theses", () => {
     expect(hasClaudeThesis(fixtureTheses(ADDR, NOW))).toBe(true);
     expect(hasClaudeThesis(fixtureTheses(ADDR, NOW, false))).toBe(false);
     expect(thesisCommand("0xABC")).toBe("/copycat-thesis 0xabc");
+  });
+
+  it("is stale only when a newer fingerprint exists than the one it cites", () => {
+    const fp = fixtureFingerprint(ADDR, NOW);
+    const [ta] = fixtureTheses(ADDR, NOW);
+    expect(isStale(ta, fp)).toBe(false);                                   // same fingerprint
+    expect(isStale({ ...ta, fingerprint_as_of_ms: fp.as_of_ms - 1 }, fp)).toBe(true);
+    expect(isStale({ ...ta, fingerprint_as_of_ms: fp.as_of_ms + 1 }, fp)).toBe(false);
+    expect(isStale({ ...ta, fingerprint_as_of_ms: null }, fp)).toBe(false); // can't prove it, don't claim it
+  });
+});
+
+describe("table of contents", () => {
+  it("slugifies headings deterministically", () => {
+    expect(slugify("Edge in one sentence")).toBe("edge-in-one-sentence");
+    expect(slugify("Sizing & risk")).toBe("sizing-risk");
+    expect(slugify("  Multiple   spaces! ")).toBe("multiple-spaces");
+  });
+
+  it("parses ## and ### headings in order, skipping deeper levels", () => {
+    const md = ["## Edge in one sentence", "body", "### A sub-point", "## How they enter", "#### too deep"].join("\n");
+    expect(buildToc(md)).toEqual([
+      { id: "edge-in-one-sentence", text: "Edge in one sentence", level: 2 },
+      { id: "a-sub-point", text: "A sub-point", level: 3 },
+      { id: "how-they-enter", text: "How they enter", level: 2 },
+    ]);
+  });
+
+  it("de-dupes repeated headings with a numeric suffix", () => {
+    const md = ["## Risks", "## Risks"].join("\n");
+    expect(buildToc(md).map((t) => t.id)).toEqual(["risks", "risks-2"]);
   });
 });
 
