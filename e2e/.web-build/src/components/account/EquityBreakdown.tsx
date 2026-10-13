@@ -1,6 +1,7 @@
+import { InfoTip } from "@/components/ui";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { formatPct, formatUsd } from "@/lib/format";
-import { equitySlices, type EquitySlice } from "@/lib/account/summary";
+import { equitySlices, HL_ACCOUNT_VALUE_DEF, type EquitySlice } from "@/lib/account/summary";
 import type { AccountBalances } from "@/lib/account/types";
 
 /** Accent family for the slices: ordered by how "ours" the money is. Copytrade is the accent itself. */
@@ -23,9 +24,17 @@ export function EquityBreakdown({ balances }: { balances: AccountBalances }) {
   const total = slices.reduce((a, s) => a + s.usd, 0);
   return (
     <Panel>
-      <PanelHeader title="Equity" description={`${formatUsd(balances.total_usd)} total · ${formatUsd(balances.withdrawable_usd)} withdrawable`} />
+      <PanelHeader
+        title={
+          <span className="inline-flex items-center gap-1">
+            Equity
+            <InfoTip id="equity-def-tip" label="What equity means" content={HL_ACCOUNT_VALUE_DEF} />
+          </span>
+        }
+        description={`${formatUsd(balances.total_usd)} total · ${formatUsd(balances.withdrawable_usd)} withdrawable`}
+      />
       <div className="flex flex-col gap-3 px-4 pb-4 sm:px-5">
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label={slices.map((s) => `${s.label} ${formatPct(s.pct, 0)}`).join(", ")}>
+        <div className="flex h-3 w-full overflow-hidden rounded-sm bg-surface-2" role="img" aria-label={slices.map((s) => `${s.label} ${formatPct(s.pct, 0)}`).join(", ")}>
           {total > 0
             ? slices.filter((s) => s.usd > 0).map((s) => <span key={s.key} style={{ width: `${s.pct}%`, background: COLOR[s.key] }} className="h-full border-r border-surface last:border-r-0" />)
             : null}

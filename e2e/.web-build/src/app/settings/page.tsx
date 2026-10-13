@@ -10,6 +10,7 @@ import { SaveStatusBadge } from "@/components/copy/SaveStatusBadge";
 import { CopyRecipeCard } from "@/components/copy/CopyRecipeCard";
 import { EmptyAccountBanner } from "@/components/EmptyAccountBanner";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
+import { DisplaySettings } from "@/components/settings/DisplaySettings";
 import type { SettingsPatch } from "@/lib/api/types";
 import { ApiTokenPanel, TradeDefaultsPanel } from "./TradeDefaultsPanel";
 
@@ -61,11 +62,16 @@ function SettingsContent({ demo }: { demo: boolean }) {
         />
       </div>
       <EmptyAccountBanner status={status} settings={settings} />
-      <EngineControlsPanel settings={settings} onPatch={onPatch} />
+      <EngineControlsPanel
+        settings={settings}
+        onPatch={onPatch}
+        openRealCopies={status && !status.dry_run ? status.positions.length : 0}
+      />
       <TradeDefaultsPanel settings={settings} onPatch={onPatch} />
       <CopyBehaviorPanel settings={settings} onPatch={onPatch} />
       <CopyRecipeCard settings={settings} status={status} />
       <LeadersPanel settings={settings} status={status} />
+      <DisplaySettings />
       {demo ? null : <ApiTokenPanel />}
     </>
   );

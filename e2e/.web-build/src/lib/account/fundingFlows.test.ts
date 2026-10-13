@@ -186,3 +186,17 @@ describe("move / send / withdraw", () => {
     await expect(demoAccounts.prepareAction("acc_api", { kind: "usd_class_transfer", amount_usd: 1, to_perp: true })).rejects.toThrow(/unified/);
   });
 });
+
+describe("audit L7: deposit addresses are pinned in the web", () => {
+  it("refuses an api answer whose bridge is not the known one, before touching the wallet", async () => {
+    const good = await info("acc_ledger");
+    const calls: string[] = [];
+    const provider: Eip1193Provider = { request: async (a: { method: string }) => { calls.push(a.method); return []; } } as never;
+    const deps: DepositDeps = { provider, info: { ...good, bridge_address: "0x" + "6".repeat(40) }, pollMs: 0, sleep: async () => {} };
+    const { box, dispatch } = recorder<DepositState, Parameters<typeof depositReducer>[1]>(depositReducer, initialDeposit);
+    expect(await connectDeposit(deps, dispatch)).toBe(false);
+    expect(box.s.error?.message).toMatch(/not the known Hyperliquid bridge/);
+    expect(await sendDeposit(deps, "25", 100, dispatch)).toBeNull();
+    expect(calls).toEqual([]);
+  });
+});

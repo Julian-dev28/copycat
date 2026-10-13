@@ -24,17 +24,17 @@ describe("contrast math", () => {
 
 describe("palette is exactly DESIGN.md", () => {
   it.each([
-    ["dark", "bg", "#07080b"], ["dark", "surface", "#0e1015"], ["dark", "surface-2", "#151821"], ["dark", "surface-3", "#1c2030"],
-    ["dark", "fg", "#eef0f6"], ["dark", "muted", "#8b92a5"], ["dark", "accent", "#7aa2ff"], ["dark", "brand", "#ff7a1a"],
-    ["dark", "warn", "#f2b544"], ["light", "bg", "#f6f7f9"], ["light", "accent", "#2d5bd8"], ["light", "warn", "#8f5a00"],
-    ["light", "muted", "#596174"], ["light", "brand", "#b04a08"],
+    ["dark", "bg", "#08080a"], ["dark", "surface", "#101012"], ["dark", "surface-2", "#17171a"], ["dark", "surface-3", "#1e1e22"],
+    ["dark", "fg", "#ececee"], ["dark", "muted", "#8d8d96"], ["dark", "accent", "#7aa2ff"], ["dark", "brand", "#ff7a1a"],
+    ["dark", "warn", "#f2b544"], ["light", "bg", "#f7f7f8"], ["light", "accent", "#2d5bd8"], ["light", "warn", "#8f5a00"],
+    ["light", "muted", "#5d5d66"], ["light", "brand", "#b04a08"],
   ] as const)("%s --%s = %s", (theme, name, hex) => {
     expect(resolve(t, theme, name)).toBe(hex);
   });
 
   it("dark soft PnL tints match the documented hexes within rounding", () => {
-    expect(resolve(t, "dark", "up-soft")).toBe("#132b26");
-    expect(resolve(t, "dark", "down-soft")).toBe("#301c22");
+    expect(resolve(t, "dark", "up-soft")).toBe("#192924");
+    expect(resolve(t, "dark", "down-soft")).toBe("#2f1a1e");
   });
 });
 

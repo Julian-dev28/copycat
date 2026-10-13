@@ -10,6 +10,7 @@ import { HaltButton } from "@/components/positions/HaltButton";
 import { CloseAllButton } from "@/components/positions/CloseAllButton";
 import { EmptyAccountBanner } from "@/components/EmptyAccountBanner";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
+import { PendingMcpPlans } from "@/components/mcp/PendingMcpPlans";
 import { YourWallets } from "@/components/trade/YourWallets";
 import { useTradeMode, useTradeSettings, useTradeStatus, useWallets } from "@/components/trade/hooks";
 import { withDemo } from "@/components/trade/bits";
@@ -61,8 +62,9 @@ function Portfolio() {
         ) : null}
       </div>
       {statusQ.isError ? <LoadError what="engine status" error={statusQ.error} onRetry={() => statusQ.refetch()} /> : null}
+      <PendingMcpPlans enabled={!demo} />
       <EmptyAccountBanner status={status} settings={s} />
-      <EngineStatusBar status={status} tradingEnabled={s?.enabled} />
+      <EngineStatusBar status={status} tradingEnabled={s?.enabled} lossLimitOn={(s?.daily_loss_limit_usd ?? 0) < 0} />
       <YourWallets
         wallets={wallets.data ?? []}
         settings={settings.data}
@@ -74,7 +76,7 @@ function Portfolio() {
         nowMs={nowMs}
         empty={<p className="text-sm text-muted">No copies yet. Copy a trader from the Trade page.</p>}
       />
-      <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} />
+      <PositionsTable positions={status?.positions ?? []} loading={!status && !statusQ.isError} nowMs={nowMs} />
       {!demo ? <EventFeed /> : null}
     </div>
   );

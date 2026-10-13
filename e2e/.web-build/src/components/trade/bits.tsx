@@ -29,6 +29,19 @@ export function Stat({ label, children, className }: { label: string; children: 
   );
 }
 
+/**
+ * Long / short are not good / bad (DESIGN 3.4): neutral text with a glyph,
+ * never the PnL colors, so a profitable short never reads as a loss.
+ */
+export function SideTag({ side, className }: { side: "long" | "short"; className?: string }) {
+  return (
+    <span className={clsx("inline-flex h-5 items-center gap-0.5 whitespace-nowrap rounded-sm bg-surface-2 px-1.5 text-[11px] font-medium text-fg-soft", className)}>
+      <span aria-hidden="true">{side === "long" ? "↗" : "↘"}</span>
+      {side === "long" ? "Long" : "Short"}
+    </span>
+  );
+}
+
 /** Keep `?demo=1&acct=` on internal links while in demo mode. */
 export function withDemo(path: string, demo: boolean, acct?: string): string {
   if (!demo) return path;

@@ -94,6 +94,10 @@ export function nearestIndex(points: CurvePoint[], t: number): number {
 
 export type ChartMetric = "pnl" | "value";
 
+/** The copy-sim series, everywhere it is drawn: a past replay at your settings, not a forecast. */
+export const SIM_LABEL = "What you would have made";
+export const WHATIF_SIM_LABEL = "What you would have made (this what-if)";
+
 export interface ChartSeries {
   key: "his" | "sim";
   label: string;
@@ -127,7 +131,7 @@ export function chartData(
   const notes: string[] = [];
   const source = metric === "pnl" ? profile.pnl_curve[w] : profile.value_curve[w];
   const his = clipFrom(source ?? [], null);
-  const hisLabel = metric === "pnl" ? "His PnL" : "His account value";
+  const hisLabel = metric === "pnl" ? "Their PnL" : "Their account value";
   if (metric === "value") notes.push("Account value includes deposits and withdrawals, so transfers show as steps.");
 
   if (!overlay) {
@@ -155,8 +159,8 @@ export function chartData(
   return {
     unit: "pct",
     series: [
-      { key: "his", label: metric === "pnl" ? "His return" : "His account value", points: hisPct },
-      { key: "sim", label: "Your copy (sim)", points: simPct },
+      { key: "his", label: metric === "pnl" ? "Their return" : "Their account value", points: hisPct },
+      { key: "sim", label: SIM_LABEL, points: simPct },
     ],
     notes,
   };

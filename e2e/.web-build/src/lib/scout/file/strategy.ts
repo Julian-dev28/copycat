@@ -1,58 +1,14 @@
 /**
  * Strategy tab data shaping. Pure.
  *
- * The fingerprint carries two marginal histograms (24 UTC hours, 7 weekdays
- * Monday first), not a joint 24x7 table. The heatmap cell is therefore the
- * expected trip count if hour and weekday were independent:
- *   cell[d][h] = weekday[d] * hour[h] / total
- * The UI says so, and the marginals are drawn on the edges as exact bars.
+ * The "when they enter" chart lives in components/scout/file/StrategyHeatmapGrid.ts:
+ * real 7 x 24 cells only when the api sends entries_by_dow_hour, two exact
+ * bar charts otherwise (never cells invented from the two totals, UX audit #9).
  */
 import { formatHold } from "../labels";
 import type { StrategyFingerprint, Thesis } from "../types";
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-export interface HeatGrid {
-  /** cells[weekday][hour], expected trips. */
-  cells: number[][];
-  max: number;
-  hours: number[];
-  weekdays: number[];
-  total: number;
-  /** UTC hour with the most entries, or null when there are none. */
-  peakHour: number | null;
-  peakWeekday: number | null;
-}
-
-function fit(arr: number[] | undefined, n: number): number[] {
-  return Array.from({ length: n }, (_, i) => {
-    const v = arr?.[i] ?? 0;
-    return Number.isFinite(v) && v > 0 ? v : 0;
-  });
-}
-
-function argmax(a: number[]): number | null {
-  let best = -1;
-  let at: number | null = null;
-  a.forEach((v, i) => {
-    if (v > best && v > 0) {
-      best = v;
-      at = i;
-    }
-  });
-  return at;
-}
-
-export function hourWeekdayGrid(fp: Pick<StrategyFingerprint, "hour_hist_utc" | "weekday_hist">): HeatGrid {
-  const hours = fit(fp.hour_hist_utc, 24);
-  const weekdays = fit(fp.weekday_hist, 7);
-  const hTotal = hours.reduce((a, b) => a + b, 0);
-  const dTotal = weekdays.reduce((a, b) => a + b, 0);
-  const total = Math.max(hTotal, dTotal);
-  const cells = weekdays.map((d) => hours.map((h) => (hTotal > 0 && dTotal > 0 ? (d / dTotal) * (h / hTotal) * total : 0)));
-  const max = Math.max(0, ...cells.flat());
-  return { cells, max, hours, weekdays, total, peakHour: argmax(hours), peakWeekday: argmax(weekdays) };
-}
 
 /** 0..1 intensity for a cell, 0 when the grid is empty. */
 export function heatLevel(v: number, max: number): number {
@@ -73,7 +29,7 @@ const usd = (v: number | null | undefined) =>
 
 export function keyNumbers(fp: StrategyFingerprint): KeyNumber[] {
   return [
-    { label: "Trips analyzed", value: String(fp.trips_analyzed), hint: `last ${fp.window_days} days` },
+    { label: "Trips analyzed", value: String(fp.trips_analyzed), hint: `last ${fp.window_days} days, incl. partial closes` },
     { label: "Median hold", value: formatHold(fp.median_hold_h), hint: `p90 ${formatHold(fp.p90_hold_h)}` },
     { label: "Long share", value: pct(fp.long_pct) },
     { label: "Win rate", value: pct(fp.win_rate_pct) },
@@ -82,7 +38,7 @@ export function keyNumbers(fp: StrategyFingerprint): KeyNumber[] {
     { label: "Breakout / pullback", value: `${pct(fp.breakout_pct)} / ${pct(fp.pullback_pct)}` },
     { label: "RSI at entry", value: `${num(fp.avg_rsi_long_entry, 0)} L / ${num(fp.avg_rsi_short_entry, 0)} S` },
     { label: "Scales in / out", value: `${pct(fp.scales_in_pct)} / ${pct(fp.scales_out_pct)}`, hint: `${num(fp.avg_adds_per_trip)} adds per trip` },
-    { label: "Leverage", value: `${num(fp.avg_leverage, 1, "x")} avg`, hint: `max ${num(fp.max_leverage, 0, "x")}` },
+    { label: "Avg trade leverage", value: num(fp.avg_leverage, 1, "x"), hint: `max ${num(fp.max_leverage, 0, "x")} per trip` },
     { label: "Loser hold vs winner", value: num(fp.loser_hold_vs_winner, 1, "x"), hint: "over 1x: sits in losers longer" },
     { label: "Worst trip", value: pct(fp.worst_trip_pct_of_equity, 1), hint: "of equity" },
     { label: "PnL from top coin", value: pct(fp.pnl_from_top_coin_pct) },

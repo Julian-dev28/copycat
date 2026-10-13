@@ -256,7 +256,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
         ourEquityUsd: st.equity_usd ?? DEMO_EQUITY[acct], maxPositionLeverage: s.max_position_leverage,
         otherExposureUsd: st.positions.filter((c) => c.leader !== normAddr(address)).reduce((x, c) => x + c.notional_usd, 0),
       });
-      return later({ ...applyCoinFilter(p, t.allow, t.block), source: "api" as const }, 220);
+      return later({ ...applyCoinFilter(p, t.allow, t.block), source: "demo" as const }, 220);
     },
   };
 }

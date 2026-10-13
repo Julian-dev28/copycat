@@ -57,7 +57,7 @@ export function Drawer({ open, onClose, title, children, footer, closeLabel = "C
             type="button"
             onClick={onClose}
             aria-label={closeLabel}
-            className="grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            className="grid h-8 w-8 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"
           >
             <X size={16} aria-hidden="true" />
           </button>

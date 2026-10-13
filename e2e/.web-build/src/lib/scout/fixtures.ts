@@ -72,6 +72,8 @@ const SPECIAL: Record<number, Seed> = {
   15: { style: "position", flags: ["too_few_trades"] },
   19: { style: "swing", flags: ["vault"] },
   23: { style: null, flags: ["inactive"] },
+  27: { style: "intraday", flags: ["wallet_liquidated"] },   // real blowup, distinct from the sim cap at 7
+  31: { style: "scalp", flags: ["coattail"] },
 };
 
 function sizeTier(av: number): SizeTier {
@@ -174,7 +176,11 @@ function makeRow(i: number, nowMs: number): TraderRow {
   const display_name = i % 4 === 1 ? NAMES[(i >> 2) % NAMES.length] : null;
   const fit = copyFit(r, flags, trips, lastFillAgoH, FIXTURE_COHORT, quality);
   const simCopies = flags.includes("too_few_trades") ? 3 : Math.round(trips * between(r, 0.5, 0.95));
-  const skipped = Math.round(simCopies * between(r, 0, 0.2));
+  // index 15 ("too_few_trades") must keep a near-100% capacity so it never triggers a low-capacity
+  // note alongside the sample-size cap; everyone else gets occasional skips.
+  const skipped = flags.includes("too_few_trades") ? 0 : Math.round(simCopies * between(r, 0, 0.35));
+  const walletLiquidated = flags.includes("wallet_liquidated");
+  const coattail = flags.includes("coattail");
   const score: TraderScore = {
     address: addr, display_name, account_value_usd: av, pnl_30d_usd: pnl30, roi_30d_pct: roi30, pnl_all_time_usd: perf[3].pnl_usd,
     volume_30d_usd: totalVol, fills_30d: trips * 3, opens_per_day: trades_30d.opens_per_day, median_hold_h: trades_30d.median_hold_h,
@@ -183,6 +189,11 @@ function makeRow(i: number, nowMs: number): TraderRow {
     sim_liquidations: flags.includes("liquidated") ? 1 : 0, sim_copies: simCopies, sim_skipped_min_order: skipped,
     sim_fees_usd: round(simCopies * between(r, 0.02, 0.2), 2), score: round(simRet / 8, 2), flags: [...flags],
     sim_copy_capacity_pct: round((simCopies / Math.max(1, simCopies + skipped)) * 100, 1), copy_fit: fit, style, last_fill_ms: Math.round(nowMs - lastFillAgoH * HOUR),
+    liquidations_30d: walletLiquidated ? 2 : 0,
+    last_liquidation_ms: walletLiquidated ? Math.round(nowMs - 11 * 24 * HOUR) : null,
+    sim_capacity_note: skipped > 0 ? "58% of skipped opens: under the $10.50 minimum order at your size" : null,
+    coattail_leader: coattail ? address(rng(2000)) : null,
+    coattail_share_pct: coattail ? 68.0 : null,
   };
   return {
     address: addr, display_name, account_value_usd: av, size_tier: sizeTier(av), pnl_tier: pnlTier(perf[3].pnl_usd), style,
@@ -215,7 +226,10 @@ export function fixtureSettings(nowMs: number): Settings {
 }
 
 export function fixturePage(rows: TraderRow[], total: number, nowMs: number): TraderPage {
-  return { as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows };
+  return {
+    as_of_ms: nowMs - 12 * 60_000, refresh_id: "demo-refresh", settings_hash: "demo", cohort_size: FIXTURE_COHORT, total, rows,
+    sim_equity_usd: FIXTURE_SIM_EQUITY,
+  };
 }
 
 export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
@@ -231,6 +245,9 @@ export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
     coin_counts: Object.fromEntries(top),
     hip3_count: rows.filter((r) => hip3Share(r) >= 0.5).length,
     total: rows.length,
+    // demo values so the survivorship note (user_consensus P1 #7) is visible in ?demo=1 too
+    departed_30d: 11,
+    departed_liquidated_30d: 3,
   };
 }
 
@@ -253,9 +270,13 @@ function fillsFor(row: TraderRow, nowMs: number, count: number, beforeMs: number
     const side = r() < 0.5 ? "B" : "A";
     const closing = r() < 0.45;
     const dir = closing ? (side === "B" ? "Close Short" : "Close Long") : side === "B" ? "Open Long" : "Open Short";
+    // A closing fill is liquidated roughly 1 in 40 times (deterministic per address/clock): rare
+    // enough to look real, common enough that demo mode exercises the liquidation badge.
+    const liq = closing && r() < 0.025;
     out.push({
       time_ms: t, coin, side, dir, px, sz: round(notional / px, 4), notional_usd: notional,
       closed_pnl_usd: closing ? round(notional * between(r, -0.04, 0.07), 2) : 0, fee_usd: round(notional * 0.00035, 4),
+      liquidation: liq,
     });
   }
   return out;
@@ -375,8 +396,13 @@ export function fixtureProfile(row: TraderRow, nowMs: number): TraderProfile {
     const win = r() < (row.trades_30d.win_rate_pct ?? 50) / 100;
     const move = between(r, 0.002, 0.05) * (win ? 1 : -1) * (side === "long" ? 1 : -1);
     const maxN = round(row.account_value_usd * between(r, 0.02, 0.5), 0);
-    const net = round(maxN * Math.abs(move) * (win ? 1 : -1) - maxN * 0.0007, 2);
-    recent_trips.push({ coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry, exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, net_pnl_usd: net, win: net > 0 });
+    const gross = round(maxN * Math.abs(move) * (win ? 1 : -1), 2);
+    const fee = round(maxN * 0.0007, 2);
+    // Funding scales with hold time (HL settles roughly hourly); sign is a coin flip, same
+    // order of magnitude as the live `funding_since_open_usd` fixture a few lines up.
+    const funding = round(maxN * between(r, -0.0006, 0.0006) * (hold / 24), 2);
+    const net = round(gross - fee + funding, 2);
+    recent_trips.push({ coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry, exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, gross_pnl_usd: gross, fee_usd: fee, funding_usd: funding, net_pnl_usd: net, win: net > 0 });
   }
   const coins: CoinStat[] = [...row.top_coins];
   for (const c of COINS) {

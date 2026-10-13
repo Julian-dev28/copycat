@@ -16,7 +16,7 @@ function StrengthMeter({ value }: { value: string }) {
     <div className="flex flex-col gap-1" aria-live="polite">
       <div className="flex gap-1" aria-hidden="true">
         {[1, 2, 3].map((i) => (
-          <span key={i} className={clsx("h-1 flex-1 rounded-full", i <= meta.bars ? BAR[meta.bars - 1] : "bg-surface-2")} />
+          <span key={i} className={clsx("h-1 flex-1 rounded-sm", i <= meta.bars ? BAR[meta.bars - 1] : "bg-surface-2")} />
         ))}
       </div>
       <span className="text-[11px] text-muted">

@@ -21,6 +21,7 @@ function trader(over: Partial<TraderScore> = {}): TraderScore {
     sim_fees_usd: 2,
     score: 4,
     flags: [],
+    liquidations_30d: 0,
     ...over,
   };
 }

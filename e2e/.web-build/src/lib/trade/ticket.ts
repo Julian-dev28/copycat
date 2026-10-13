@@ -29,6 +29,8 @@ export interface LeaderPos {
   side: "long" | "short";
   notional_usd: number;
   leverage: number;
+  /** HL's max leverage for the coin (v12, audit S8); the engine never exceeds it. */
+  max_leverage?: number | null;
 }
 
 export interface TicketInput {
@@ -92,7 +94,8 @@ export interface TicketPreview {
   maxCycles: number;
   /** Engine notes (api preview only), e.g. "his equity read is stale". */
   notes?: string[];
-  source: "local" | "api";
+  /** local: the ticket's own estimate; api: the engine preview; demo: the demo's stand-in for the engine preview (audit L11). */
+  source: "local" | "api" | "demo";
   /** v8: the direction the sides were stamped with (applyDirection). */
   direction?: "copy" | "counter";
 }
@@ -103,7 +106,11 @@ export function rawCopies(inp: TicketInput): number[] {
   const gross = inp.positions.reduce((a, p) => a + Math.abs(p.notional_usd), 0);
   return inp.positions.map((p) => {
     const n = Math.abs(p.notional_usd);
-    if (inp.mode === "target") return gross > 0 ? (n / gross) * A * Math.max(1, inp.targetLeverage) : 0;
+    if (inp.mode === "target") {
+      // engine: n/gross x A x the coin's exchange leverage, which the coin max caps (S8)
+      const coinMax = p.max_leverage && p.max_leverage > 0 ? p.max_leverage : Infinity;
+      return gross > 0 ? (n / gross) * A * Math.max(1, Math.min(inp.targetLeverage, coinMax)) : 0;
+    }
     return inp.leaderEquityUsd > 0 ? (n / inp.leaderEquityUsd) * A : 0;
   });
 }

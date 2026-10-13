@@ -84,6 +84,20 @@ export interface DepositDeps {
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * Audit L7: the only (chain, USDC, bridge) triples a deposit may use, pinned
+ * here as well as in the api (services/hl/hl/accounts.py), so a wrong or
+ * tampered api response can never point the transfer somewhere else.
+ */
+export const PINNED_BRIDGES: ReadonlyArray<{ chain_id: number; usdc: string; bridge: string }> = [
+  { chain_id: 42161, usdc: "0xaf88d065e77c8cc2239327c5edb3a432268e5831", bridge: "0x2df1c51e09aecf9cacb7bc98cb1742757f163df7" },
+  { chain_id: 421614, usdc: "0x1baabb04529d43a73232b713c0fe471f7c7334d5", bridge: "0x08cfc1b6b2dcf36a1480b99353a354aa8ac56f89" },
+];
+
+export function bridgeIsPinned(info: Pick<FundingInfo, "chain_id" | "usdc_address" | "bridge_address">): boolean {
+  return PINNED_BRIDGES.some((b) => b.chain_id === info.chain_id && b.usdc === info.usdc_address.toLowerCase() && b.bridge === info.bridge_address.toLowerCase());
+}
+
 function wrongWallet(wallet: string, own: string): WalletFlowError {
   return new WalletFlowError(
     "wrong_account",
@@ -104,6 +118,10 @@ export async function connectDeposit(deps: DepositDeps, dispatch: (e: DepositEve
     return false;
   }
   const own = deps.info.account_address.toLowerCase();
+  if (!bridgeIsPinned(deps.info)) {
+    dispatch({ type: "fail", kind: "blocked", message: "The deposit addresses from the api are not the known Hyperliquid bridge. Nothing was sent. Update copycat." });
+    return false;
+  }
   dispatch({ type: "start" });
   let phase: "connect" | "switch" = "connect";
   try {
@@ -129,7 +147,9 @@ export async function connectDeposit(deps: DepositDeps, dispatch: (e: DepositEve
  */
 export async function sendDeposit(deps: DepositDeps, amountText: string, balanceUsd: number | null, dispatch: (e: DepositEvent) => void): Promise<string | null> {
   const { provider, info } = deps;
-  const problem = depositProblem(amountText, balanceUsd, info.min_deposit_usd);
+  const problem = bridgeIsPinned(info)
+    ? depositProblem(amountText, balanceUsd, info.min_deposit_usd)
+    : "The deposit addresses from the api are not the known Hyperliquid bridge. Nothing was sent.";
   if (problem || !provider) {
     dispatch({ type: "fail", kind: "blocked", message: problem ?? "No browser wallet found." });
     return null;

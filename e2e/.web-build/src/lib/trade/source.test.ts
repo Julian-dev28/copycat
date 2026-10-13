@@ -100,7 +100,7 @@ describe("demo book: global vs custom", () => {
     const src = demoTrade("default");
     const a = fixtureRows(demoNowMs())[0].address;
     const p = await run(src.preview(a, { settings_source: "global" }));
-    expect(p.source).toBe("api");
+    expect(p.source).toBe("demo");   // audit L11: never tagged as the engine preview
     expect(p.total).toBeGreaterThan(0);
   });
 });

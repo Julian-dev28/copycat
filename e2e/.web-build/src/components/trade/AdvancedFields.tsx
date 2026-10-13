@@ -80,6 +80,15 @@ export function AdvancedFields({
           <Switch id="only-new" checked={eff.onlyNew} onChange={(v) => onChange({ onlyNew: v })} disabled={!caps.v7} label="Only copy new positions" />
         </div>
         {!caps.v7 ? <p className="text-[11px] text-warning">Your api predates per-wallet only-new: it follows the Settings tab.</p> : null}
+        {caps.v9 && draft.oneShot ? (
+          <div className="flex items-start justify-between gap-3">
+            <label htmlFor="one-shot" className="text-sm font-medium">
+              One-shot
+              <span className="block text-[11px] font-normal text-muted">Copies only the positions he held when you invested; new ones are never copied. Turn off to follow his new trades too.</span>
+            </label>
+            <Switch id="one-shot" checked={draft.oneShot} onChange={(v) => onChange({ oneShot: v })} label="One-shot" />
+          </div>
+        ) : null}
       </div>
     </details>
   );

@@ -33,7 +33,7 @@ export function BottomTabBar() {
                   active ? "text-accent" : "text-muted hover:text-fg",
                 )}
               >
-                <span className={clsx("grid h-7 w-12 place-items-center rounded-full transition-colors", active && "bg-accent-soft")}>
+                <span className={clsx("grid h-7 w-12 place-items-center rounded-sm transition-colors", active && "bg-accent-soft")}>
                   <Icon size={18} aria-hidden="true" />
                 </span>
                 {label}

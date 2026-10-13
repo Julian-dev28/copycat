@@ -22,16 +22,16 @@
 /* ---------- light ---------- */
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface-2: #eff1f5;
-  --surface-3: #e6e9ef;
-  --border: #dfe3ea;
-  --border-strong: #c5ccd8;
-  --fg: #0d1017;
-  --fg-soft: #2b3140;
-  --muted: #596174;
-  --faint: #9aa1b0;
+  --surface-2: #f2f2f4;
+  --surface-3: #e9e9ec;
+  --border: #e3e3e7;
+  --border-strong: #cacad1;
+  --fg: #0c0c0e;
+  --fg-soft: #2c2c31;
+  --muted: #5d5d66;
+  --faint: #a1a1aa;
   --accent: #2d5bd8;
   --accent-fg: #ffffff;
   --accent-soft: #eaeffb;
@@ -48,7 +48,7 @@
   --pnl-orange: #a84f00;
   --soft-mix: 10%;
 
-  --elev-1: 0 1px 2px rgb(13 16 23 / 0.06);
+  --elev-1: none;
   --elev-2: 0 12px 32px -12px rgb(13 16 23 / 0.18);
   --elev-3: 0 24px 60px -20px rgb(13 16 23 / 0.25);
   --glass-bg: rgb(255 255 255 / 0.9);
@@ -61,39 +61,39 @@
 /* ---------- dark (default) ---------- */
 .dark {
   color-scheme: dark;
-  --bg: #07080b;
-  --surface: #0e1015;
-  --surface-2: #151821;
-  --surface-3: #1c2030;
-  --border: #232838;
-  --border-strong: #2f3547;
-  --fg: #eef0f6;
-  --fg-soft: #c4c9d6;
-  --muted: #8b92a5;
-  --faint: #5f6679;
+  --bg: #08080a;
+  --surface: #101012;
+  --surface-2: #17171a;
+  --surface-3: #1e1e22;
+  --border: #222226;
+  --border-strong: #303036;
+  --fg: #ececee;
+  --fg-soft: #c6c6cb;
+  --muted: #8d8d96;
+  --faint: #55555c;
   --accent: #7aa2ff;
   --accent-fg: #050b1a;
-  --accent-soft: #1d2436;
+  --accent-soft: #181c26;
   --brand: #ff7a1a;
   --brand-fg: #1a0e03;
   --warn: #f2b544;
   --danger: #ff6370;
   --ok: #2fd28c;
 
-  --pnl-green: #2fd28c;
-  --pnl-red: #ff6370;
+  --pnl-green: #4fbf8f;
+  --pnl-red: #ef5a68;
   --pnl-blue: #4cb0ff;
   --pnl-orange: #ff9a2e;
   --soft-mix: 14%;
 
-  --elev-1: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 0 rgb(0 0 0 / 0.4);
+  --elev-1: none;
   --elev-2: 0 12px 32px -12px rgb(0 0 0 / 0.7);
   --elev-3: 0 24px 60px -20px rgb(0 0 0 / 0.8);
-  --glass-bg: rgb(14 16 21 / 0.82);
+  --glass-bg: rgb(8 8 10 / 0.72);
   --glow-mix: 45%;
   --scrim: rgb(0 0 0 / 0.6);
-  --canvas-glow-a: rgb(122 162 255 / 0.08);
-  --canvas-glow-b: rgb(255 122 26 / 0.05);
+  --canvas-glow-a: rgb(122 162 255 / 0.06);
+  --canvas-glow-b: rgb(255 122 26 / 0.035);
 }
 
 /* ---------- PnL color modes (data-pnl on <html>) ---------- */
@@ -126,12 +126,13 @@
   --warning: var(--warn);
   --focus-ring: var(--accent);
 
-  /* radius (DESIGN 3.6): pill = chips/tabs/buttons, sm = inputs, md = panels, lg = dialogs.
-     Tailwind equivalents: rounded-full, rounded-lg, rounded-xl, rounded-2xl. */
-  --r-pill: 999px;
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
+  /* radius (DESIGN 3.6, v2 "terminal"): square. 2px controls, 3px panels,
+     4px dialogs. Tailwind's whole rounded-* scale maps here (@theme below), so
+     rounded-full is kept only for status dots. */
+  --r-pill: 2px;
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
 
   /* motion (DESIGN 3.7). Exits are 0.75x the enter with --ease-in. */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -177,6 +178,15 @@
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--ok);
   --color-ok: var(--ok);
+
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 3px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -267,9 +277,11 @@
 }
 @utility glass {
   background-color: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  box-shadow: var(--elev-3);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    var(--elev-3);
 }
 /* Table overflow cue: the right edge fades so a clipped column reads as "more". */
 @utility scroll-fade-x {
@@ -290,9 +302,10 @@ html {
 
 body {
   font-family: var(--font-sans);
+  /* two faint corner glows on near-black: blue top right, ember top left */
   background:
-    radial-gradient(60% 40% at 85% -10%, var(--canvas-glow-a), transparent 60%),
-    radial-gradient(40% 30% at -5% 0%, var(--canvas-glow-b), transparent 60%),
+    radial-gradient(55% 45% at 82% -8%, var(--canvas-glow-a), transparent 60%),
+    radial-gradient(45% 38% at -5% 8%, var(--canvas-glow-b), transparent 60%),
     var(--bg);
   background-attachment: fixed;
   color: var(--fg);
@@ -325,8 +338,8 @@ input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
-  border-radius: 999px;
+  height: 3px;
+  border-radius: 0;
   background: linear-gradient(
     to right,
     var(--fill-color, var(--accent)) 0 var(--fill, 0%),
@@ -338,9 +351,9 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
+  width: 12px;
   height: 16px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: #fff;
   border: 2px solid var(--fill-color, var(--accent));
   box-shadow: var(--elev-2);
@@ -354,9 +367,9 @@ input[type="range"]:active::-webkit-slider-thumb {
     var(--elev-2);
 }
 input[type="range"]::-moz-range-thumb {
-  width: 14px;
+  width: 10px;
   height: 14px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: #fff;
   border: 2px solid var(--fill-color, var(--accent));
   cursor: pointer;
@@ -408,6 +421,44 @@ input[type="range"]::-moz-range-thumb {
     opacity: 0;
     transform: translateY(6px);
   }
+}
+
+/* Scroll reveal (components/shell/Reveal.tsx): an element with [data-reveal]
+   fades in and rises 12px the first time it scrolls into view, staggered by
+   --reveal-delay. Hidden only once the observer is running (html.reveal-ready),
+   so the page never stays blank without JS. */
+.reveal-ready [data-reveal] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.45s var(--ease-out),
+    transform 0.45s var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal-ready [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Ticker (components/ui/Marquee.tsx): two copies of the strip slide left by
+   half their width forever; the edges fade out. Hover pauses it. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: marquee var(--marquee-s, 60s) linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+.marquee-mask {
+  mask-image: linear-gradient(90deg, transparent, #000 6% 94%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6% 94%, transparent);
 }
 
 /* Popovers and menus (native [popover]): pinned under the header's right edge,
@@ -529,6 +580,13 @@ dialog.ui-sheet[open]::backdrop {
   }
   [data-enter] {
     transform: none !important;
+  }
+  .reveal-ready [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .marquee-track {
+    animation: none !important;
   }
   .animate-flash-up {
     animation: none !important;

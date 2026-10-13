@@ -4,15 +4,21 @@ import type { ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Panel } from "@/components/ui/Panel";
+import { CopyButton } from "@/components/account/bits";
 
 /** Where the token comes from. The api generates one into data/api_token when COPYCAT_API_TOKEN is unset. */
 export function TokenWhereToFind({ className = "mt-3" }: { className?: string }) {
   return (
-    <p className={`${className} text-xs text-muted`}>
-      It&apos;s <span className="font-num text-foreground">COPYCAT_API_TOKEN</span> from your .env, or, if that&apos;s unset,
-      the token the api generated on first start:{" "}
-      <span className="font-num whitespace-nowrap text-foreground">cat data/api_token</span>
-    </p>
+    <div className={`${className} text-xs text-muted`}>
+      <p>
+        It&apos;s <span className="font-num text-foreground">COPYCAT_API_TOKEN</span> from your .env, or, if that&apos;s unset,
+        the token the api generated on first start. The api also prints this path to its own terminal when it starts.
+      </p>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span className="font-num whitespace-nowrap text-foreground">cat data/api_token</span>
+        <CopyButton text="cat data/api_token" label="Copy command" />
+      </div>
+    </div>
   );
 }
 

@@ -82,7 +82,7 @@ export function Tabs<T extends string>({
             <span
               aria-hidden="true"
               className={clsx(
-                "absolute inset-x-2 -bottom-px h-0.5 origin-center rounded-full bg-accent",
+                "absolute inset-x-2 -bottom-px h-0.5 origin-center rounded-sm bg-accent",
                 "transition-[scale,opacity] duration-[var(--dur-base)] ease-in-out",
                 active ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0",
               )}

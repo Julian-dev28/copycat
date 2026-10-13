@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { concentrate, rawCopies, type TicketInput } from "./ticket";
-import { localPreview } from "./preview";
+import { estimateNote, localPreview } from "./preview";
 
 const POS = [
   { coin: "BTC", side: "long" as const, notional_usd: 60_000, leverage: 10 },
@@ -133,5 +133,22 @@ describe("liquidity cap", () => {
 
   it("no volume data: never capped", () => {
     expect(localPreview({ ...base, allocationUsd: 1e7 }).liquidityCapped).toBe(false);
+  });
+});
+
+describe("audit S8: coin max and the estimate label", () => {
+  it("target sizing and leverage are capped by the coin's max, like the engine", () => {
+    const pos = [{ ...POS[0], max_leverage: 5 }, POS[1], POS[2]];
+    // BTC: 0.6 x $50 x min(10, 5) = $150, the rest at 10x
+    expect(rawCopies({ ...base, positions: pos })).toEqual([150, 150, 50]);
+    expect(localPreview({ ...base, positions: pos }).copies[0].leverage).toBe(5);
+  });
+
+  it("labels the local estimate whenever it is shown, with the data's age", () => {
+    const now = 10 * 3_600_000;
+    expect(estimateNote(null, true, now - 3 * 3_600_000, now)).toBe(
+      "Estimate from cached data (his positions as of 3 h ago); the engine preview replaces it in a moment.");
+    expect(estimateNote("too_old", true, now - 5 * 60_000, now)).toMatch(/^Local estimate \(his positions as of 5 min ago\): your api/);
+    expect(estimateNote(null, false, now, now)).toBeNull();
   });
 });

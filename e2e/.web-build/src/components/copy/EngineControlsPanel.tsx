@@ -16,7 +16,9 @@ import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { dailyLossLimitToStored, storedToDailyLossMagnitude } from "@/lib/sizing";
 import { leverageVibe, minMarginForLeverage, settingsLeverage } from "@/lib/copyRecipe";
 import { formatUsd } from "@/lib/format";
-import { patchGoesLive } from "@/lib/settings";
+import { patchGoesLive, patchStrandsCopies } from "@/lib/settings";
+import { Dialog } from "@/components/ui/Dialog";
+import { Button } from "@/components/ui/Button";
 
 const SIZING_OPTIONS = [
   { value: "fixed_margin" as const, label: "Fixed margin" },
@@ -36,12 +38,17 @@ const MARGIN_MODE_OPTIONS = [
 export function EngineControlsPanel({
   settings,
   onPatch,
+  openRealCopies = 0,
 }: {
   settings: Settings;
   onPatch: (patch: SettingsPatch) => void;
+  /** Real copies open now (EngineStatus.positions when not dry run): dry run would strand them (L9). */
+  openRealCopies?: number;
 }) {
   // A patch that would turn on real-money trading waits here for the confirm.
   const [pendingLivePatch, setPendingLivePatch] = useState<SettingsPatch | null>(null);
+  // A patch that would turn dry run on over open real copies waits here (L9).
+  const [pendingDryPatch, setPendingDryPatch] = useState<SettingsPatch | null>(null);
   const [leverage, setLeverage] = useSyncedState(settings.leverage);
   const [fixedMargin, setFixedMargin] = useSyncedState(settings.fixed_margin_usd);
   const [fixedNotional, setFixedNotional] = useSyncedState(settings.fixed_notional_usd);
@@ -59,6 +66,10 @@ export function EngineControlsPanel({
   function guardedPatch(patch: SettingsPatch) {
     if (patchGoesLive(settings, patch)) {
       setPendingLivePatch(patch);
+      return;
+    }
+    if (patchStrandsCopies(settings, patch, openRealCopies)) {
+      setPendingDryPatch(patch);
       return;
     }
     onPatch(patch);
@@ -281,6 +292,26 @@ export function EngineControlsPanel({
           if (pendingLivePatch) onPatch(pendingLivePatch);
           setPendingLivePatch(null);
         }}
+      />
+      <Dialog
+        open={pendingDryPatch !== null}
+        onClose={() => setPendingDryPatch(null)}
+        title="Turn on dry run with copies open?"
+        description={`Dry run places no orders at all, exits included. Your ${openRealCopies === 1 ? "open copy" : `${openRealCopies} open copies`} will stop following the traders' reduces and closes and stay open at their leverage until you turn dry run off or close them. To stop new copies but keep managing exits, turn Trading enabled off instead.`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingDryPatch(null)}>Cancel</Button>
+            <Button
+              variant="danger-solid"
+              onClick={() => {
+                if (pendingDryPatch) onPatch(pendingDryPatch);
+                setPendingDryPatch(null);
+              }}
+            >
+              Leave copies unmanaged
+            </Button>
+          </>
+        }
       />
     </Panel>
   );

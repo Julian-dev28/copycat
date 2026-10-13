@@ -45,6 +45,12 @@ export function shortenAddress(address: string, lead = 6, trail = 4): string {
   return `${address.slice(0, lead)}…${address.slice(-trail)}`;
 }
 
+/** "Jan 5, 2027" style absolute date, UTC so it never shifts with the viewer's clock. */
+export function formatDate(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return "—";
+  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
 /** "3s ago" / "4m ago" / "2h ago" style relative time, for status/event timestamps. */
 export function formatAgo(ms: number | null | undefined, nowMs: number = Date.now()): string {
   if (ms === null || ms === undefined || Number.isNaN(ms)) return "—";

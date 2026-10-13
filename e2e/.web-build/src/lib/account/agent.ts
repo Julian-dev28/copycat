@@ -4,6 +4,7 @@
  * The api sends `agent_status`; the expiry date is the source of truth for
  * the countdown, so a cached "active" whose date has passed reads Expired.
  */
+import { formatDate } from "@/lib/format";
 import type { AccountKind, AgentStatus, TradingAccount } from "./types";
 
 export type AgentTone = "success" | "warning" | "danger" | "neutral";
@@ -15,6 +16,8 @@ export interface AgentView {
   daysLeft: number | null;
   /** What to do about it, in plain words; null when nothing is needed. */
   hint: string | null;
+  /** "Valid until Jan 5, 2027" / "Expired Jan 5, 2027", or null with no approval date at all. */
+  validUntil: string | null;
 }
 
 const DAY = 86_400_000;
@@ -28,27 +31,33 @@ export function agentView(a: Pick<TradingAccount, "agent_status" | "agent_valid_
   if (until !== null && until <= nowMs && (status === "active" || status === "expiring")) status = "expired";
   if (status === "active" && daysLeft !== null && daysLeft <= EXPIRING_DAYS) status = "expiring";
   const fix = refreshHint(a.kind);
+  // Visible regardless of status: the operator-facing ask was "valid until must be
+  // visible", not just a relative day count that disappears once the agent is healthy.
+  const validUntil = until === null ? null : `${status === "expired" ? "Expired" : "Valid until"} ${formatDate(until)}`;
 
   switch (status) {
     case "active":
-      return { status, label: "Active", tone: "success", daysLeft, hint: null };
+      return { status, label: "Active", tone: "success", daysLeft, hint: validUntil, validUntil };
     case "expiring":
       return {
-        status, tone: "warning", daysLeft,
+        status, tone: "warning", daysLeft, validUntil,
         label: daysLeft === null ? "Expiring" : daysLeft <= 1 ? "Expires today" : `Expires in ${daysLeft}d`,
-        hint: `The trading agent stops working when it expires. ${fix}`,
+        hint: `The trading agent stops working when it expires. ${fix}${validUntil ? ` (${validUntil})` : ""}`,
       };
     case "expired":
-      return { status, label: "Expired", tone: "danger", daysLeft: 0, hint: `copycat cannot trade this account. ${fix}` };
+      return {
+        status, label: "Expired", tone: "danger", daysLeft: 0, validUntil,
+        hint: `copycat cannot trade this account. ${fix}${validUntil ? ` (${validUntil})` : ""}`,
+      };
     case "missing":
       return {
-        status, label: "Missing", tone: "danger", daysLeft,
+        status, label: "Missing", tone: "danger", daysLeft, validUntil: null,
         hint: a.kind === "created"
           ? "No trading agent yet. Hyperliquid only accepts one after the wallet holds funds: deposit, then refresh."
           : `Hyperliquid no longer lists this agent. ${fix}`,
       };
     default:
-      return { status: "unknown", label: "Unknown", tone: "neutral", daysLeft, hint: "Could not read the agent from Hyperliquid. Try again shortly." };
+      return { status: "unknown", label: "Unknown", tone: "neutral", daysLeft, validUntil: null, hint: "Could not read the agent from Hyperliquid. Try again shortly." };
   }
 }
 

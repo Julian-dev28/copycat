@@ -126,7 +126,9 @@ export function YourWallets({
             <thead>
               <tr>
                 {["Wallet", "Invested", "Leverage", "Exposure", "uPnL", "Realized", "ROE", "Copies", "Status", ""].map((h, i) => (
-                  <th key={i} scope="col" className={clsx(TH, i === 0 ? "text-left" : "text-right")}>{h}</th>
+                  <th key={i} scope="col" className={clsx(TH, i === 0 ? "text-left" : "text-right")}>
+                    {h || <span className="sr-only">Actions</span>}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -155,6 +157,11 @@ export function YourWallets({
                             <ArrowDownUp size={10} aria-hidden="true" /> counter
                           </span>
                         ) : null}
+                        {w.one_shot ? (
+                          <span title="One-shot: copies only the positions he held when you invested; his new trades are not copied" className="rounded bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
+                            one-shot
+                          </span>
+                        ) : null}
                         {!w.read_ok && (status === "running" || status === "paused") ? <AlertTriangle size={12} className="text-danger" aria-label="Last read of his account failed" /> : null}
                       </button>
                     </td>
@@ -167,8 +174,9 @@ export function YourWallets({
                     <td className={TD}>{w.open_copies}</td>
                     <td className="px-3 py-2 text-right">
                       <span className="flex flex-col items-end gap-0.5">
-                        <span title={badge.hint} className={clsx("rounded-full px-2 py-0.5 text-[11px] font-medium", TONE[badge.tone])}>{badge.label}</span>
+                        <span title={badge.hint} className={clsx("rounded-sm px-2 py-0.5 text-[11px] font-medium", TONE[badge.tone])}>{badge.label}</span>
                         {status === "paused" ? <span className="text-[10px] whitespace-nowrap text-muted">no new copies; exits still followed</span> : null}
+                        {status === "running" && w.one_shot ? <span className="text-[10px] whitespace-nowrap text-muted">new trades not copied</span> : null}
                         {status === "running" && engine === "dry_run" ? <span className="text-[10px] text-muted">dry run</span> : null}
                         {status === "running" && engine === "paused" ? <span className="text-[10px] text-muted">engine off</span> : null}
                       </span>

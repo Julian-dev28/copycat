@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
-import { biasLabel, coinLabel, FLAG_TEXT, formatHold, isStale, liqTone, normalizeOrders, STYLE_META } from "./labels";
+import {
+  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders, STYLE_META,
+  visibleFlags,
+} from "./labels";
 import { TRADING_STYLES } from "./types";
 
 describe("labels", () => {
@@ -32,6 +35,16 @@ describe("labels", () => {
 
   it("liqTone thresholds", () => {
     expect([liqTone(5), liqTone(10), liqTone(25), liqTone(undefined)]).toEqual(["danger", "warn", "ok", "none"]);
+  });
+
+  it("netFundingSinceOpen flips HL's paid-positive sign to the app's good-positive convention", () => {
+    // Regression, confirmed against real HL data (0x8be0b9c4..., coin INJ, 2026-10-14):
+    // clearinghouseState reported cumFunding.sinceOpen = +851.10 for a position whose
+    // userFunding rows were all negative (-18, -18, -18, -19: funding PAID every settlement).
+    // The Positions tab used to color the raw +851.10 green ("text-up" on >= 0), the exact
+    // opposite of what happened to the trader's money.
+    expect(netFundingSinceOpen(851.1)).toBe(-851.1);   // paid $851.10: must read negative/red
+    expect(netFundingSinceOpen(-18.0)).toBe(18.0);      // received $18: must read positive/green
   });
 
   it("formatHold", () => {
@@ -71,5 +84,67 @@ describe("isApiTooOld", () => {
     expect(isApiTooOld(new ApiError(500, "x"))).toBe(false);
     expect(isApiTooOld(new ApiError(401, "x"))).toBe(false);
     expect(isApiTooOld(new Error("x"))).toBe(false);
+  });
+});
+
+describe("flagText (UX audit: raw enum keys never render)", () => {
+  // Every flag discovery can emit (services/discovery/README.md + scout/stats.py).
+  const API_FLAGS = [
+    "vault", "hft", "hft_not_simulated", "too_few_trades", "liquidated", "liquidated:BTC", "non_perp_ignored",
+    "max_leverage_unknown:ETH", "candles_partial:SOL", "error:fills_read_failed", "error:sim:ValueError",
+    "inactive", "fills_truncated", "stale", "wallet_liquidated", "coattail",
+  ];
+  it("has words for every api flag, with no snake_case left", () => {
+    for (const f of API_FLAGS) {
+      const t = flagText(f);
+      expect(t, f).toBeTruthy();
+      expect(t, f).not.toMatch(/_/);
+    }
+  });
+  it("labels non_perp_ignored in plain words", () => {
+    expect(flagText("non_perp_ignored")).toBe(FLAG_TEXT.non_perp_ignored);
+    expect(FLAG_TEXT.non_perp_ignored).toMatch(/spot/);
+  });
+  it("keeps the coin of a prefixed flag and hides error internals", () => {
+    expect(flagText("liquidated:BTC")).toBe(`${FLAG_TEXT.liquidated} (BTC)`);
+    expect(flagText("error:sim:ValueError")).toBe(FLAG_TEXT.error);
+  });
+  it("turns an unknown key into words", () => {
+    expect(flagText("brand_new_flag")).toBe("brand new flag");
+  });
+  it("visibleFlags drops fills_truncated and repeats of one key", () => {
+    expect(visibleFlags(["liquidated:BTC", "liquidated:ETH", "fills_truncated", "hft"])).toEqual(["liquidated:BTC", "hft"]);
+  });
+  it("dexHint explains the HIP-3 prefix", () => {
+    expect(dexHint("xyz")).toBe("HIP-3 market (xyz deployer)");
+  });
+  it("flag texts use they/their, not he/his", () => {
+    for (const t of Object.values(FLAG_TEXT)) expect(t).not.toMatch(/\b(he|his|him)\b/i);
+  });
+});
+
+describe("liquidationText (user_consensus P0 #3: real liquidation, not the sim's)", () => {
+  const NOW = Date.UTC(2026, 9, 14);
+  const DAY = 86_400_000;
+  it("null when the wallet was never really liquidated", () => {
+    expect(liquidationText({ liquidations_30d: 0, last_liquidation_ms: null }, NOW)).toBeNull();
+  });
+  it("plain language with count and recency", () => {
+    expect(liquidationText({ liquidations_30d: 2, last_liquidation_ms: NOW - 3 * DAY }, NOW)).toBe("Liquidated 2x in 30d (last: 3d ago)");
+    expect(liquidationText({ liquidations_30d: 1, last_liquidation_ms: NOW - DAY }, NOW)).toBe("Liquidated 1x in 30d (last: 1d ago)");
+  });
+});
+
+describe("coattailText (user_consensus P1 #6)", () => {
+  it("null without a leader", () => {
+    expect(coattailText({ coattail_leader: null, coattail_share_pct: null })).toBeNull();
+  });
+  it("names the leader (shortened) and the share", () => {
+    const t = coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: 68.4 });
+    expect(t).toBe("Opens often land soon after 0x04a9…95aa's (68% of the time)");
+  });
+  it("drops the share clause when it's missing", () => {
+    expect(coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: null }))
+      .toBe("Opens often land soon after 0x04a9…95aa's");
   });
 });

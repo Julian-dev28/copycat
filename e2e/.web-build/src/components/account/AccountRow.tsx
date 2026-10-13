@@ -28,14 +28,14 @@ export function AccountRow({ account, nowMs }: { account: TradingAccount; nowMs:
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate text-sm font-semibold">{account.label}</span>
-            {account.active ? <span className="rounded-full bg-accent px-1.5 py-px text-[10px] font-bold tracking-wide text-accent-foreground uppercase">Active</span> : null}
+            {account.active ? <span className="rounded-sm bg-accent px-1.5 py-px text-[10px] font-bold tracking-wide text-accent-foreground uppercase">Active</span> : null}
             <KindBadge kind={account.kind} />
           </div>
           <AddressChip address={account.address} className="-ml-0.5" />
         </div>
         <AgentBadge account={account} nowMs={nowMs} />
       </div>
-      {v.hint && v.status !== "active" ? <p className="text-[11px] text-muted">{v.hint}</p> : null}
+      {v.hint ? <p className="text-[11px] text-muted">{v.hint}</p> : null}
 
       {mode === "rename" ? <RenameForm account={account} onDone={() => setMode("view")} /> : null}
       {mode === "remove" ? <RemoveConfirm account={account} onDone={() => setMode("view")} /> : null}

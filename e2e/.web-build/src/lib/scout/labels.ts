@@ -1,5 +1,6 @@
 /** Plain-words labels and thresholds for Scout. Thresholds mirror spec section 2. Pure. */
-import type { OpenOrderWire, PnlTier, RawOpenOrder, SizeTier, TradingStyle } from "./types";
+import { formatAgo } from "@/lib/format";
+import type { OpenOrderWire, PnlTier, RawOpenOrder, SizeTier, TraderScore, TradingStyle } from "./types";
 
 export const STYLE_META: Record<TradingStyle, { label: string; hint: string }> = {
   algo: { label: "Algo", hint: "Over 100 opens a day. Too fast to copy on a 5s poll." },
@@ -44,6 +45,20 @@ export function liqTone(pct: number | null | undefined): RiskTone {
   return "ok";
 }
 
+/**
+ * HL's own `cumFunding.sinceOpen` (TraderPositionView.funding_since_open_usd)
+ * is reported positive = PAID by the trader (a cost) -- the opposite
+ * convention from every other money figure here (positive = good). This
+ * negates it for display so the sign and color both read the normal way:
+ * positive/green when funding was a net benefit to the position, negative/red
+ * when it cost the position money. Regression: the Positions tab used to
+ * color a real $851 funding COST green (`>= 0` on the raw, unpaid-flipped
+ * value), the exact opposite of what happened to the trader's money.
+ */
+export function netFundingSinceOpen(raw: number): number {
+  return -raw;
+}
+
 /** 0.4h -> "24m", 5.5h -> "5.5h", 50h -> "2.1d". */
 export function formatHold(hours: number | null | undefined): string {
   if (hours === null || hours === undefined || !Number.isFinite(hours)) return "—";
@@ -61,12 +76,70 @@ export function coinLabel(coin: string): { name: string; dex: string | null } {
 export const FLAG_TEXT: Record<string, string> = {
   inactive: "inactive: tiny account or no fill in 7 days",
   liquidated: "a copy got liquidated in the sim",
+  wallet_liquidated: "liquidated for real in the last 30d",
   too_few_trades: "too few trades to trust",
   hft: "trades too fast to copy",
+  hft_not_simulated: "too fast to copy, not simulated",
   vault: "a vault, PnL is pooled",
+  coattail: "opens often land soon after another top wallet's",
   fills_truncated: "only the latest 10k fills are visible",
   stale: "stats could not be refreshed last cycle",
+  non_perp_ignored: "spot / HIP-3 holdings ignored by the sim",
+  max_leverage_unknown: "max leverage unknown for a coin",
+  candles_partial: "some price history missing",
+  error: "the sim hit a data error",
 };
+
+/**
+ * Plain-language real-liquidation line for a board row (user_consensus P0
+ * #3): "Liquidated 2x in 30d (last: 3d ago)". Distinct from the sim's own
+ * "liquidated" flag (FLAG_TEXT.liquidated): this is the wallet's OWN real
+ * HL liquidation history, not what would happen to a copy. null when it
+ * never happened in the 30d window the stat covers.
+ */
+export function liquidationText(score: Pick<TraderScore, "liquidations_30d" | "last_liquidation_ms">, nowMs: number): string | null {
+  if (!score.liquidations_30d) return null;
+  const n = score.liquidations_30d;
+  return `Liquidated ${n}x in 30d (last: ${formatAgo(score.last_liquidation_ms, nowMs)})`;
+}
+
+/** "Opens often land ~68% of the time soon after 0x1234...abcd's" (user_consensus P1 #6). */
+export function coattailText(score: Pick<TraderScore, "coattail_leader" | "coattail_share_pct">): string | null {
+  if (!score.coattail_leader) return null;
+  const who = `${score.coattail_leader.slice(0, 6)}…${score.coattail_leader.slice(-4)}`;
+  const share = score.coattail_share_pct !== null && score.coattail_share_pct !== undefined ? Math.round(score.coattail_share_pct) : null;
+  return `Opens often land soon after ${who}'s${share !== null ? ` (${share}% of the time)` : ""}`;
+}
+
+/**
+ * Plain words for any flag the api sends, including the prefixed ones
+ * (`liquidated:BTC`, `max_leverage_unknown:ETH`, `error:sim:ValueError`).
+ * Never returns a raw enum key: an unknown flag becomes words, not snake_case.
+ */
+export function flagText(flag: string): string {
+  const [key, ...rest] = flag.split(":");
+  const base = FLAG_TEXT[key] ?? key.replaceAll("_", " ").trim();
+  const detail = key === "error" ? "" : rest.join(":");
+  return detail ? `${base} (${detail})` : base;
+}
+
+/** Flags worth showing on a card or header: one entry per flag key, the 10k-fills note dropped. */
+export function visibleFlags(flags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const f of flags) {
+    const key = f.split(":")[0];
+    if (key === "fills_truncated" || seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
+}
+
+/** Tooltip for a HIP-3 coin's dex chip (UX audit: unexplained "XYZ"). */
+export function dexHint(dex: string): string {
+  return `HIP-3 market (${dex} deployer)`;
+}
 
 export interface OpenOrderView {
   oid: number;

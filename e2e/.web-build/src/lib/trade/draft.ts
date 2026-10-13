@@ -25,6 +25,8 @@ export interface TicketDraft {
   direction: TradeDirection | null;
   allow: string[] | null;
   block: string[] | null;
+  /** v9 (audit M5): copy only what he held at invest time. A per-wallet fact, never inherited. */
+  oneShot: boolean;
 }
 
 export type InheritableField = "marginMode" | "maxWorseEntryPct" | "smallMode" | "onlyNew" | "direction" | "allow" | "block";
@@ -36,6 +38,8 @@ export interface ApiCaps {
   smallMode: boolean;
   /** v8: trade_direction, coin_allowlist, coin_blocklist, pause/resume/archive. */
   v8: boolean;
+  /** v9: one_shot on WalletCopyRequest. */
+  v9: boolean;
 }
 
 export function apiCaps(settings: TradeSettings | undefined): ApiCaps {
@@ -43,6 +47,7 @@ export function apiCaps(settings: TradeSettings | undefined): ApiCaps {
     v7: (settings?.contract_version ?? 0) >= 7,
     smallMode: Boolean(settings && "small_account_mode" in settings),
     v8: (settings?.contract_version ?? 0) >= 8 && Boolean(settings && "trade_direction" in settings),
+    v9: (settings?.contract_version ?? 0) >= 9,
   };
 }
 
@@ -73,6 +78,7 @@ export function initialDraft(settings: TradeSettings | undefined, address: strin
     direction: o?.trade_direction ?? null,
     allow: o?.coin_allowlist ?? null,
     block: o?.coin_blocklist ?? null,
+    oneShot: Boolean(o?.one_shot ?? wallet?.one_shot),
   };
 }
 
@@ -129,6 +135,9 @@ export function buildCopyRequest(d: TicketDraft, caps: ApiCaps): WalletCopyReque
     if (d.allow !== null) body.coin_allowlist = [...d.allow];
     if (d.block !== null) body.coin_blocklist = [...d.block];
   }
+  // Always explicit: the api keeps a previous one_shot when the key is absent,
+  // so a one-shot wallet re-posted without it would silently stay one-shot.
+  if (caps.v9) body.one_shot = d.oneShot;
   return body;
 }
 
@@ -140,7 +149,7 @@ function same(a: TicketDraft, b: TicketDraft): boolean {
   const amt = (d: TicketDraft) => parseInvest(d.amountText) ?? -1;
   return Math.abs(amt(a) - amt(b)) < 0.005 && a.mode === b.mode && (a.mode === "match" || a.leverage === b.leverage) &&
     a.marginMode === b.marginMode && a.maxWorseEntryPct === b.maxWorseEntryPct && a.smallMode === b.smallMode && a.onlyNew === b.onlyNew &&
-    a.direction === b.direction && sameList(a.allow, b.allow) && sameList(a.block, b.block);
+    a.direction === b.direction && sameList(a.allow, b.allow) && sameList(a.block, b.block) && a.oneShot === b.oneShot;
 }
 
 function sameList(a: string[] | null, b: string[] | null): boolean {

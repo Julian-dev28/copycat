@@ -64,12 +64,13 @@ test.describe("demo Scout", () => {
     expect(errors).toEqual([]);
   });
 
-  test("KNOWN BUG: the default Discover form is valid and submits", async ({ page }) => {
-    // services/web/src/components/discover/DiscoveryForm.tsx: min={10} step={100} makes the
-    // default 1000 invalid (valid: 910, 1010), so Start silently does nothing. Flips red when fixed.
-    test.fail();
+  test("the default Discover form is valid and submits", async ({ page }) => {
+    // Regression: DiscoveryForm once had min={10} step={100}, which made the default 1000
+    // invalid (valid: 910, 1010), so Start silently did nothing.
     await gotoDemo(page, "/discover");
     const eq = page.getByRole("spinbutton", { name: /Simulated equity/ });
     expect(await eq.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
+    await page.getByRole("button", { name: "Start discovery run" }).click();
+    await expect(page.getByRole("heading", { name: /Results \(/ })).toBeVisible({ timeout: 20_000 });
   });
 });

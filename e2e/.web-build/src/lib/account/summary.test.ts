@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { fixtureAccounts, fixtureSummary } from "./fixtures";
-import { accountSeries, analysisStats, directionBias, equitySlices, isEmptyAccount, longShare, overviewStats, performanceStats } from "./summary";
+import {
+  accountSeries, analysisStats, directionBias, equitySlices, HL_ACCOUNT_VALUE_DEF, HL_PNL_DEF,
+  isEmptyAccount, longShare, overviewStats, performanceStats,
+} from "./summary";
 import type { AccountSummary } from "./types";
 
 const NOW = 1_760_000_000_000;
@@ -44,6 +47,13 @@ describe("stat rows", () => {
     expect(o.Leverage.tone).toBe("warn");
     expect(o["Margin usage"].tone).toBe("warn");
     expect(o["All-time PnL"].value).toBe("—");
+  });
+
+  it("explains All-time PnL with Hyperliquid's own definition (research/user_consensus_2026-10.md)", () => {
+    const o = Object.fromEntries(overviewStats(base()).map((x) => [x.label, x]));
+    expect(o["All-time PnL"].hint).toBe(HL_PNL_DEF);
+    expect(HL_PNL_DEF).toMatch(/account value \+ deposits/);
+    expect(HL_ACCOUNT_VALUE_DEF).toMatch(/unrealized pnl from cross and isolated margin positions/);
   });
 
   it("says n/a, not 0 or a dash, while discovery has no metrics yet", async () => {

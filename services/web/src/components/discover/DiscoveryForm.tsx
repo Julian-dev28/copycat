@@ -42,7 +42,7 @@ export function DiscoveryForm({
               leading="$"
               type="number"
               min={10}
-              step={100}
+              step={10}
               value={simEquityUsd}
               onChange={(e) => setSimEquityUsd(Number(e.target.value))}
             />

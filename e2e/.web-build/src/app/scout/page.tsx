@@ -10,12 +10,14 @@ import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
-import { FilterPanel, PresetRow, Toolbar } from "@/components/scout/BoardControls";
+import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControls";
+import { BoardTicker } from "@/components/scout/BoardTicker";
 import { TraderCard } from "@/components/scout/TraderCard";
 import { TraderTable } from "@/components/scout/TraderTable";
-import { ApiTooOld, DemoBanner, RefreshBadge } from "@/components/scout/bits";
+import { ApiTooOld, DeparturesNote, RefreshBadge } from "@/components/scout/bits";
 import { useNow } from "@/hooks/useNow";
 import { useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders } from "@/hooks/useScout";
+import { formatUsd } from "@/lib/format";
 import { isApiTooOld } from "@/lib/scout/api";
 import {
   boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT, PAGE_SIZE, parseBoardState,
@@ -52,7 +54,7 @@ function ScoutBoard() {
   const book = useScoutBook();
   const refresh = useScoutRefresh();
   const nowMs = useNow();
-  const [filtersOpen, setFiltersOpen] = useState(() => countActiveFilters(state) > 0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   function navigate(next: BoardState) {
     const qs = boardStateToSearch(next, demo ? { demo: "1" } : undefined);
@@ -148,14 +150,15 @@ function ScoutBoard() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Scout</h1>
           <p className="text-sm text-muted">
-            Traders ranked by what copying them would have earned you, at your settings.{" "}
+            Traders ranked by what copying them would have earned you, at your settings
+            {page?.sim_equity_usd ? <> and a {formatUsd(page.sim_equity_usd, true)} account</> : null}, not necessarily your own balance.{" "}
             <Link href="/discover" className="font-medium text-accent hover:underline">Run a custom sim with your own equity and top N</Link>
           </p>
         </div>
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
       </div>
 
-      {demo ? <DemoBanner /> : null}
+      <BoardTicker rows={page?.rows ?? []} window={state.window} unit={state.unit} demo={demo} />
 
       {page?.stale_settings ? (
         <Notice tone="info" title="Re-ranking for your new settings">
@@ -169,9 +172,17 @@ function ScoutBoard() {
         </Notice>
       ) : null}
 
+      {presets.data ? <DeparturesNote departed={presets.data.departed} departedLiquidated={presets.data.departedLiquidated} /> : null}
       <PresetRow state={state} presets={presets.data} update={update} />
-      <Toolbar state={state} update={update} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen((o) => !o)} />
-      {filtersOpen ? <FilterPanel state={state} update={update} onClear={() => navigate(clearFilters(state))} /> : null}
+      <Toolbar state={state} update={update} onOpenFilters={() => setFiltersOpen(true)} onClearFilters={() => navigate(clearFilters(state))} />
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        state={state}
+        update={update}
+        onClear={() => navigate(clearFilters(state))}
+        resultCount={page?.total}
+      />
 
       {body}
     </div>

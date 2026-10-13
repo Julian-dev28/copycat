@@ -48,7 +48,7 @@ export function AccountSwitcher() {
           type="button"
           onClick={() => openWalletManager()}
           aria-label={active ? `Active trading account ${active.label}. Manage accounts` : "Manage accounts"}
-          className="flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 text-xs transition-colors duration-[var(--dur-fast)] hover:border-border-strong hover:bg-surface-3"
+          className="flex h-8 min-w-0 items-center gap-1.5 rounded-sm border border-border bg-surface-2 px-3 text-xs transition-colors duration-[var(--dur-fast)] hover:border-border-strong hover:bg-surface-3"
         >
           {body}
         </button>

@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { clsx } from "clsx";
-import { LayoutGrid, Rows3, Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
 import { Input } from "@/components/ui/Input";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useSyncedState } from "@/hooks/useSyncedState";
 import { coinLabel, STYLE_META } from "@/lib/scout/labels";
-import { countActiveFilters, parseAmount, SORT_OPTIONS, type BoardState } from "@/lib/scout/query";
+import { activeFilterChips, countActiveFilters, parseAmount, SORT_OPTIONS, type BoardState } from "@/lib/scout/query";
 import { PNL_WINDOWS, TRADING_STYLES, type ScoutPresets } from "@/lib/scout/types";
 import { WINDOW_LABEL } from "@/lib/scout/window";
 
 type Update = (patch: Partial<BoardState>) => void;
 
-function Chip({ active, onClick, children, title }: { active: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
+const SELECT = "h-8 rounded-sm border border-border bg-surface-2 pr-7 pl-3 text-xs text-fg transition-colors hover:border-border-strong";
+
+function Chip({ active, onClick, children, title }: { active: boolean; onClick: () => void; children: ReactNode; title?: string }) {
   return (
     <button
       type="button"
@@ -24,8 +27,8 @@ function Chip({ active, onClick, children, title }: { active: boolean; onClick: 
       title={title}
       onClick={onClick}
       className={clsx(
-        "inline-flex flex-shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-        active ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface text-muted hover:border-foreground/30 hover:text-foreground",
+        "inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-sm border px-3 text-xs font-medium transition-colors duration-[var(--dur-fast)]",
+        active ? "border-border-strong bg-surface-3 text-fg shadow-e1" : "border-border bg-surface text-muted hover:border-border-strong hover:text-fg",
       )}
     >
       {children}
@@ -35,22 +38,17 @@ function Chip({ active, onClick, children, title }: { active: boolean; onClick: 
 
 export function PresetRow({ state, presets, update }: { state: BoardState; presets?: ScoutPresets; update: Update }) {
   return (
-    <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Presets">
+    <div className="scroll-fade-x -mx-4 flex gap-1.5 px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:[mask-image:none]" role="group" aria-label="Presets">
       <Chip active={state.preset === "all"} onClick={() => update({ preset: "all" })}>
         All traders
       </Chip>
       <Chip active={state.preset === "hip3"} onClick={() => update({ preset: "hip3" })} title="Half or more of top-coin volume on HIP-3 (xyz:) markets">
-        HIP-3 equities{presets?.hip3 ? <span className="font-num opacity-70">{presets.hip3}</span> : null}
+        HIP-3 equities{presets?.hip3 ? <span className="num-sm text-muted">{presets.hip3}</span> : null}
       </Chip>
       {presets?.coins.map((c) => (
-        <Chip
-          key={c.coin}
-          active={state.preset === `coin:${c.coin}`}
-          onClick={() => update({ preset: `coin:${c.coin}` })}
-          title={`Traders whose #1 coin is ${c.coin}`}
-        >
+        <Chip key={c.coin} active={state.preset === `coin:${c.coin}`} onClick={() => update({ preset: `coin:${c.coin}` })} title={`Traders whose #1 coin is ${c.coin}`}>
           Top {coinLabel(c.coin).name}
-          {c.traders ? <span className="font-num opacity-70">{c.traders}</span> : null}
+          {c.traders ? <span className="num-sm text-muted">{c.traders}</span> : null}
         </Chip>
       ))}
     </div>
@@ -61,112 +59,125 @@ function SearchBox({ value, onCommit }: { value: string; onCommit: (q: string) =
   const [draft, setDraft] = useSyncedState(value);
   const commit = useDebouncedCallback((q: string) => onCommit(q.trim()), 300);
   return (
-    <div className="relative min-w-0 flex-1 sm:max-w-xs">
-      <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden="true" />
-      <input
+    <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
+      <Input
         type="search"
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value);
           commit(e.target.value);
         }}
+        leading={<Search size={14} aria-hidden="true" />}
         placeholder="Address or name"
         aria-label="Search by address prefix or name"
-        className="w-full rounded-lg border border-border bg-surface-2 py-1.5 pr-3 pl-8 text-sm text-foreground placeholder:text-muted"
       />
     </div>
   );
 }
 
+/**
+ * The board's control bar: window, unit and view on the left, search, sort
+ * and the Filters sheet on the right. Active filters show as removable chips
+ * under it, so the sheet never hides what is applied.
+ */
 export function Toolbar({
   state,
   update,
-  filtersOpen,
-  onToggleFilters,
+  onOpenFilters,
+  onClearFilters,
 }: {
   state: BoardState;
   update: Update;
-  filtersOpen: boolean;
-  onToggleFilters: () => void;
+  onOpenFilters: () => void;
+  onClearFilters: () => void;
 }) {
   const sortValue = `${state.sort}:${state.order}`;
   const known = SORT_OPTIONS.some((o) => `${o.sort}:${o.order}` === sortValue);
   const nFilters = countActiveFilters(state);
+  const chips = activeFilterChips(state, (st) => STYLE_META[st].label);
   return (
-    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="w-full sm:w-64">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl
+            className="sm:w-64"
             aria-label="PnL window"
             options={PNL_WINDOWS.map((w) => ({ value: w, label: WINDOW_LABEL[w] }))}
             value={state.window}
             onChange={(w) => update({ window: w })}
           />
+          <SegmentedControl
+            className="w-auto flex-1 sm:w-40 sm:flex-none"
+            aria-label="Show PnL as"
+            options={[
+              { value: "usd", label: "$ PnL" },
+              { value: "pct", label: "% ROI" },
+            ]}
+            value={state.unit}
+            onChange={(u) => update({ unit: u })}
+          />
+          <SegmentedControl
+            className="w-auto flex-1 sm:w-40 sm:flex-none"
+            aria-label="View"
+            options={[
+              { value: "cards", label: "Cards" },
+              { value: "table", label: "Table" },
+            ]}
+            value={state.view}
+            onChange={(v) => update({ view: v })}
+          />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-muted">
-          <span className="sr-only sm:not-sr-only">Sort</span>
-          <select
-            value={sortValue}
-            onChange={(e) => {
-              const [sort, order] = e.target.value.split(":");
-              update({ sort: sort as BoardState["sort"], order: order as BoardState["order"] });
-            }}
-            className="rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-sm text-foreground"
-          >
-            {!known ? <option value={sortValue}>Custom ({state.sort}, {state.order})</option> : null}
-            {SORT_OPTIONS.map((o) => (
-              <option key={`${o.sort}:${o.order}`} value={`${o.sort}:${o.order}`}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="PnL unit">
-          {(["usd", "pct"] as const).map((u) => (
-            <button
-              key={u}
-              type="button"
-              role="radio"
-              aria-checked={state.unit === u}
-              onClick={() => update({ unit: u })}
-              className={clsx(
-                "font-num rounded-md px-2.5 py-1 text-xs font-semibold",
-                state.unit === u ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground",
-              )}
+        <div className="flex items-center gap-2">
+          <SearchBox value={state.q} onCommit={(q) => update({ q })} />
+          <label className="flex-shrink-0">
+            <span className="sr-only">Sort</span>
+            <select
+              value={sortValue}
+              onChange={(e) => {
+                const [sort, order] = e.target.value.split(":");
+                update({ sort: sort as BoardState["sort"], order: order as BoardState["order"] });
+              }}
+              className={clsx(SELECT, "max-w-[9.5rem] sm:max-w-none")}
             >
-              {u === "usd" ? "$" : "%"}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="View">
-          {(
-            [
-              ["cards", LayoutGrid, "Cards"],
-              ["table", Rows3, "Table"],
-            ] as const
-          ).map(([v, Icon, label]) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={state.view === v}
-              aria-label={label}
-              title={label}
-              onClick={() => update({ view: v })}
-              className={clsx("rounded-md px-2 py-1", state.view === v ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground")}
-            >
-              <Icon size={15} aria-hidden="true" />
-            </button>
-          ))}
+              {!known ? (
+                <option value={sortValue}>
+                  Custom ({state.sort}, {state.order})
+                </option>
+              ) : null}
+              {SORT_OPTIONS.map((o) => (
+                <option key={`${o.sort}:${o.order}`} value={`${o.sort}:${o.order}`}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button size="sm" variant="secondary" onClick={onOpenFilters} aria-haspopup="dialog" className="flex-shrink-0">
+            <SlidersHorizontal size={13} aria-hidden="true" />
+            Filters
+            {nFilters ? <span className="num-sm grid h-4 min-w-4 place-items-center rounded-sm bg-fg px-1 text-[10px] text-bg">{nFilters}</span> : null}
+          </Button>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <SearchBox value={state.q} onCommit={(q) => update({ q })} />
-        <Button size="sm" variant={filtersOpen || nFilters ? "primary" : "secondary"} onClick={onToggleFilters} aria-expanded={filtersOpen}>
-          <SlidersHorizontal size={13} aria-hidden="true" />
-          Filters{nFilters ? ` (${nFilters})` : ""}
-        </Button>
-      </div>
+      {chips.length ? (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Active filters">
+          {chips.map((c) => (
+            <span key={c.key} className="inline-flex h-7 items-center gap-1 rounded-sm border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg-soft">
+              {c.label}
+              <button
+                type="button"
+                aria-label={`Remove filter: ${c.label}`}
+                onClick={() => update(c.clear)}
+                className="grid h-5 w-5 place-items-center rounded-sm text-muted transition-colors hover:bg-surface-3 hover:text-fg"
+              >
+                <X size={11} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          <button type="button" onClick={onClearFilters} className="px-2 text-xs font-medium text-muted transition-colors hover:text-fg">
+            Clear all
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -196,8 +207,8 @@ function NumberField({
     else onCommit(n);
   }
   return (
-    <label htmlFor={id} className="flex min-w-0 flex-col gap-1">
-      <span className="text-[11px] text-muted">{label}</span>
+    <label htmlFor={id} className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-label text-muted">{label}</span>
       <Input
         id={id}
         inputMode="decimal"
@@ -216,6 +227,15 @@ function NumberField({
   );
 }
 
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <fieldset className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <legend className="mb-3 text-heading text-fg">{title}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
 const ACTIVE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "Any time" },
   { value: "24", label: "Last 24h" },
@@ -223,8 +243,24 @@ const ACTIVE_OPTIONS: { value: string; label: string }[] = [
   { value: "168", label: "Last 7 days" },
 ];
 
-export function FilterPanel({ state, update, onClear }: { state: BoardState; update: Update; onClear: () => void }) {
+/** All filters in one sheet (right drawer on desktop, bottom sheet on phones). Every change applies at once. */
+export function FilterSheet({
+  open,
+  onClose,
+  state,
+  update,
+  onClear,
+  resultCount,
+}: {
+  open: boolean;
+  onClose: () => void;
+  state: BoardState;
+  update: Update;
+  onClear: () => void;
+  resultCount?: number;
+}) {
   const [coinDraft, setCoinDraft] = useState("");
+  const n = countActiveFilters(state);
   function addCoin() {
     const c = coinDraft.trim();
     if (!c) return;
@@ -233,82 +269,106 @@ export function FilterPanel({ state, update, onClear }: { state: BoardState; upd
     setCoinDraft("");
   }
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <NumberField id="f-min-av" label="Account value min" leading="$" placeholder="e.g. 10k" value={state.minAv} onCommit={(v) => update({ minAv: v })} />
-        <NumberField id="f-max-av" label="Account value max" leading="$" placeholder="any" value={state.maxAv} onCommit={(v) => update({ maxAv: v })} />
-        <NumberField id="f-min-pnl" label={`PnL ${WINDOW_LABEL[state.window]} min`} leading="$" placeholder="any" value={state.minPnl} onCommit={(v) => update({ minPnl: v })} />
-        <NumberField id="f-max-pnl" label={`PnL ${WINDOW_LABEL[state.window]} max`} leading="$" placeholder="any" value={state.maxPnl} onCommit={(v) => update({ maxPnl: v })} />
-        <NumberField id="f-min-fit" label="Copy Fit min" placeholder="0" value={state.minFit || null} onCommit={(v) => update({ minFit: Math.min(state.maxFit, Math.max(0, Math.round(v ?? 0))) })} />
-        <NumberField id="f-max-fit" label="Copy Fit max" placeholder="100" value={state.maxFit === 100 ? null : state.maxFit} onCommit={(v) => update({ maxFit: Math.max(state.minFit, Math.min(100, Math.round(v ?? 100))) })} />
-        <NumberField id="f-max-dd" label="His max DD (30d) at most" trailing="%" placeholder="any" value={state.maxDd} onCommit={(v) => update({ maxDd: v === null ? null : Math.max(0, v) })} />
-        <NumberField id="f-min-trips" label="Trips (30d) at least" placeholder="any" value={state.minTrips} onCommit={(v) => update({ minTrips: v === null ? null : Math.max(0, Math.round(v)) })} />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] text-muted">Trading style</span>
-        <div className="flex flex-wrap gap-1.5">
-          {TRADING_STYLES.map((st) => {
-            const on = state.styles.includes(st);
-            return (
-              <Chip key={st} active={on} title={STYLE_META[st].hint} onClick={() => update({ styles: on ? state.styles.filter((x) => x !== st) : [...state.styles, st] })}>
-                {STYLE_META[st].label}
-              </Chip>
-            );
-          })}
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Filters"
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <Button size="sm" variant="ghost" onClick={onClear} disabled={!n}>
+            Clear filters
+          </Button>
+          <Button size="sm" variant="primary" onClick={onClose}>
+            {resultCount === undefined ? "Done" : `Show ${resultCount} trader${resultCount === 1 ? "" : "s"}`}
+          </Button>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted">Last active</span>
-          <select
-            value={state.activeWithinH === null ? "" : String(state.activeWithinH)}
-            onChange={(e) => update({ activeWithinH: e.target.value ? Number(e.target.value) : null })}
-            className="rounded-lg border border-border bg-surface-2 px-2 py-2 text-sm text-foreground"
-          >
-            {ACTIVE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted">Trades these coins</span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {state.coins.map((c) => (
-              <span key={c} className="font-num inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-1 text-xs text-accent">
-                {c}
-                <button type="button" aria-label={`Remove ${c}`} onClick={() => update({ coins: state.coins.filter((x) => x !== c) })}>
-                  <X size={11} aria-hidden="true" />
-                </button>
-              </span>
-            ))}
-            <input
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <Group title="Size and results">
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField id="f-min-av" label="Account min" leading="$" placeholder="e.g. 10k" value={state.minAv} onCommit={(v) => update({ minAv: v })} />
+            <NumberField id="f-max-av" label="Account max" leading="$" placeholder="any" value={state.maxAv} onCommit={(v) => update({ maxAv: v })} />
+            <NumberField id="f-min-pnl" label={`PnL ${WINDOW_LABEL[state.window]} min`} leading="$" placeholder="any" value={state.minPnl} onCommit={(v) => update({ minPnl: v })} />
+            <NumberField id="f-max-pnl" label={`PnL ${WINDOW_LABEL[state.window]} max`} leading="$" placeholder="any" value={state.maxPnl} onCommit={(v) => update({ maxPnl: v })} />
+          </div>
+        </Group>
+        <Group title="Quality">
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField id="f-min-fit" label="Copy Fit min" placeholder="0" value={state.minFit || null} onCommit={(v) => update({ minFit: Math.min(state.maxFit, Math.max(0, Math.round(v ?? 0))) })} />
+            <NumberField id="f-max-fit" label="Copy Fit max" placeholder="100" value={state.maxFit === 100 ? null : state.maxFit} onCommit={(v) => update({ maxFit: Math.max(state.minFit, Math.min(100, Math.round(v ?? 100))) })} />
+            <NumberField id="f-max-dd" label="Their max DD 30d, at most" trailing="%" placeholder="any" value={state.maxDd} onCommit={(v) => update({ maxDd: v === null ? null : Math.max(0, v) })} />
+            <NumberField id="f-min-trips" label="Trips 30d, at least" placeholder="any" value={state.minTrips} onCommit={(v) => update({ minTrips: v === null ? null : Math.max(0, Math.round(v)) })} />
+          </div>
+          <label htmlFor="f-hide-flagged" className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              Hide flagged traders
+              <span className="block text-xs text-muted">liquidated in the sim, algo, vault, inactive</span>
+            </span>
+            <Switch id="f-hide-flagged" checked={state.hideFlagged} onChange={(v) => update({ hideFlagged: v })} label="Hide flagged traders" />
+          </label>
+        </Group>
+        <Group title="How they trade">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Trading style">
+            {TRADING_STYLES.map((st) => {
+              const on = state.styles.includes(st);
+              return (
+                <Chip key={st} active={on} title={STYLE_META[st].hint} onClick={() => update({ styles: on ? state.styles.filter((x) => x !== st) : [...state.styles, st] })}>
+                  {STYLE_META[st].label}
+                </Chip>
+              );
+            })}
+          </div>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-label text-muted">Last active</span>
+            <select
+              value={state.activeWithinH === null ? "" : String(state.activeWithinH)}
+              onChange={(e) => update({ activeWithinH: e.target.value ? Number(e.target.value) : null })}
+              className={clsx(SELECT, "h-10 w-full rounded-lg text-sm")}
+            >
+              {ACTIVE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="f-coin" className="text-label text-muted">
+              Trades these coins
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {state.coins.map((c) => (
+                <span key={c} className="font-num inline-flex h-7 items-center gap-1 rounded-sm border border-border bg-surface-2 pr-1 pl-2.5 text-xs text-fg">
+                  {c}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${c}`}
+                    onClick={() => update({ coins: state.coins.filter((x) => x !== c) })}
+                    className="grid h-5 w-5 place-items-center rounded-sm text-muted hover:bg-surface-3 hover:text-fg"
+                  >
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <Input
+              id="f-coin"
               value={coinDraft}
               onChange={(e) => setCoinDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addCoin();
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCoin();
+                }
               }}
               onBlur={addCoin}
-              placeholder="BTC, xyz:TSLA…"
-              aria-label="Add a coin filter"
-              className="font-num w-32 rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-sm text-foreground placeholder:text-muted"
+              placeholder="BTC, xyz:TSLA… then Enter"
+              className="font-num"
             />
           </div>
-        </div>
-        <label className="flex items-center gap-2 text-sm" htmlFor="f-hide-flagged">
-          <Switch id="f-hide-flagged" checked={state.hideFlagged} onChange={(v) => update({ hideFlagged: v })} label="Hide flagged traders" />
-          <span>
-            Hide flagged
-            <span className="block text-[11px] text-muted">liquidated, algo, vault, inactive</span>
-          </span>
-        </label>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClear} disabled={!countActiveFilters(state)}>
-          Clear filters
-        </Button>
+        </Group>
       </div>
-    </div>
+    </Drawer>
   );
 }

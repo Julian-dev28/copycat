@@ -48,7 +48,7 @@ demo on and fails on any write.
 | `/` (Trade) | Wallets as markets: market list, the wallet's equity index chart, their positions and trades, the invest ticket (global settings or custom: amount, follow or set leverage, margin, small-account mode) with an engine-computed preview, and Your wallets |
 | `/scout` | Trader board: Copy Fit score, PnL windows, filters, sorts, presets |
 | `/scout/[address]` | Trader file: chart with your simulated copy overlaid, calendar, positions, round trips, fills, orders, what-if, Strategy tab (TA fingerprint + theses) |
-| `/portfolio` | Engine status, halt, close all, event feed, your copied wallets |
+| `/portfolio` | Pending MCP plans (confirm codes for plans Claude Code made; shown only while one is live), engine status, halt, close all, event feed, your copied wallets |
 | `/account` | Active trading account: value, equity split, performance, history tabs; wallet manager (create, connect by wallet signature or API key, switch, refresh agent); funding: Deposit (from Arbitrum through the bridge, from another Hyperliquid account, from an exchange), Move spot <-> perps, Withdraw to Arbitrum, Send between your accounts. Created accounts sign with the passphrase, connected ones with the browser wallet (or app.hyperliquid.xyz when there is none). Flows: `lib/account/depositFlow.ts`, `lib/account/actionFlow.ts`, rules in `lib/account/funding.ts` |
 | `/settings` | Global settings every "global" wallet follows: enabled, dry run, sizing, leverage, risk limits |
 | `/discover` | Custom discovery sim runs (linked from Scout) |
@@ -61,9 +61,9 @@ query string.
 ```
 src/app/          routes (one folder per page), globals.css (design tokens), fonts/
 src/components/   UI by area: trade/, scout/, account/, copy/ (settings panels),
-                  positions/, discover/, ui/ (shared primitives), shell/ (bottom
-                  tab bar, account menu, main container), settings/ (Display),
-                  TopNav, CatLogo
+                  positions/, mcp/ (pending MCP plans), discover/, ui/ (shared primitives), shell/ (bottom
+                  tab bar, account menu, main container, first-run checklist),
+                  settings/ (Display), TopNav, CatLogo
 src/lib/          pure logic + tests by area: trade/, scout/, account/, api/,
                   display/ (PnL mode, motion, contrast, toasts), shell/ (nav,
                   container), labels.ts (glossary)

@@ -34,7 +34,7 @@ export function DirectionBias({ summary }: { summary: AccountSummary }) {
         <h2 className="text-sm font-semibold">Direction bias</h2>
         <span className="text-xs font-medium text-foreground">{label}</span>
       </div>
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label={longPct === null ? "No open positions" : `${formatPct(longPct, 0)} long, ${formatPct(100 - longPct, 0)} short`}>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-sm bg-surface-2" role="img" aria-label={longPct === null ? "No open positions" : `${formatPct(longPct, 0)} long, ${formatPct(100 - longPct, 0)} short`}>
         {longPct === null ? null : (
           <>
             <span className="h-full bg-success" style={{ width: `${l}%` }} />

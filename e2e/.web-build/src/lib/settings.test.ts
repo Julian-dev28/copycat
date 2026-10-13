@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySettingsPatch } from "./settings";
+import { applySettingsPatch, patchStrandsCopies } from "./settings";
 import type { Settings } from "./api/types";
 
 const base: Settings = {
@@ -56,5 +56,15 @@ describe("applySettingsPatch", () => {
     const snapshot = JSON.parse(JSON.stringify(base));
     applySettingsPatch(base, { leader_overrides: { "0xabc": null }, enabled: true });
     expect(base).toEqual(snapshot);
+  });
+});
+
+describe("audit L9: patchStrandsCopies", () => {
+  const live = { ...base, enabled: true, dry_run: false };
+  it("is true only when dry run turns on over open real copies", () => {
+    expect(patchStrandsCopies(live, { dry_run: true }, 2)).toBe(true);
+    expect(patchStrandsCopies(live, { dry_run: true }, 0)).toBe(false);
+    expect(patchStrandsCopies({ ...live, dry_run: true }, { dry_run: true }, 2)).toBe(false);
+    expect(patchStrandsCopies(live, { enabled: false }, 2)).toBe(false);
   });
 });

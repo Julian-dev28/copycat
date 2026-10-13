@@ -12,7 +12,12 @@ import { Panel } from "@/components/ui/Panel";
 /** No cycle for this long (poll_interval_s caps at 300s, default 5s) means the worker is stuck or dead. */
 const STALE_MS = 5 * 60_000;
 
-export function EngineStatusBar({ status, tradingEnabled }: { status?: EngineStatus; tradingEnabled?: boolean }) {
+export function EngineStatusBar({ status, tradingEnabled, lossLimitOn }: {
+  status?: EngineStatus;
+  tradingEnabled?: boolean;
+  /** Settings.daily_loss_limit_usd < 0: the held-day-PnL hint then explains the pause (S5). */
+  lossLimitOn?: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -31,7 +36,7 @@ export function EngineStatusBar({ status, tradingEnabled }: { status?: EngineSta
 
   const enabled = tradingEnabled ?? status.enabled;
   const stale = status.last_cycle_ms !== null && status.last_cycle_ms !== undefined && now - status.last_cycle_ms > STALE_MS;
-  const dayPnl = dayPnlView(status);
+  const dayPnl = dayPnlView(status, lossLimitOn);
   const dayPnlTone = { up: "text-up", down: "text-down", flat: "text-foreground", muted: "text-muted" }[dayPnl.tone];
 
   return (

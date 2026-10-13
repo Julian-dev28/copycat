@@ -21,8 +21,8 @@ export function TopCoins({ coins, max = 8 }: { coins: CoinStat[]; max?: number }
                 {formatSignedUsd(Math.round(c.pnl_usd))}
               </span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(1, share)}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-sm bg-surface-2" aria-hidden="true">
+              <div className="h-full rounded-sm bg-accent" style={{ width: `${Math.max(1, share)}%` }} />
             </div>
           </li>
         );

@@ -3,10 +3,10 @@ import { apiCaps, buildCopyRequest, effective, inherit, initialDraft, switchesSo
 import { demoSettings } from "./fixtures";
 import { globalSummary, leverageText, sizingText } from "./globalSummary";
 
-const V7 = { v7: true, smallMode: true, v8: false };
-const OLD = { v7: false, smallMode: true, v8: false };
+const V7 = { v7: true, smallMode: true, v8: false, v9: false };
+const OLD = { v7: false, smallMode: true, v8: false, v9: false };
 const custom: TicketDraft = {
-  source: "custom", amountText: "50", mode: "target", leverage: 10, marginMode: null, maxWorseEntryPct: null, smallMode: null, onlyNew: null, direction: null, allow: null, block: null,
+  source: "custom", amountText: "50", mode: "target", leverage: 10, marginMode: null, maxWorseEntryPct: null, smallMode: null, onlyNew: null, direction: null, allow: null, block: null, oneShot: false,
 };
 const A = "0x" + "a".repeat(40);
 
@@ -44,7 +44,7 @@ describe("request bodies, contract v7", () => {
     expect(b).not.toHaveProperty("settings_source");
     expect(b).not.toHaveProperty("leverage_mode");
     expect(b).not.toHaveProperty("only_new_positions");
-    expect(buildCopyRequest({ ...custom, smallMode: "bump" }, { v7: true, smallMode: false, v8: false })).not.toHaveProperty("small_account_mode");
+    expect(buildCopyRequest({ ...custom, smallMode: "bump" }, { v7: true, smallMode: false, v8: false, v9: false })).not.toHaveProperty("small_account_mode");
   });
 
   it("apiCaps reads the contract version", () => {
@@ -122,7 +122,7 @@ describe("global summary", () => {
 });
 
 describe("request bodies, contract v8 (counter, coin lists)", () => {
-  const V8 = { v7: true, smallMode: true, v8: true };
+  const V8 = { v7: true, smallMode: true, v8: true, v9: false };
   it("counter and lists are sent on a v8 api", () => {
     const b = buildCopyRequest({ ...custom, direction: "counter", allow: ["BTC", "ETH"], block: ["xyz:TSLA"] }, V8)!;
     expect(b).toMatchObject({ trade_direction: "counter", coin_allowlist: ["BTC", "ETH"], coin_blocklist: ["xyz:TSLA"] });
@@ -151,5 +151,23 @@ describe("request bodies, contract v8 (counter, coin lists)", () => {
     expect(ticketAction({ ...saved, allow: ["btc"] }, saved, true)).toBe("unchanged");
     expect(ticketAction({ ...saved, allow: ["BTC", "ETH"] }, saved, true)).toBe("update");
     expect(ticketAction({ ...saved, direction: "copy" }, saved, true)).toBe("update");
+  });
+});
+
+describe("audit M5: one-shot wallets", () => {
+  const V9 = { v7: true, smallMode: true, v8: true, v9: true };
+  it("a one-shot wallet's draft says so, from the override or the wallet row", () => {
+    const s = { ...demoSettings(), leaders: [A], leader_overrides: { [A]: { allocation_usd: 50, one_shot: true } } };
+    expect(initialDraft(s, A).oneShot).toBe(true);
+    expect(initialDraft(demoSettings(), A, { one_shot: true } as never).oneShot).toBe(true);
+    expect(initialDraft(demoSettings(), A).oneShot).toBe(false);
+  });
+  it("a custom post always sends one_shot explicitly on v9, so turning it off sticks", () => {
+    expect(buildCopyRequest({ ...custom, oneShot: false }, V9)!.one_shot).toBe(false);
+    expect(buildCopyRequest({ ...custom, oneShot: true }, V9)!.one_shot).toBe(true);
+    expect(buildCopyRequest(custom, V7)).not.toHaveProperty("one_shot");
+  });
+  it("turning one-shot off is an update", () => {
+    expect(ticketAction({ ...custom, oneShot: false }, { ...custom, oneShot: true }, true)).toBe("update");
   });
 });

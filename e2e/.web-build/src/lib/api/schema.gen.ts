@@ -134,7 +134,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove */
+        /**
+         * Remove
+         * @description Audit H6/M11: same guard as activate. Deleting an account drops its agent key, so
+         *     any copy still open on it (active or not) could never be followed or closed again.
+         *     The vault clears active_id when the active one goes: the engine goes idle.
+         */
         delete: operations["remove_api_accounts__account_id__delete"];
         options?: never;
         head?: never;
@@ -496,9 +501,32 @@ export interface paths {
          * @description Build a copy plan for `address` at `amount_usd`: the engine's own
          *     preview at these custom terms, the cached 30-day projection if any, and
          *     the warnings to read before approving. Read-only on the book: stored
-         *     for 120 s, used once by execute. 502/503 when the live preview fails.
+         *     for MCP_PLAN_TTL_S, used once by execute. 502/503 when the live preview
+         *     fails. The response never carries the confirm code (audit H2): the human
+         *     reads it in the web (GET /api/mcp/plans/pending) or a notification.
          */
         post: operations["create_plan_api_mcp_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/plans/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pending Plans
+         * @description Live plans (unused, unexpired), newest first, WITH their confirm codes, so the
+         *     human can read the code in copycat and type it to Claude. Admin token only.
+         */
+        get: operations["pending_plans_api_mcp_plans_pending_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1216,6 +1244,26 @@ export interface components {
             /** Volume Usd */
             volume_usd: number;
         };
+        /**
+         * ComponentBuild
+         * @description One process's code identity (contracts.build). `build` None: unknown
+         *     (the process never recorded one: not started, or started on older code).
+         */
+        ComponentBuild: {
+            /**
+             * Alive
+             * @default false
+             */
+            alive: boolean;
+            /** Build */
+            build?: string | null;
+            /** Component */
+            component: string;
+            /** Contract Version */
+            contract_version?: number | null;
+            /** Started Ms */
+            started_ms?: number | null;
+        };
         /** CopyFit */
         CopyFit: {
             /** Caps */
@@ -1240,7 +1288,7 @@ export interface components {
             /** Book Summary */
             book_summary?: string[];
             /** Confirm Code */
-            confirm_code: string;
+            confirm_code?: string | null;
             copy_request: components["schemas"]["WalletCopyRequest"];
             /** Created Ms */
             created_ms: number;
@@ -1407,6 +1455,8 @@ export interface components {
          * @description One line of the engine's append-only event log (data/events.jsonl).
          */
         EngineEvent: {
+            /** Account */
+            account?: string | null;
             /**
              * Action
              * @enum {string}
@@ -1443,6 +1493,8 @@ export interface components {
              * @default true
              */
             day_pnl_reliable: boolean;
+            /** Day Pnl Unreliable Since Ms */
+            day_pnl_unreliable_since_ms?: number | null;
             /** Day Pnl Usd */
             day_pnl_usd?: number | null;
             /** Dry Run */
@@ -1558,8 +1610,16 @@ export interface components {
         };
         /** HealthResponse */
         HealthResponse: {
+            /** Builds */
+            builds?: components["schemas"]["ComponentBuild"][];
+            /** Checkout Build */
+            checkout_build?: string | null;
+            /** Contract Version */
+            contract_version: number;
             /** Ok */
             ok: boolean;
+            /** Stale */
+            stale?: string[];
             /** Version */
             version: string;
         };
@@ -1599,6 +1659,11 @@ export interface components {
             dir: string;
             /** Fee Usd */
             fee_usd: number;
+            /**
+             * Liquidation
+             * @default false
+             */
+            liquidation: boolean;
             /** Notional Usd */
             notional_usd: number;
             /** Px */
@@ -1715,6 +1780,53 @@ export interface components {
          * @enum {string}
          */
         MarginMode: "isolated" | "cross";
+        /**
+         * McpPendingPlan
+         * @description v11: one live (unused, unexpired) MCP plan as the web's "Pending MCP plans" panel
+         *     shows it, WITH its confirm code. Served only to the admin token.
+         */
+        McpPendingPlan: {
+            /** Address */
+            address: string;
+            /** Amount Usd */
+            amount_usd: number;
+            /** Confirm Code */
+            confirm_code: string;
+            /**
+             * Copied
+             * @default 0
+             */
+            copied: number;
+            /** Created Ms */
+            created_ms: number;
+            /** Entry Deviation Pct */
+            entry_deviation_pct: number;
+            /** Executable */
+            executable: boolean;
+            /** Expires Ms */
+            expires_ms: number;
+            /** Follow */
+            follow: boolean;
+            /** Leverage */
+            leverage?: number | null;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Planned Margin Usd
+             * @default 0
+             */
+            planned_margin_usd: number;
+            /**
+             * Planned Notional Usd
+             * @default 0
+             */
+            planned_notional_usd: number;
+            trade_direction: components["schemas"]["TradeDirection"];
+            /** Trading Live */
+            trading_live: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** OpenOrderView */
         OpenOrderView: {
             /** Coin */
@@ -1804,6 +1916,21 @@ export interface components {
             entry_px: number;
             /** Exit Px */
             exit_px: number;
+            /**
+             * Fee Usd
+             * @default 0
+             */
+            fee_usd: number;
+            /**
+             * Funding Usd
+             * @default 0
+             */
+            funding_usd: number;
+            /**
+             * Gross Pnl Usd
+             * @default 0
+             */
+            gross_pnl_usd: number;
             /** Hold H */
             hold_h: number;
             /** Max Notional Usd */
@@ -1828,6 +1955,16 @@ export interface components {
             };
             /** Coins */
             coins?: string[];
+            /**
+             * Departed 30D
+             * @default 0
+             */
+            departed_30d: number;
+            /**
+             * Departed Liquidated 30D
+             * @default 0
+             */
+            departed_liquidated_30d: number;
             /**
              * Hip3 Count
              * @default 0
@@ -1893,7 +2030,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 9
+             * @default 14
              */
             contract_version: number;
             /**
@@ -2296,6 +2433,11 @@ export interface components {
             /** Settings Hash */
             settings_hash: string;
             /**
+             * Sim Equity Usd
+             * @default 0
+             */
+            sim_equity_usd: number;
+            /**
              * Stale Settings
              * @default false
              */
@@ -2323,6 +2465,8 @@ export interface components {
             margin_usd: number;
             /** Mark Px */
             mark_px: number;
+            /** Max Leverage */
+            max_leverage?: number | null;
             /** Notional Usd */
             notional_usd: number;
             /** Roe Pct */
@@ -2412,6 +2556,10 @@ export interface components {
             account_value_usd: number;
             /** Address */
             address: string;
+            /** Coattail Leader */
+            coattail_leader?: string | null;
+            /** Coattail Share Pct */
+            coattail_share_pct?: number | null;
             /** Coins */
             coins?: string[];
             copy_fit?: components["schemas"]["CopyFit"] | null;
@@ -2423,6 +2571,13 @@ export interface components {
             flags?: string[];
             /** Last Fill Ms */
             last_fill_ms?: number | null;
+            /** Last Liquidation Ms */
+            last_liquidation_ms?: number | null;
+            /**
+             * Liquidations 30D
+             * @default 0
+             */
+            liquidations_30d: number;
             /** Median Hold H */
             median_hold_h?: number | null;
             /** Opens Per Day */
@@ -2435,6 +2590,8 @@ export interface components {
             roi_30d_pct: number;
             /** Score */
             score: number;
+            /** Sim Capacity Note */
+            sim_capacity_note?: string | null;
             /** Sim Copies */
             sim_copies: number;
             /** Sim Copy Capacity Pct */
@@ -2809,6 +2966,11 @@ export interface components {
             small_account_mode: components["schemas"]["SmallAccountMode"];
             /** Target Leverage */
             target_leverage?: number | null;
+            /**
+             * Waiting
+             * @default 0
+             */
+            waiting: number;
         };
         /**
          * WalletPreviewSlice
@@ -2843,7 +3005,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "copy" | "trimmed" | "bump" | "skip";
+            status: "copy" | "trimmed" | "bump" | "skip" | "wait";
             /** Weight Pct */
             weight_pct: number;
         };
@@ -3156,7 +3318,9 @@ export interface operations {
     };
     remove_api_accounts__account_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 account_id: string;
@@ -3820,6 +3984,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pending_plans_api_mcp_plans_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpPendingPlan"][];
                 };
             };
         };

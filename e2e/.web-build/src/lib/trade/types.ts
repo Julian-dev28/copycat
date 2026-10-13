@@ -92,6 +92,8 @@ export interface WalletCopyRequest {
   trade_direction?: TradeDirection;
   coin_allowlist?: string[];
   coin_blocklist?: string[];
+  /** v9, custom only: true = copy only what he holds now. Sent explicitly so a re-post can turn it off (audit M5). */
+  one_shot?: boolean;
 }
 
 /** POST /api/wallets/{address}/stop. */
@@ -132,6 +134,8 @@ export interface WalletPosition {
   coin_blocklist?: string[] | null;
   style?: TradingStyleName | null;
   archived_ms?: number | null;
+  /** v9: copies only the positions he held when invested; new ones are never copied (audit M5). */
+  one_shot?: boolean | null;
 }
 
 export type TradingStyleName = "algo" | "scalp" | "intraday" | "swing" | "position";

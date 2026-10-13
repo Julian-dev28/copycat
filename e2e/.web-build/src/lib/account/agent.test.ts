@@ -20,6 +20,26 @@ describe("agentView", () => {
     expect(agentView(acc({ agent_valid_until_ms: NOW - DAY }), NOW)).toMatchObject({ status: "expired", label: "Expired", tone: "danger" });
   });
 
+  it("shows the approval's valid-until date, not just a relative day count", () => {
+    // The operator-facing ask: "valid until" must be visible, not hidden until the
+    // agent is already expiring. A healthy "Active" badge still carries the date
+    // (its tooltip falls back to `hint`, see components/account/bits.tsx AgentBadge).
+    const active = agentView(acc({ agent_valid_until_ms: NOW + 90 * DAY }), NOW);
+    expect(active.validUntil).toMatch(/^Valid until \w+ \d{1,2}, \d{4}$/);
+    expect(active.hint).toBe(active.validUntil);
+
+    const expiring = agentView(acc({ agent_valid_until_ms: NOW + 12 * DAY }), NOW);
+    expect(expiring.validUntil).toMatch(/^Valid until /);
+    expect(expiring.hint).toContain(expiring.validUntil!);
+
+    const expired = agentView(acc({ agent_valid_until_ms: NOW - DAY }), NOW);
+    expect(expired.validUntil).toMatch(/^Expired /);
+    expect(expired.hint).toContain(expired.validUntil!);
+
+    expect(agentView(acc({ agent_status: "missing" }), NOW).validUntil).toBeNull();
+    expect(agentView(acc({ agent_status: "unknown" }), NOW).validUntil).toBeNull();
+  });
+
   it("explains a missing agent per kind", () => {
     expect(agentView(acc({ agent_status: "missing", kind: "created" }), NOW).hint).toMatch(/deposit, then refresh/);
     expect(agentView(acc({ agent_status: "missing", kind: "connected_key" }), NOW).hint).toMatch(/new API wallet key/);

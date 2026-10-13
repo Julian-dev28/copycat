@@ -2,12 +2,13 @@
 
 import { clsx } from "clsx";
 import { LoadError } from "@/components/PageStates";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CoinBadge } from "@/components/scout/bits";
 import { formatPrice, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
 import { useFileFills, useFileOrders } from "./hooks";
 import { TD, TH } from "./PositionsTable";
-import { when } from "./TripsTable";
+import { when, whenUtcTitle } from "./TripsTable";
 
 function Head({ cols }: { cols: string[] }) {
   return (
@@ -36,12 +37,20 @@ export function FillsTab({ address }: { address: string }) {
           <Head cols={["Time", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]} />
           <tbody>
             {fills.map((f, i) => (
-              <tr key={`${f.time_ms}-${f.coin}-${i}`} className="border-b border-border/60 last:border-0">
-                <td className={TD}>{when(f.time_ms)}</td>
+              <tr
+                key={`${f.time_ms}-${f.coin}-${i}`}
+                className={clsx("border-b border-border/60 last:border-0", f.liquidation && "bg-danger/10")}
+              >
+                <td className={TD} title={whenUtcTitle(f.time_ms)}>{when(f.time_ms)}</td>
                 <td className="px-3 py-2">
                   <CoinBadge coin={f.coin} />
                 </td>
-                <td className={clsx(TD, "font-sans text-xs", f.side === "B" ? "text-success" : "text-danger")}>{f.dir}</td>
+                <td className={clsx(TD, "font-sans text-xs", f.side === "B" ? "text-success" : "text-danger")}>
+                  <span className="flex items-center gap-1.5">
+                    {f.dir}
+                    {f.liquidation ? <Badge tone="danger">Liquidated</Badge> : null}
+                  </span>
+                </td>
                 <td className={TD}>{formatPrice(f.px)}</td>
                 <td className={TD}>{formatSize(f.sz)}</td>
                 <td className={TD}>{formatUsd(f.notional_usd, true)}</td>

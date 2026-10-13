@@ -36,6 +36,15 @@ export function isLiveTrading(s: Pick<Settings, "enabled" | "dry_run">): boolean
  * from not-live to live, whichever switch does it: enabling with dry run
  * already off, or turning dry run off while already enabled, or both at once.
  */
+/**
+ * Audit L9: dry run blocks the exits of REAL copies too (the engine places no
+ * orders at all), so turning it on while real copies are open leaves those
+ * leveraged positions unmanaged. True when `patch` would do exactly that.
+ */
+export function patchStrandsCopies(current: Settings, patch: SettingsPatch, openRealCopies: number): boolean {
+  return openRealCopies > 0 && !current.dry_run && applySettingsPatch(current, patch).dry_run === true;
+}
+
 export function patchGoesLive(current: Settings, patch: SettingsPatch): boolean {
   return !isLiveTrading(current) && isLiveTrading(applySettingsPatch(current, patch));
 }
