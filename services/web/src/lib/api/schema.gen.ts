@@ -1612,6 +1612,8 @@ export interface components {
         HealthResponse: {
             /** Builds */
             builds?: components["schemas"]["ComponentBuild"][];
+            /** Checkout Build */
+            checkout_build?: string | null;
             /** Contract Version */
             contract_version: number;
             /** Ok */

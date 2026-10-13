@@ -6,18 +6,21 @@
 import type { HealthResponse } from "@/lib/api/types";
 import { CONTRACT_VERSION } from "@/lib/api/types";
 
-const NAMES: Record<string, string> = { engine: "engine", scout: "scout", api: "api" };
+const NAMES: Record<string, string> = { api: "api", engine: "engine", scout: "scout" };
 
 /** null when everything runs the same code. The engine trades, so it is named first. */
 export function staleBuildText(h: Pick<HealthResponse, "stale" | "contract_version"> | undefined): string | null {
   if (!h) return null;
-  const stale = [...(h.stale ?? [])].sort((a, b) => (a === "engine" ? -1 : b === "engine" ? 1 : a.localeCompare(b)));
+  // the engine trades, so it is named first; the api next (it is what the page talks to)
+  const rank = (s: string) => (s === "engine" ? 0 : s === "api" ? 1 : 2);
+  const stale = [...(h.stale ?? [])].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   const webOld = h.contract_version > CONTRACT_VERSION;
   if (stale.length === 0 && !webOld) return null;
   const parts: string[] = [];
   if (stale.length) {
     const who = stale.map((s) => NAMES[s] ?? s).join(" and ");
-    parts.push(`The ${who} ${stale.length > 1 ? "are" : "is"} running older code than the api. Restart ${stale.length > 1 ? "them" : "it"} so previews match what the engine does.`);
+    const than = stale.includes("api") ? "the code on disk" : "the api";
+    parts.push(`The ${who} ${stale.length > 1 ? "are" : "is"} running older code than ${than}. Restart ${stale.length > 1 ? "them" : "it"} so previews match what the engine does.`);
   }
   if (webOld) parts.push("This page is older than the api. Reload it.");
   return parts.join(" ");

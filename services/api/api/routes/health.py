@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from fastapi import APIRouter, Request
 
+from contracts import build as build_mod
 from contracts.models import CONTRACT_VERSION
 
 from .. import build_skew
@@ -51,5 +52,11 @@ def health(request: Request) -> HealthResponse:
     api = build_skew.component("api", api_b, True)
     others = [build_skew.component("engine", *_engine_build(request)),
               build_skew.component("scout", *_scout_build(request))]
+    try:
+        checkout = build_mod.checkout_build_id()
+    except Exception:
+        logger.debug("checkout build probe failed", exc_info=True)
+        checkout = None
     return HealthResponse(ok=True, version=API_VERSION, contract_version=CONTRACT_VERSION,
-                          builds=[api, *others], stale=build_skew.stale(api, others))
+                          builds=[api, *others], stale=build_skew.stale(api, others, checkout),
+                          checkout_build=checkout)

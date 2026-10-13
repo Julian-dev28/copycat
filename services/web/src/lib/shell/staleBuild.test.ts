@@ -13,6 +13,9 @@ describe("staleBuildText", () => {
     expect(staleBuildText(h(["scout", "engine"]))).toMatch(/^The engine and scout are running older code/);
     expect(staleBuildText(h(["scout"]))).toMatch(/Restart it/);
   });
+  it("names the api too after a pull, against the code on disk", () => {
+    expect(staleBuildText(h(["scout", "api", "engine"]))).toMatch(/^The engine and api and scout are running older code than the code on disk/);
+  });
   it("asks for a reload when the api's contract is newer than this page", () => {
     expect(staleBuildText(h([], CONTRACT_VERSION + 1))).toMatch(/Reload it/);
   });

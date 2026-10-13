@@ -73,6 +73,22 @@ def build_id() -> str:
     return _build_id
 
 
+_checkout: Dict[str, Any] = {"id": None, "at": 0.0}
+CHECKOUT_TTL_S = 15.0
+
+
+def checkout_build_id(now: Optional[float] = None) -> str:
+    """The build id of the code ON DISK right now (recomputed at most every
+    CHECKOUT_TTL_S), as opposed to `build_id()`, which is what THIS process
+    started with. They differ after a pull or an edit until the process is
+    restarted: that is the skew GET /api/health reports for the api itself."""
+    t = time.time() if now is None else now
+    if _checkout["id"] is None or t - float(_checkout["at"]) > CHECKOUT_TTL_S:
+        _checkout["id"] = compute_build_id()
+        _checkout["at"] = t
+    return str(_checkout["id"])
+
+
 def record(component: str, now_ms: Optional[int] = None) -> Dict[str, Any]:
     """This process's build info for `component` (first call wins; logged once)."""
     if component not in _cache:

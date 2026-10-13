@@ -115,6 +115,9 @@ class HealthResponse(BaseModel):
     # code than this api (restart them). Empty `stale` = all on the same code.
     builds: List[ComponentBuild] = Field(default_factory=list)
     stale: List[str] = Field(default_factory=list)
+    # the code on disk (git HEAD, plus a hash when edited). When it differs from the
+    # api's own build, "api" is in `stale` too: restart it after a pull.
+    checkout_build: Optional[str] = None
 
 
 class CloseAllResponse(BaseModel):

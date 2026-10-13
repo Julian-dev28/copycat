@@ -1595,6 +1595,17 @@
             "title": "Builds",
             "type": "array"
           },
+          "checkout_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Build"
+          },
           "contract_version": {
             "title": "Contract Version",
             "type": "integer"

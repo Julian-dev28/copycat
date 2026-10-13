@@ -13,8 +13,10 @@ Rules, per component (engine, scout):
   - running with no recorded build: it started on code older than this
     guard, so it is stale ("unknown").
   - running with a different build id or contract version than the api: stale.
-The api itself is compared against nothing: it IS the reference, and the
-web compares its own contract version with the api's.
+The api itself is compared against the checkout (the code on disk): after a
+pull every process, the api included, is older than HEAD, and the api would
+otherwise be the reference that hides it. The web compares its own contract
+version with the api's.
 """
 from __future__ import annotations
 
@@ -29,8 +31,10 @@ def component(name: str, build: Optional[Dict[str, Any]], alive: bool) -> Compon
                           started_ms=b.get("started_ms"), alive=alive)
 
 
-def stale(api: ComponentBuild, others: List[ComponentBuild]) -> List[str]:
+def stale(api: ComponentBuild, others: List[ComponentBuild], checkout_build: Optional[str] = None) -> List[str]:
     out: List[str] = []
+    if checkout_build and checkout_build != "unknown" and api.build and api.build != checkout_build:
+        out.append("api")
     for c in others:
         if not c.alive:
             continue
