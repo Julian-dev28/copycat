@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 12  # v12: EngineEvent.account (audit M10: events are per trading account),
+CONTRACT_VERSION = 13  # v13: RoundTrip.gross_pnl_usd/fee_usd/funding_usd (user research P0: net
+#                        funding paid/received during the hold into round-trip PnL; net_pnl_usd is
+#                        now gross - fee + funding, all three optional/default 0 for old stored rows);
+#                        LeaderFillView.liquidation (HL's own flag, was fetched but silently dropped)
+# v12: EngineEvent.account (audit M10: events are per trading account),
 #                        EngineStatus.day_pnl_unreliable_since_ms (S5), HealthResponse.builds/stale (M12)
 # v11: CopyPlan.confirm_code never in api responses (None), McpPendingPlan,
 #                        HealthResponse.contract_version; Settings.contract_version server-set
@@ -435,7 +439,11 @@ class RoundTrip(BaseModel):
     entry_px: float                      # size-weighted avg of opens/adds
     exit_px: float                       # size-weighted avg of reduces/close
     max_notional_usd: float
-    net_pnl_usd: float                   # closed_pnl - fees
+    gross_pnl_usd: float = 0.0           # v13: sum(closed_pnl) over the trip's fills, before fee/funding
+    fee_usd: float = 0.0                 # v13: sum(fee) over the trip's fills
+    funding_usd: float = 0.0             # v13: net funding over [opened_ms, closed_ms) per coin, HL's
+                                         # own sign (positive = received, negative = paid)
+    net_pnl_usd: float                   # gross_pnl_usd - fee_usd + funding_usd
     win: bool
 
 class AccountRisk(BaseModel):
@@ -460,6 +468,7 @@ class LeaderFillView(BaseModel):         # display shape of a leader fill
     notional_usd: float
     closed_pnl_usd: float
     fee_usd: float
+    liquidation: bool = False            # v13: HL's own liquidation flag on this fill
 
 
 class TraderProfile(BaseModel):          # the Trader file

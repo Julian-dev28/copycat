@@ -1719,6 +1719,11 @@
             "title": "Fee Usd",
             "type": "number"
           },
+          "liquidation": {
+            "default": false,
+            "title": "Liquidation",
+            "type": "boolean"
+          },
           "notional_usd": {
             "title": "Notional Usd",
             "type": "number"
@@ -2407,6 +2412,21 @@
             "title": "Exit Px",
             "type": "number"
           },
+          "fee_usd": {
+            "default": 0.0,
+            "title": "Fee Usd",
+            "type": "number"
+          },
+          "funding_usd": {
+            "default": 0.0,
+            "title": "Funding Usd",
+            "type": "number"
+          },
+          "gross_pnl_usd": {
+            "default": 0.0,
+            "title": "Gross Pnl Usd",
+            "type": "number"
+          },
           "hold_h": {
             "title": "Hold H",
             "type": "number"
@@ -2634,7 +2654,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 12,
+            "default": 13,
             "title": "Contract Version",
             "type": "integer"
           },

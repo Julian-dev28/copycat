@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 import { formatPct, formatPrice, formatSignedPct, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
-import { liqTone } from "@/lib/scout/labels";
+import { liqTone, netFundingSinceOpen } from "@/lib/scout/labels";
 import type { TraderPositionView } from "@/lib/scout/types";
 import { CoinBadge } from "@/components/scout/bits";
 
@@ -48,7 +48,12 @@ export function PositionsTable({ positions, asOfMs }: { positions: TraderPositio
                   <td className={TD}>{p.liquidation_px ? formatPrice(p.liquidation_px) : "—"}</td>
                   <td className={clsx(TD, "font-semibold", LIQ_TEXT[tone])}>{formatPct(p.liq_distance_pct)}</td>
                   <td className={TD}>{formatUsd(p.margin_usd, true)}</td>
-                  <td className={clsx(TD, p.funding_since_open_usd >= 0 ? "text-up" : "text-down")}>{formatSignedUsd(p.funding_since_open_usd)}</td>
+                  <td
+                    className={clsx(TD, netFundingSinceOpen(p.funding_since_open_usd) >= 0 ? "text-up" : "text-down")}
+                    title="Positive = funding received, negative = funding paid, since this position opened"
+                  >
+                    {formatSignedUsd(netFundingSinceOpen(p.funding_since_open_usd))}
+                  </td>
                 </tr>
               );
             })}

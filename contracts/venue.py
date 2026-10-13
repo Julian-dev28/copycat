@@ -80,6 +80,11 @@ class Venue(Protocol):
         # and dir from the first partial. dir can then be stale on a flip (Close Short with
         # sz past zero): classify from start_position + side + sz. Optional for implementers:
         # callers check the signature before passing it.
+    def funding(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]: ...
+        # [start_ms, end_ms] inclusive, oldest first (HL userFunding). Each row:
+        # {time_ms, coin, usdc, funding_rate}. usdc is HL's own sign: positive = credited
+        # (received), negative = debited (paid). None on failure. Optional for implementers:
+        # callers check hasattr before calling it.
     def leaderboard(self) -> Optional[List[Dict[str, Any]]]: ...   # raw HL leaderboard rows
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]: ...
     def market_stats(self, coin: str) -> Optional[MarketStats]: ...

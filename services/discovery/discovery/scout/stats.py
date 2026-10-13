@@ -31,6 +31,7 @@ from contracts.venue import Venue
 
 from .. import config as discovery_config
 from .. import fills_cache
+from .. import funding_cache
 from . import config as C
 from . import metrics as M
 from . import store
@@ -85,7 +86,20 @@ class CountingVenue:
         self._charge("candles", C.W_CANDLES + math.ceil(len(rows or []) / 60))
         return rows
 
+    def _funding(self, user: str, start_ms: int, end_ms: int) -> Any:
+        rows = self._v.funding(user, start_ms, end_ms)  # type: ignore[attr-defined]
+        pages = max(1, math.ceil(len(rows or []) / 500))
+        self._charge("funding", C.W_FUNDING_PAGE * pages)
+        return rows
+
     def __getattr__(self, name: str) -> Any:     # max_leverage, leaderboard, ...: uncharged / meta-cached
+        # funding is optional on Venue (contracts/venue.py): exposing it here only
+        # when the wrapped venue has it keeps hasattr(cv, "funding") == hasattr(v, "funding"),
+        # which funding_cache.supports_funding relies on.
+        if name == "funding":
+            if not callable(getattr(self._v, "funding", None)):
+                raise AttributeError(name)
+            return self._funding
         return getattr(self._v, name)
 
 
@@ -113,9 +127,11 @@ class Budget:
 
 
 def estimate_weight(has_stats: bool) -> float:
-    """A cold wallet pulls 30 d of fills (often 2+ pages); a warm one one tail page."""
+    """A cold wallet pulls 30 d of fills (often 2+ pages) and funding (often
+    2+ pages, the cap is smaller); a warm one one tail page of each."""
     fills = C.W_FILLS_PAGE * (3 if not has_stats else 1)
-    return C.W_PORTFOLIO + C.W_ACCOUNT_STATE + C.W_EXTRAS + fills
+    funding = C.W_FUNDING_PAGE * (3 if not has_stats else 1)
+    return C.W_PORTFOLIO + C.W_ACCOUNT_STATE + C.W_EXTRAS + fills + funding
 
 
 def order_wallets(addresses: Sequence[str], index: Dict[str, Dict[str, Any]], book: Sequence[str],
@@ -139,14 +155,15 @@ def order_wallets(addresses: Sequence[str], index: Dict[str, Dict[str, Any]], bo
     return out
 
 
-def compute_stats(portfolio: Any, fills: List[Dict[str, Any]], now_ms: int) -> Dict[str, Any]:
+def compute_stats(portfolio: Any, fills: List[Dict[str, Any]], now_ms: int,
+                  funding: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Every portfolio and fills metric for one wallet, as JSON-ready dicts."""
     port = M.parse_portfolio(portfolio)
     risk = {}
     for name, win in (("week", PnlWindow.week), ("month", PnlWindow.month), ("allTime", PnlWindow.all_time)):
         w = port.get(name) or {}
         risk[win.value] = M.risk_stats(win, w.get("pnl") or [], w.get("av") or []).model_dump(mode="json")
-    trips = M.round_trips(fills)
+    trips = M.round_trips(fills, funding)
     trades = {w.value: M.trade_stats(w, trips, fills, now_ms).model_dump(mode="json")
               for w in (PnlWindow.week, PnlWindow.month)}
     t30 = trades["30d"]
@@ -165,6 +182,8 @@ def compute_stats(portfolio: Any, fills: List[Dict[str, Any]], now_ms: int) -> D
     perp, other = M.positions.split_perp(fills30)
     if other:
         flags.append("non_perp_ignored")
+    if funding is None:
+        flags.append("funding_unavailable")   # a failed userFunding read: trips net 0 funding, not fabricated
     return {
         "risk": risk, "trades": trades, "style": style.value if style else None,
         "coins": [c.model_dump(mode="json") for c in coins],
@@ -192,7 +211,15 @@ def build_wallet(conn: sqlite3.Connection, venue: CountingVenue, address: str, n
     extras = venue.extras(address)        # optional: None leaves spot-other / staked at 0
     fills = fills_cache.sync_fills(conn, venue, address, C.WINDOW_DAYS, now_ms,   # type: ignore[arg-type]
                                    discovery_config.CACHE_FRESH_S)
-    stats = compute_stats(portfolio, fills, now_ms)
+    try:
+        funding = funding_cache.sync_funding(conn, venue, address, C.WINDOW_DAYS, now_ms,   # type: ignore[arg-type]
+                                             discovery_config.CACHE_FRESH_S)
+    except funding_cache.FundingFetchError as exc:
+        # optional, like extras: a failed userFunding read must not block building the rest
+        # of the wallet's stats, it just nets every trip's funding at 0 this pass (flagged).
+        logger.warning("scout stage B: %s funding read failed, netting 0: %s", address, exc)
+        funding = None
+    stats = compute_stats(portfolio, fills, now_ms, funding)
     if extras is None:
         stats["flags"].append("extras_unavailable")
     views = M.position_views(state.get("raw_positions") or {})

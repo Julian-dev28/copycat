@@ -1,12 +1,47 @@
 from __future__ import annotations
 
 import pytest
-from discovery.positions import coins_traded, median_hold_hours, merged_timeline, opens_per_day, reconstruct
+from discovery.positions import (
+    coins_traded,
+    funding_by_trip,
+    index_funding_by_coin,
+    median_hold_hours,
+    merged_timeline,
+    opens_per_day,
+    reconstruct,
+)
 
 
 def fill(time_ms, coin, px, sz, side, start_position, fee=0.0, closed_pnl=0.0):
     return {"time_ms": time_ms, "coin": coin, "px": px, "sz": sz, "side": side,
             "start_position": start_position, "fee": fee, "closed_pnl": closed_pnl}
+
+
+def test_close_detected_despite_float_residue_from_hl_aggregation():
+    """Regression, found reconciling real HL data for a HIP-3 wallet
+    (xyz:BRENTOIL and others) with aggregateByTime=true: a long run of
+    adds/reduces on coin "W" (sz in the low millions) should close flat to
+    flat, but summing HL's own aggregated `sz` values left
+    start_position + signed_sz at 4.656612873077393e-10 (= 2^-31) instead
+    of exactly 0.0 -- a float32-scale artifact in HL's server-side
+    aggregation, not ours. The old exact `end == 0` check missed the close
+    entirely: reconstruct() kept the coin open forever and every later fill
+    on it became a reduce against a phantom residual position. round_trips()
+    then emitted ZERO trips for a coin that actually had 3 closed trips
+    worth $887,706 of real realized PnL -- silently dropped from the trader
+    file. This fixture reproduces the exact residual measured 2026-10-14."""
+    fills = [
+        fill(1000, "W", 0.01, 5_000_000.0, "B", 0.0),                       # open long 0 -> 5,000,000
+        fill(2000, "W", 0.012, 5_000_000.0 + 4.656612873077393e-10, "A", 5_000_000.0),  # should close flat
+        fill(3000, "W", 0.013, 1_000_000.0, "B", 0.0),                      # a later, independent open
+    ]
+    by_coin = reconstruct(fills)
+    kinds = [(e.kind, e.start_position, e.end_position) for e in by_coin["W"]]
+    assert kinds == [
+        ("open", 0.0, 5_000_000.0),
+        ("close", 5_000_000.0, 0.0),    # not "reduce" against a 4.66e-10 residual
+        ("open", 0.0, 1_000_000.0),     # the next trip starts clean, not stuck mid-reduce
+    ]
 
 
 def test_open_add_reduce_and_flip_splits_into_close_plus_open():
@@ -128,3 +163,50 @@ def test_final_positions_and_trip_spans():
              fill(20, "ETH", 10.0, 2.0, "A", 0.0)]
     assert final_positions(fills) == {"BTC": 0.0, "ETH": -2.0}
     assert trip_spans(reconstruct(fills), 99) == {"BTC": [(0, 10)], "ETH": [(20, 99)]}
+
+
+# ── funding attribution (round-trip funding netting, user research P0) ─────
+
+def test_index_funding_by_coin_groups_and_sorts():
+    rows = [{"time_ms": 300, "coin": "BTC", "usdc": 1.0}, {"time_ms": 100, "coin": "ETH", "usdc": -2.0},
+            {"time_ms": 200, "coin": "BTC", "usdc": -0.5}]
+    idx = index_funding_by_coin(rows)
+    assert idx == {"BTC": [(200, -0.5), (300, 1.0)], "ETH": [(100, -2.0)]}
+
+
+def test_index_funding_by_coin_handles_none_and_empty():
+    assert index_funding_by_coin(None) == {}
+    assert index_funding_by_coin([]) == {}
+
+
+def test_funding_by_trip_sums_only_settlements_inside_the_window():
+    idx = index_funding_by_coin([
+        {"time_ms": 50, "coin": "BTC", "usdc": 9.0},     # before the trip opened: excluded
+        {"time_ms": 100, "coin": "BTC", "usdc": -0.3},   # at open instant: included (half-open, >=)
+        {"time_ms": 150, "coin": "BTC", "usdc": 0.2},
+        {"time_ms": 200, "coin": "BTC", "usdc": 5.0},    # at close instant: excluded (already flat, < closed_ms)
+        {"time_ms": 150, "coin": "ETH", "usdc": 100.0},  # different coin: never mixed in
+    ])
+    assert funding_by_trip(idx, "BTC", 100, 200) == pytest.approx(-0.1)
+
+
+def test_funding_by_trip_zero_for_coin_never_seen():
+    idx = index_funding_by_coin([{"time_ms": 150, "coin": "ETH", "usdc": 100.0}])
+    assert funding_by_trip(idx, "BTC", 0, 1000) == 0.0
+
+
+def test_funding_by_trip_adjoining_trips_each_get_their_own_settlements():
+    """Two round trips on the same coin back to back: a settlement at the
+    boundary between them belongs to the trip that was open at that exact
+    instant (the one STARTING there), never both and never neither."""
+    idx = index_funding_by_coin([
+        {"time_ms": 100, "coin": "BTC", "usdc": 1.0},    # trip 1's open instant
+        {"time_ms": 150, "coin": "BTC", "usdc": 2.0},    # inside trip 1
+        {"time_ms": 200, "coin": "BTC", "usdc": 3.0},    # trip 1 closes / trip 2 opens here
+        {"time_ms": 250, "coin": "BTC", "usdc": 4.0},    # inside trip 2
+    ])
+    trip1 = funding_by_trip(idx, "BTC", 100, 200)
+    trip2 = funding_by_trip(idx, "BTC", 200, 300)
+    assert trip1 == pytest.approx(3.0)    # 1.0 + 2.0
+    assert trip2 == pytest.approx(7.0)    # 3.0 + 4.0
+    assert trip1 + trip2 == pytest.approx(10.0)   # every settlement counted exactly once

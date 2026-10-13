@@ -42,9 +42,27 @@ CREATE TABLE IF NOT EXISTS fills_v2 (
     start_position REAL NOT NULL,
     closed_pnl REAL NOT NULL DEFAULT 0,
     fee REAL NOT NULL DEFAULT 0,
+    liquidation INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (wallet, time_ms, coin, side, sz, px, start_position)
 );
 CREATE INDEX IF NOT EXISTS idx_fills_v2_wallet_time ON fills_v2 (wallet, time_ms);
+
+CREATE TABLE IF NOT EXISTS funding_coverage (
+    wallet TEXT PRIMARY KEY,
+    first_ms INTEGER NOT NULL,
+    last_ms INTEGER NOT NULL,
+    fetched_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS funding_v2 (
+    wallet TEXT NOT NULL,
+    time_ms INTEGER NOT NULL,
+    coin TEXT NOT NULL,
+    usdc REAL NOT NULL,
+    funding_rate REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (wallet, time_ms, coin)
+);
+CREATE INDEX IF NOT EXISTS idx_funding_v2_wallet_time ON funding_v2 (wallet, time_ms);
 
 CREATE TABLE IF NOT EXISTS candles (
     coin TEXT NOT NULL,
@@ -99,6 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_results_run_score ON results (run_id, score);
 _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN heartbeat_ms INTEGER",
     "ALTER TABLE runs ADD COLUMN params_json TEXT",
+    "ALTER TABLE fills_v2 ADD COLUMN liquidation INTEGER NOT NULL DEFAULT 0",
 ]
 
 _local = threading.local()
@@ -191,14 +210,14 @@ def insert_fills(conn: sqlite3.Connection, wallet: str, fills: List[Dict[str, An
     rows = [
         (wallet, int(f["time_ms"]), f["coin"], float(f["px"]), float(f["sz"]), f["side"],
          f.get("dir"), float(f["start_position"]), float(f.get("closed_pnl", 0.0)),
-         float(f.get("fee", 0.0)))
+         float(f.get("fee", 0.0)), int(bool(f.get("liquidation", False))))
         for f in fills
     ]
     before = conn.total_changes
     conn.executemany(
         "INSERT OR IGNORE INTO fills_v2 "
-        "(wallet, time_ms, coin, px, sz, side, dir, start_position, closed_pnl, fee) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+        "(wallet, time_ms, coin, px, sz, side, dir, start_position, closed_pnl, fee, liquidation) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
     conn.commit()
     return conn.total_changes - before
 
@@ -206,6 +225,46 @@ def insert_fills(conn: sqlite3.Connection, wallet: str, fills: List[Dict[str, An
 def get_cached_fills(conn: sqlite3.Connection, wallet: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
     rows = conn.execute(
         "SELECT * FROM fills_v2 WHERE wallet = ? AND time_ms >= ? AND time_ms <= ? ORDER BY time_ms ASC",
+        (wallet, start_ms, end_ms),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── funding (userFunding, for round-trip funding netting) ──────────────────
+
+def get_funding_coverage(conn: sqlite3.Connection, wallet: str) -> Optional[Dict[str, int]]:
+    row = conn.execute("SELECT first_ms, last_ms, fetched_ms FROM funding_coverage WHERE wallet = ?",
+                       (wallet,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_funding_coverage(conn: sqlite3.Connection, wallet: str, first_ms: int, last_ms: int,
+                         fetched_ms: int) -> None:
+    conn.execute(
+        "INSERT INTO funding_coverage (wallet, first_ms, last_ms, fetched_ms) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(wallet) DO UPDATE SET first_ms = excluded.first_ms, last_ms = excluded.last_ms, "
+        "fetched_ms = excluded.fetched_ms",
+        (wallet, first_ms, last_ms, fetched_ms),
+    )
+    conn.commit()
+
+
+def insert_funding(conn: sqlite3.Connection, wallet: str, rows: List[Dict[str, Any]]) -> int:
+    """INSERT OR IGNORE: (wallet, time_ms, coin) dedupes overlapping fetches --
+    HL settles each coin's funding at most once per tick."""
+    data = [(wallet, int(r["time_ms"]), str(r["coin"]), float(r["usdc"]), float(r.get("funding_rate", 0.0)))
+            for r in rows]
+    conn.executemany(
+        "INSERT OR IGNORE INTO funding_v2 (wallet, time_ms, coin, usdc, funding_rate) VALUES (?, ?, ?, ?, ?)",
+        data)
+    conn.commit()
+    return len(data)
+
+
+def get_cached_funding(conn: sqlite3.Connection, wallet: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT time_ms, coin, usdc, funding_rate FROM funding_v2 "
+        "WHERE wallet = ? AND time_ms >= ? AND time_ms <= ? ORDER BY time_ms ASC",
         (wallet, start_ms, end_ms),
     ).fetchall()
     return [dict(r) for r in rows]

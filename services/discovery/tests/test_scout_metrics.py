@@ -91,6 +91,53 @@ def test_round_trips_flip_partials_edge_and_fees():
     assert (st.trips, st.wins, st.long_trips, st.short_trips) == (2, 1, 1, 1)
     assert st.win_rate_pct == 50.0 and st.median_hold_h == pytest.approx(4.0)
     assert M.trade_stats(PnlWindow.week, tr, fills, NOW).trips == 0       # opened 10 d ago
+    # gross/fee always populated, funding 0 when not fetched (user research P0): net == old behavior
+    assert long_.gross_pnl_usd == pytest.approx(15 - 45) and long_.fee_usd == pytest.approx(0.2 + 0.2 + 0.1 + 0.3)
+    assert long_.funding_usd == 0.0 and short.funding_usd == 0.0
+
+
+def test_round_trips_nets_funding_settled_while_each_trip_was_open():
+    """Same BTC flip as test_round_trips_flip_partials_edge_and_fees: long
+    opens at _t(1), flips (closes long / opens short) at _t(5), short closes
+    at _t(9). A funding settlement exactly AT the flip instant belongs to the
+    short trip that starts there, never the long trip that ends there
+    (half-open window, same rule as discovery.positions.funding_by_trip)."""
+    fills = [
+        fill(_t(1), "BTC", 100.0, 2.0, "B", 0.0, fee=0.2),
+        fill(_t(2), "BTC", 110.0, 2.0, "B", 2.0, fee=0.2),
+        fill(_t(3), "BTC", 120.0, 1.0, "A", 4.0, pnl=15.0, fee=0.1),
+        fill(_t(5), "BTC", 90.0, 7.0, "A", 3.0, pnl=-45.0, fee=0.3),
+        fill(_t(9), "BTC", 80.0, 4.0, "B", -4.0, pnl=40.0, fee=0.2),
+    ]
+    funding = [
+        {"time_ms": _t(2), "coin": "BTC", "usdc": -1.0},   # inside the long trip
+        {"time_ms": _t(5), "coin": "BTC", "usdc": 2.0},    # the flip instant: belongs to the short trip
+        {"time_ms": _t(7), "coin": "BTC", "usdc": -0.5},   # inside the short trip
+    ]
+    long_, short = M.round_trips(fills, funding)
+    assert long_.funding_usd == pytest.approx(-1.0)
+    assert short.funding_usd == pytest.approx(2.0 - 0.5)
+    assert long_.net_pnl_usd == pytest.approx(long_.gross_pnl_usd - long_.fee_usd - 1.0)
+    assert short.net_pnl_usd == pytest.approx(short.gross_pnl_usd - short.fee_usd + 1.5)
+    assert not long_.win   # -30 - 0.8 - 1.0 < 0, same sign as before funding
+    assert short.win       # 40 - 0.2 + 1.5 > 0
+
+
+def test_round_trips_closes_despite_hl_aggregation_float_residue():
+    """End-to-end version of discovery.positions'
+    test_close_detected_despite_float_residue_from_hl_aggregation: the same
+    real-world residual must still produce a real, PnL-bearing RoundTrip
+    out of M.round_trips(), not vanish because the position never looked
+    exactly flat."""
+    fills = [
+        fill(_t(1), "W", 0.01, 5_000_000.0, "B", 0.0, fee=50.0),
+        fill(_t(2), "W", 0.012, 5_000_000.0, "A", 5_000_000.0 + 4.656612873077393e-10, pnl=10_000.0, fee=60.0),
+    ]
+    tr = M.round_trips(fills)
+    assert len(tr) == 1
+    t = tr[0]
+    assert t.coin == "W" and t.side == "long"
+    assert t.net_pnl_usd == pytest.approx(10_000.0 - 110.0)
 
 
 @pytest.mark.parametrize("opd,hold,trips,want", [

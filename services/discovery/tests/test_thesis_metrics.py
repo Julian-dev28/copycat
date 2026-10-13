@@ -44,6 +44,30 @@ def test_trips_count_adds_and_exits_as_actions():
     assert e.adds == 1 and e.exits == 2                      # the 30s-apart add fills merge into one action
     assert e.net_pnl_usd == pytest.approx(21.5)
     assert [t.adds for t in trips[:4]] == [0, 0, 0, 0]
+    # gross/fee always populated, funding 0 by default (no caller here wires a fetch yet)
+    assert e.gross_pnl_usd == pytest.approx(21.5) and e.fee_usd == 0.0 and e.funding_usd == 0.0
+
+
+def test_build_trips_nets_funding_when_the_caller_supplies_it():
+    """build_trips takes the same optional `funding` shape as
+    scout.metrics.round_trips; trips.py:94's net_pnl_usd nets it in exactly
+    the same way (user research P0). No caller in the thesis pipeline wires
+    a real funding fetch yet (see the module docstring); this exercises the
+    field directly so a future caller can wire it in without re-deriving
+    the math."""
+    trip1 = trip_fills("BTC", "long", T0 + H, 100, T0 + 11 * H, 110)        # +10, opens T0+1h, closes T0+11h
+    trips_no_funding, _ = build_trips(trip1)
+    assert trips_no_funding[0].net_pnl_usd == pytest.approx(10.0)
+
+    funding = [
+        {"time_ms": T0 + 5 * H, "coin": "BTC", "usdc": -1.5},    # inside the hold: counted
+        {"time_ms": T0 + 20 * H, "coin": "BTC", "usdc": 999.0},  # after close: not this trip's
+    ]
+    trips_with_funding, _ = build_trips(trip1, funding)
+    t = trips_with_funding[0]
+    assert t.funding_usd == pytest.approx(-1.5)
+    assert t.net_pnl_usd == pytest.approx(10.0 - 1.5)
+    assert t.to_round_trip().funding_usd == pytest.approx(-1.5)
 
 
 def test_outcome_metrics():

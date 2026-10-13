@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
-import { biasLabel, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liqTone, normalizeOrders, STYLE_META, visibleFlags } from "./labels";
+import { biasLabel, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liqTone, netFundingSinceOpen, normalizeOrders, STYLE_META, visibleFlags } from "./labels";
 import { TRADING_STYLES } from "./types";
 
 describe("labels", () => {
@@ -32,6 +32,16 @@ describe("labels", () => {
 
   it("liqTone thresholds", () => {
     expect([liqTone(5), liqTone(10), liqTone(25), liqTone(undefined)]).toEqual(["danger", "warn", "ok", "none"]);
+  });
+
+  it("netFundingSinceOpen flips HL's paid-positive sign to the app's good-positive convention", () => {
+    // Regression, confirmed against real HL data (0x8be0b9c4..., coin INJ, 2026-10-14):
+    // clearinghouseState reported cumFunding.sinceOpen = +851.10 for a position whose
+    // userFunding rows were all negative (-18, -18, -18, -19: funding PAID every settlement).
+    // The Positions tab used to color the raw +851.10 green ("text-up" on >= 0), the exact
+    // opposite of what happened to the trader's money.
+    expect(netFundingSinceOpen(851.1)).toBe(-851.1);   // paid $851.10: must read negative/red
+    expect(netFundingSinceOpen(-18.0)).toBe(18.0);      // received $18: must read positive/green
   });
 
   it("formatHold", () => {

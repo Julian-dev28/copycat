@@ -18,6 +18,9 @@ class FakeVenue:
         self.fail_fills: set = set()       # wallets whose fills() read fails (None)
         self.fail_candles: set = set()     # coins whose candles() read fails (None)
         self.account_state_calls = 0
+        # funding() is intentionally NOT defined on the base FakeVenue: it is optional on
+        # contracts.venue.Venue (callers check hasattr), and most tests must see the
+        # "not supported" path. Use FakeFundingVenue (below) to exercise the real one.
 
     # ── fixture setters ─────────────────────────────────────────────────
     def set_leaderboard(self, rows: Optional[List[Dict[str, Any]]]) -> None:
@@ -82,6 +85,29 @@ class FakeVenue:
 
     def close(self, coin: str):
         raise NotImplementedError("discovery never writes")
+
+
+class FakeFundingVenue(FakeVenue):
+    """A FakeVenue that DOES implement `funding` (contracts.venue.Venue's
+    optional userFunding read), for funding_cache / round-trip-funding
+    tests. Plain FakeVenue deliberately omits it so most tests exercise the
+    "venue doesn't support it" path."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._funding: Dict[str, List[Dict[str, Any]]] = {}
+        self.funding_calls: List[tuple] = []
+        self.fail_funding: set = set()
+
+    def set_funding(self, wallet: str, rows: List[Dict[str, Any]]) -> None:
+        self._funding[wallet] = rows
+
+    def funding(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
+        self.funding_calls.append((user, start_ms, end_ms))
+        if user in self.fail_funding:
+            return None
+        rows = self._funding.get(user, [])
+        return [r for r in rows if start_ms <= r["time_ms"] <= end_ms]
 
 
 def flat_candles(start_ms: int, end_ms: int, price: float, step_ms: int = 60_000) -> List[Dict[str, Any]]:
