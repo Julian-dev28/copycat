@@ -172,3 +172,24 @@ def test_departure_recorded_when_a_wallet_leaves_the_universe(w):
     # idempotent: a second A-only refresh with the same (D-less) leaderboard records nothing new
     R.run_refresh(v, settings(), EQUITY, db_path=db, opts=R.RefreshOptions(stages=("A",)))
     assert store.departures_summary(conn, 0) == {"departed": 1, "departed_liquidated": 0}
+
+
+def test_connect_adds_a_new_table_to_a_database_that_predates_it(tmp_path):
+    """Regression: store.connect() used to gate the whole schema script on
+    whether `scout_requests` existed, so a real, already-running
+    data/discovery.db (every older scout table present, scout_departures
+    added later) never got the new table and scout_presets() 500'd with
+    "no such table: scout_departures" (caught live against a copy of real
+    Scout data). The sentinel must track the NEWEST table in SCHEMA."""
+    import sqlite3
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE scout_requests (address TEXT PRIMARY KEY)")   # the old sentinel, alone
+    conn.commit()
+    conn.close()
+
+    conn2 = store.connect(db)
+    assert conn2.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_departures'"
+    ).fetchone() is not None
+    assert store.departures_summary(conn2, 0) == {"departed": 0, "departed_liquidated": 0}   # no longer 500s

@@ -93,9 +93,17 @@ def connect(path: Optional[Path] = None) -> sqlite3.Connection:
     """Per-thread connection from discovery.db.connect (WAL, discovery's own
     schema) plus Scout's tables. Whether they exist is asked of the file each
     time (one indexed sqlite_master lookup): caching it by connection id was a
-    bug, ids are reused after a connection is collected."""
+    bug, ids are reused after a connection is collected.
+
+    The sentinel is the NEWEST table SCHEMA creates (currently
+    scout_departures): a database that already has every older scout table
+    but not this one still needs the (idempotent, CREATE TABLE IF NOT
+    EXISTS) script run once. Bumping SCHEMA with a new table must move this
+    sentinel to that table's name, or an existing data/discovery.db never
+    gets it (caught live: scout_presets() 500'd with "no such table:
+    scout_departures" against a database that predated it)."""
     conn = discovery_db.connect(path or C.db_path())
-    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_requests'").fetchone() is None:
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_departures'").fetchone() is None:
         with _schema_lock:
             conn.executescript(SCHEMA)
             conn.commit()
