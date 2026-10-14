@@ -308,8 +308,11 @@ def test_every_wallet_rotates_through_within_two_passes(tmp_path):
     v = build_venue()
     conn = store.connect(tmp_path / "rotation.db")
     addrs = sorted(BOARD)
-    # tight: room for a couple of cold wallets in the first pass, not all 6
-    budget1 = stats.Budget(max_weight=stats.estimate_weight(False) * 2 + 1, max_s=60)
+    # tight: the first wallet is admitted (one cold ESTIMATE fits), then what it was actually
+    # billed (portfolio + state + extras + a sparse tail, ~70) plus the next estimate crosses the
+    # line, so the rest defer. Billing is by metered rows since 2026-10-15, so a budget sized in
+    # estimates admits more real wallets than it did at 120 per page; size it to admit one.
+    budget1 = stats.Budget(max_weight=stats.estimate_weight(False) + 1, max_s=60)
     res1 = stats.run_stage_b(conn, v, addrs, NOW, budget1)
     assert 0 < len(res1.done) < len(addrs), res1.done
 

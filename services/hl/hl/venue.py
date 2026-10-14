@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -305,11 +306,50 @@ def _exchange_for(creds: Optional[env.Credentials]) -> Any:
     return sdk.get_exchange(creds) if creds is not None else sdk.get_exchange()
 
 
+_last_read = threading.local()   # the paginated read this thread finished last (see HlVenue.last_read)
+
+
+class _ReadMeter:
+    """Counts the pages of ONE paginated /info read (`fills`, `funding`) and
+    publishes them as HlVenue.last_read on the way out, on every return
+    path (a page that failed is not a page: its base weight was acquired,
+    nothing came back to meter)."""
+
+    def __init__(self, req_type: str) -> None:
+        self.req_type = req_type
+        self.pages = self.rows = self.weight = 0
+
+    def page(self, n_rows: int) -> None:
+        self.pages += 1
+        self.rows += n_rows
+        self.weight += rate_limit.endpoint_weight(self.req_type, n_rows)
+
+    def __enter__(self) -> "_ReadMeter":
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        _last_read.read = {"type": self.req_type, "pages": self.pages, "rows": self.rows, "weight": self.weight}
+        return False
+
+
 class HlVenue:
     """Stateless wrapper over hl.http / hl.meta / hl.sdk -- every cache and
     rate limiter lives at module scope in those modules, so instantiating
     this more than once is harmless (and the engine, discovery, and tests
     each do)."""
+
+    @property
+    def last_read(self) -> Optional[Dict[str, Any]]:
+        """What the LAST paginated read on this thread (`fills` or `funding`)
+        cost: {"type": the /info type, "pages": responses that came back,
+        "rows": raw rows across them, "weight": what HL metered for them,
+        rate_limit.endpoint_weight per page}. Pages that failed are not
+        counted (their base weight was acquired, nothing came back). A
+        budget that wraps this venue (discovery.scout.stats.CountingVenue)
+        bills this instead of guessing from the rows it was handed: with
+        `aggregate_by_time` the rows returned under-count what HL metered,
+        and the 2000-row page cap over-counts a 12-row tail six-fold."""
+        return getattr(_last_read, "read", None)
 
     # ── reads ────────────────────────────────────────────────────────────
 
@@ -601,64 +641,66 @@ class HlVenue:
         held: List[Dict[str, Any]] = []   # last page's rows at its last ms, re-read by the next page
         cursor = int(start_ms)
         end_ms = int(end_ms)
-        for _ in range(MAX_PAGES):
-            held = []
-            payload: Dict[str, Any] = {"type": "userFillsByTime", "user": user,
-                                       "startTime": cursor, "endTime": end_ms}
-            if aggregate_by_time:
-                payload["aggregateByTime"] = True
-            raw = http_post("/info", payload)
-            if raw is None:
-                logger.error(f"[hl.venue] fills: userFillsByTime failed for user={user} startTime={cursor}")
-                return None
-            if not isinstance(raw, list):
-                logger.error(f"[hl.venue] fills: unexpected userFillsByTime response shape for user={user}")
-                return None
-            page: List[Dict[str, Any]] = []
-            for f in raw:
+        with _ReadMeter("userFillsByTime") as meter:   # publishes last_read on every return path
+            for _ in range(MAX_PAGES):
+                held = []
+                payload: Dict[str, Any] = {"type": "userFillsByTime", "user": user,
+                                           "startTime": cursor, "endTime": end_ms}
+                if aggregate_by_time:
+                    payload["aggregateByTime"] = True
+                raw = http_post("/info", payload)
+                if raw is None:
+                    logger.error(f"[hl.venue] fills: userFillsByTime failed for user={user} startTime={cursor}")
+                    return None
+                if not isinstance(raw, list):
+                    logger.error(f"[hl.venue] fills: unexpected userFillsByTime response shape for user={user}")
+                    return None
+                meter.page(len(raw))
+                page: List[Dict[str, Any]] = []
+                for f in raw:
+                    try:
+                        page.append({
+                            "time_ms": int(f["time"]),
+                            "coin": str(f["coin"]),
+                            "px": float(f["px"]),
+                            "sz": float(f["sz"]),
+                            "side": str(f["side"]),
+                            "dir": str(f.get("dir", "")),
+                            "start_position": float(f.get("startPosition") or 0),
+                            "closed_pnl": float(f.get("closedPnl") or 0),
+                            "fee": float(f.get("fee") or 0),
+                            # S7: what the engine needs to book OUR fills exactly
+                            "cloid": f.get("cloid") or None,
+                            "oid": f.get("oid"),
+                            "tid": f.get("tid"),
+                            "hash": f.get("hash"),
+                            "liquidation": bool(f.get("liquidation")),
+                        })
+                    except (KeyError, TypeError, ValueError) as exc:
+                        logger.warning(f"[hl.venue] fills: dropping unparseable fill for {user}: {exc}")
+                if len(raw) < PAGE_SIZE:
+                    out.extend(page)
+                    break
                 try:
-                    page.append({
-                        "time_ms": int(f["time"]),
-                        "coin": str(f["coin"]),
-                        "px": float(f["px"]),
-                        "sz": float(f["sz"]),
-                        "side": str(f["side"]),
-                        "dir": str(f.get("dir", "")),
-                        "start_position": float(f.get("startPosition") or 0),
-                        "closed_pnl": float(f.get("closedPnl") or 0),
-                        "fee": float(f.get("fee") or 0),
-                        # S7: what the engine needs to book OUR fills exactly
-                        "cloid": f.get("cloid") or None,
-                        "oid": f.get("oid"),
-                        "tid": f.get("tid"),
-                        "hash": f.get("hash"),
-                        "liquidation": bool(f.get("liquidation")),
-                    })
-                except (KeyError, TypeError, ValueError) as exc:
-                    logger.warning(f"[hl.venue] fills: dropping unparseable fill for {user}: {exc}")
-            if len(raw) < PAGE_SIZE:
-                out.extend(page)
-                break
-            try:
-                first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
-            except (KeyError, TypeError, ValueError):
-                logger.error(f"[hl.venue] fills: page cursor unreadable for user={user}, aborting pagination")
-                return None
-            if first_time >= last_time:
-                logger.warning(f"[hl.venue] fills: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
-                               f"user={user}; rows past the cap at that ms are lost")
-                out.extend(page)
-                cursor = last_time + 1
+                    first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
+                except (KeyError, TypeError, ValueError):
+                    logger.error(f"[hl.venue] fills: page cursor unreadable for user={user}, aborting pagination")
+                    return None
+                if first_time >= last_time:
+                    logger.warning(f"[hl.venue] fills: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
+                                   f"user={user}; rows past the cap at that ms are lost")
+                    out.extend(page)
+                    cursor = last_time + 1
+                else:
+                    out.extend(f for f in page if f["time_ms"] < last_time)   # the next page re-reads last_time whole
+                    held = [f for f in page if f["time_ms"] >= last_time]
+                    cursor = last_time
+                if cursor > end_ms:
+                    break
             else:
-                out.extend(f for f in page if f["time_ms"] < last_time)   # the next page re-reads last_time whole
-                held = [f for f in page if f["time_ms"] >= last_time]
-                cursor = last_time
-            if cursor > end_ms:
-                break
-        else:
-            logger.warning(f"[hl.venue] fills: hit MAX_PAGES={MAX_PAGES} for user={user}; "
-                           f"result truncated at {cursor}")
-        return out + held
+                logger.warning(f"[hl.venue] fills: hit MAX_PAGES={MAX_PAGES} for user={user}; "
+                               f"result truncated at {cursor}")
+            return out + held
 
     def funding(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]:
         """userFunding over [start_ms, end_ms] (both inclusive), paginated.
@@ -689,46 +731,48 @@ class HlVenue:
         held: List[Dict[str, Any]] = []
         cursor = int(start_ms)
         end_ms = int(end_ms)
-        for _ in range(MAX_PAGES):
-            held = []
-            raw = http_post("/info", {"type": "userFunding", "user": user, "startTime": cursor, "endTime": end_ms})
-            if raw is None:
-                logger.error(f"[hl.venue] funding: userFunding failed for user={user} startTime={cursor}")
-                return None
-            if not isinstance(raw, list):
-                logger.error(f"[hl.venue] funding: unexpected userFunding response shape for user={user}")
-                return None
-            page: List[Dict[str, Any]] = []
-            for r in raw:
+        with _ReadMeter("userFunding") as meter:   # publishes last_read on every return path
+            for _ in range(MAX_PAGES):
+                held = []
+                raw = http_post("/info", {"type": "userFunding", "user": user, "startTime": cursor, "endTime": end_ms})
+                if raw is None:
+                    logger.error(f"[hl.venue] funding: userFunding failed for user={user} startTime={cursor}")
+                    return None
+                if not isinstance(raw, list):
+                    logger.error(f"[hl.venue] funding: unexpected userFunding response shape for user={user}")
+                    return None
+                meter.page(len(raw))
+                page: List[Dict[str, Any]] = []
+                for r in raw:
+                    try:
+                        d = r["delta"]
+                        page.append({"time_ms": int(r["time"]), "coin": str(d["coin"]), "usdc": float(d["usdc"]),
+                                    "funding_rate": float(d.get("fundingRate") or 0.0)})
+                    except (KeyError, TypeError, ValueError) as exc:
+                        logger.warning(f"[hl.venue] funding: dropping unparseable row for {user}: {exc}")
+                if len(raw) < PAGE_SIZE:
+                    out.extend(page)
+                    break
                 try:
-                    d = r["delta"]
-                    page.append({"time_ms": int(r["time"]), "coin": str(d["coin"]), "usdc": float(d["usdc"]),
-                                "funding_rate": float(d.get("fundingRate") or 0.0)})
-                except (KeyError, TypeError, ValueError) as exc:
-                    logger.warning(f"[hl.venue] funding: dropping unparseable row for {user}: {exc}")
-            if len(raw) < PAGE_SIZE:
-                out.extend(page)
-                break
-            try:
-                first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
-            except (KeyError, TypeError, ValueError):
-                logger.error(f"[hl.venue] funding: page cursor unreadable for user={user}, aborting pagination")
-                return None
-            if first_time >= last_time:
-                logger.warning(f"[hl.venue] funding: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
-                               f"user={user}; rows past the cap at that ms are lost")
-                out.extend(page)
-                cursor = last_time + 1
+                    first_time, last_time = int(raw[0]["time"]), int(raw[-1]["time"])
+                except (KeyError, TypeError, ValueError):
+                    logger.error(f"[hl.venue] funding: page cursor unreadable for user={user}, aborting pagination")
+                    return None
+                if first_time >= last_time:
+                    logger.warning(f"[hl.venue] funding: {PAGE_SIZE} rows at one millisecond ({last_time}) for "
+                                   f"user={user}; rows past the cap at that ms are lost")
+                    out.extend(page)
+                    cursor = last_time + 1
+                else:
+                    out.extend(p for r, p in zip(raw, page) if int(r["time"]) < last_time)
+                    held = [p for r, p in zip(raw, page) if int(r["time"]) >= last_time]
+                    cursor = last_time
+                if cursor > end_ms:
+                    break
             else:
-                out.extend(p for r, p in zip(raw, page) if int(r["time"]) < last_time)
-                held = [p for r, p in zip(raw, page) if int(r["time"]) >= last_time]
-                cursor = last_time
-            if cursor > end_ms:
-                break
-        else:
-            logger.warning(f"[hl.venue] funding: hit MAX_PAGES={MAX_PAGES} for user={user}; "
-                           f"result truncated at {cursor}")
-        return out + held
+                logger.warning(f"[hl.venue] funding: hit MAX_PAGES={MAX_PAGES} for user={user}; "
+                               f"result truncated at {cursor}")
+            return out + held
 
     def leaderboard(self) -> Optional[List[Dict[str, Any]]]:
         """GET the public HL leaderboard snapshot for the active network.

@@ -14,6 +14,12 @@ but a wallet whose cadence happened to land exactly on this pass).
 Proves, with real data and real timings:
   1. the cold pass actually builds the whole cohort (nothing deferred)
   2. the warm pass's wall clock and weight/wallet (p50) are inside budget
+     (weight = what HL metered for the pages that came back, HlVenue.last_read:
+     a warm wallet is portfolio 20 + a 1-page tail 20 + 1 per 20 rows, ~41;
+     until 2026-10-15 the budget billed the 2000-row page cap, 120 per page,
+     so this check could not pass with a correct warm path. The wall clock
+     is only meaningful ALONE: beside the live scout's own pass every call
+     waits on the shared per-IP bucket, 28.8 s/wallet measured at 2 calls)
   3. the warm pass really is cheaper than the cold one (weight p50 dropped)
   4. most of the warm pass's wallets skipped the slow-cadence set
      (stage_b_summary.full_count < n) -- the whole point of the cadence

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from hl import meta, sdk
 from hl import venue as venue_mod
+from hl.rate_limit import endpoint_weight
 from hl.venue import HlVenue
 
 
@@ -736,3 +737,77 @@ def test_abstraction_failure_after_success_serves_last_known(monkeypatch):
     st = v.account_state("0xabc")
     assert st["abstraction"] == "unifiedAccount"
     assert st["available"][""] == 844_000.0
+
+
+# ── last_read: what a paginated read cost (discovery.scout bills this) ───────
+
+def test_fills_last_read_counts_pages_rows_and_what_hl_metered(monkeypatch):
+    corpus = [_fill(t) for t in range(2011)]        # a full 2000-row page, then row 1999 re-read whole + 11 more
+    srv = _HlFillsServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    v = HlVenue()
+    out = v.fills("0xabc", 0, 10_000)
+    assert len(out) == 2011
+    assert v.last_read == {"type": "userFillsByTime", "pages": 2, "rows": 2012,
+                           "weight": endpoint_weight("userFillsByTime", 2000) + endpoint_weight("userFillsByTime", 12)}
+    assert v.last_read["weight"] == 120 + 21
+
+
+def test_fills_last_read_is_the_metered_rule_not_the_page_cap_for_a_warm_tail(monkeypatch):
+    page = [_fill(1000 + t) for t in range(12)]
+    monkeypatch.setattr(venue_mod, "http_post", lambda path, payload, **kw: page)
+    v = HlVenue()
+    v.fills("0xabc", 0, 5000)
+    assert v.last_read == {"type": "userFillsByTime", "pages": 1, "rows": 12, "weight": 21}
+
+
+def test_fills_last_read_is_published_when_the_second_page_fails(monkeypatch):
+    page1 = [_fill(t) for t in range(2000)]
+    calls = {"n": 0}
+
+    def post(path, payload, **kw):
+        calls["n"] += 1
+        return page1 if calls["n"] == 1 else None
+
+    monkeypatch.setattr(venue_mod, "http_post", post)
+    v = HlVenue()
+    assert v.fills("0xabc", 0, 10_000) is None
+    assert v.last_read == {"type": "userFillsByTime", "pages": 1, "rows": 2000, "weight": 120}  # the page that came back
+
+
+def test_funding_last_read_counts_pages_rows_and_what_hl_metered(monkeypatch):
+    corpus = [_funding_row(t, usdc=t) for t in range(600)]   # a full 500-row page, then row 499 re-read + 100 more
+    srv = _HlFundingServer(corpus)
+    monkeypatch.setattr(venue_mod, "http_post", srv)
+    v = HlVenue()
+    out = v.funding("0xabc", 0, 10_000)
+    assert len(out) == 600
+    assert v.last_read == {"type": "userFunding", "pages": 2, "rows": 601,
+                           "weight": endpoint_weight("userFunding", 500) + endpoint_weight("userFunding", 101)}
+    assert v.last_read["weight"] == 45 + 26
+
+
+def test_last_read_is_per_thread(monkeypatch):
+    import threading
+
+    big = [_fill(t) for t in range(2011)]
+    small = [_fill(1000 + t) for t in range(12)]
+    srv = _HlFillsServer(big)
+
+    def post(path, payload, **kw):
+        return srv(path, payload) if payload["user"] == "0xbig" else small
+
+    monkeypatch.setattr(venue_mod, "http_post", post)
+    v = HlVenue()
+    v.fills("0xbig", 0, 10_000)
+    seen = {}
+
+    def worker():
+        v.fills("0xsmall", 0, 5000)
+        seen["thread"] = v.last_read
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+    assert seen["thread"]["weight"] == 21
+    assert v.last_read["pages"] == 2 and v.last_read["weight"] == 141   # this thread's read, untouched

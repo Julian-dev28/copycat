@@ -64,12 +64,20 @@ MAX_FILLS_PAGES_PER_WALLET = int(_f("COPYCAT_SCOUT_MAX_FILLS_PAGES", 5))
 ETA_MIN_DONE = int(_f("COPYCAT_SCOUT_ETA_MIN_DONE", 10))
 ETA_MIN_FRAC = _f("COPYCAT_SCOUT_ETA_MIN_FRAC", 0.10)
 
-# HL /info weights (services/hl/hl/rate_limit.py), used to charge the budget
+# HL /info weights (services/hl/hl/rate_limit.py), used to charge the budget.
+# tests/invariants/test_hl_weights.py pins every derived one to hl's own rule.
+W_INFO = 20                       # base weight of every documented /info request
+ITEMS_PER_WEIGHT = 20             # +1 per 20 rows a paginated read returns (userFillsByTime, userFunding)
 W_PORTFOLIO = 20
 W_ACCOUNT_STATE = 8               # clearinghouseState x dexes (2 each) + spot (2), typical 3 dexes
 W_EXTRAS = 22                     # spotClearinghouseState 2 + delegatorSummary 20
-W_FILLS_PAGE = 120                # hl charges 20 + 2000/20 up front per userFillsByTime page
-W_FUNDING_PAGE = 45               # hl charges 20 + 500/20 up front per userFunding page
+FILLS_PAGE_ROWS = 2000            # hl.venue.fills' real page size
+FUNDING_PAGE_ROWS = 500           # hl.venue.funding's real page size
+# A FULL page's cost: the worst case `stats.estimate_weight` admits a wallet against. The budget is
+# CHARGED what HL metered for the pages that actually came back (HlVenue.last_read, or the rule above
+# on the rows returned): a 12-row warm tail costs 21, not 120.
+W_FILLS_PAGE = W_INFO + FILLS_PAGE_ROWS // ITEMS_PER_WEIGHT       # 120
+W_FUNDING_PAGE = W_INFO + FUNDING_PAGE_ROWS // ITEMS_PER_WEIGHT   # 45
 W_CANDLES = 20                    # + bars/60, added per call
 W_OPEN_ORDERS = 20
 

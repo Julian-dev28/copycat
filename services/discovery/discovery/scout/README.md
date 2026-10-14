@@ -330,11 +330,16 @@ Live eval: `services/discovery/evals/history_check.sh [wallet1 wallet2 wallet3]`
 (one with a real liquidation). Per trip: HL closedPnl ties out within 0.5%;
 no served trip spans a flip (replays its own fills independently); the
 fills-endpoint liquidation count ties out to a direct HL read; funding per
-trip ties out to real `userFunding` rows. See `history_check.sh`'s own header
-for the current run status: a partial real run (2026-10-14) already caught
-and the branch already fixes the `fill_view` bug above; a clean full run is
-PENDING, serial, by the operator after the qa2 branches merge (every
-throwaway stack shares Hyperliquid's per-IP rate limit with the live engine).
+trip ties out to real `userFunding` rows. A partial real run (2026-10-14)
+caught the `fill_view` bug above. Every throwaway stack shares Hyperliquid's
+per-IP rate limit with the live engine (`COPYCAT_HL_BUCKET_PATH`), so run it
+serially with the other live evals.
+Last run 2026-10-15 01:12 to 01:25 on 80cf15f, shared live bucket, background
+priority: 36/36 PASS on the 3 fixture wallets (48 + 1 + 2 served trips, 3,784
++ 714 + 53 real fills in their spans): every coin's gross PnL tied out to HL
+closedPnl to the cent (15 coins on the dense wallet, XPL included under the
+half-open span), 0 of 51 trips spanned a flip, liquidation counts 1/1, 0/0,
+0/0, and 34 trips with funding tied out to real `userFunding` rows.
 
 ## Metric definitions (deterministic, `metrics.py`, `copy_fit.py`)
 
@@ -422,6 +427,22 @@ measurably cheaper than cold, most warm-pass wallets skipped the slow-cadence
 set, and the ETA is absent early in a pass then present once the honesty gate
 opens. Exit code = failed checks. Run it after touching `stats.build_wallet`,
 `fills_cache.sync_fills`'s page cap, or the cadence constants in `config.py`.
+Weight is what HL metered for the pages that came back (`HlVenue.last_read`,
+billed by `stats.CountingVenue`; `tests/invariants/test_hl_weights.py` pins
+it to `hl.rate_limit`'s rule): a warm wallet is portfolio 20 + a one-page
+tail at 20 + 1 per 20 rows, about 41. The wall-clock check only means
+something ALONE: beside the live scout's own pass every call waits on the
+shared bucket.
+Last run 2026-10-15 01:25 to 02:42 on 80cf15f, beside the live scout's hourly
+pass (shared bucket, background priority), universe 40: 5/7. Cold pass 3,090 s,
+23,930 weight (p50 395, pages p50 5.0, 40/40 built, 0 deferred); warm pass
+1,493 s, 7,310 weight (p50 140, pages p50 1.0, full set on 15/40); ETA absent
+below the gate over 28,776 samples and present after it. Check 3 (warm p50 <=
+60) failed on BILLING, not on the path: 140 was exactly portfolio 20 + one
+page billed at the 2000-row cap (120) for a tail of a dozen rows; the billing
+fix above landed right after this run. Check 2 (warm wall clock <= 240 s) was
+bucket wait, not work: 28.8 s per wallet at two calls. Re-run alone after the
+fix: see the line below once it lands.
 
 Wall clock on a fresh `COPYCAT_DATA_DIR` (new `hl_rate.bucket`, empty): a
 background-priority caller's per-item charge (`rate_limit.charge`) has no
@@ -461,3 +482,4 @@ checks. Run it after touching `ScoutSimTerms`, `refresh.effective_hash`/
 `terms_hash`, `simstage.run_stage_c`'s cache-only path, or the sim-terms
 store/api functions.
 Last run 2026-10-15 00:49 on e76615c, shared live bucket, background priority: 9/13 PASS, inconclusive. GET/PUT shapes, the documented default and both 422 validations passed; the four failures share one cause: the throwaway stack's first 40-wallet build had not finished after 601 s because the live scout's own hourly stats pass was drawing the same per-IP HL budget at the same time, so no sim existed to re-rank or switch back to (the three comparison checks passed on 0 vs 0). Re-run alone, between live stats passes (`/api/scout/status` idle), for the recorded verdict.
+Second run 2026-10-15 02:42 on 80cf15f (serial after history and budget, same shared bucket) was killed by the operator session's 2 h background limit 30 minutes into the first build, right after the budget eval had measured a 40-wallet cold stage B at 3,090 s beside the live pass. `COPYCAT_SIM_TERMS_REFRESH_WAIT_S` now overrides the 2,400 s first-build wait for a run beside a live stack.

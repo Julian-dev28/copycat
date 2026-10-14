@@ -1,10 +1,12 @@
 """Stage B: per-wallet stats (spec 7.2), budgeted.
 
 Per wallet: `portfolio` (20), an incremental `userFillsByTime` sync through
-discovery's fills cache (120 per page, capped per pass), and, on a FULL
-pass only, `account_state` (~8), `extras` (~22), `userFunding` (45 per
-page) and the one-time liquidation backfill. From those, deterministic
-metrics (scout.metrics) into scout_stats.
+discovery's fills cache (20 per page + 1 per 20 rows, so 21 for a 12-row
+warm tail and 120 for a full 2000-row page; pages capped per pass), and, on
+a FULL pass only, `account_state` (~8), `extras` (~22), `userFunding` (20
+per page + 1 per 20 rows, 45 for a full 500-row page) and the one-time
+liquidation backfill. From those, deterministic metrics (scout.metrics)
+into scout_stats.
 
 Warm path (indexing tightening, 2026-10): a wallet with stats already on
 disk pays for the cheap set (portfolio + fills tail) on most passes. The
@@ -63,18 +65,39 @@ def _params(fn: Any) -> Sequence[str]:
 
 
 class CountingVenue:
-    """Wraps a Venue and charges HL weight for every read made through it."""
+    """Wraps a Venue and charges HL weight for every read made through it.
+
+    Paginated reads (fills, funding) are billed what HL metered for them:
+    the wrapped venue's own count when it keeps one (`HlVenue.last_read`:
+    pages that came back and their weight, straight from the responses),
+    else the documented rule on the rows handed back (W_INFO per page + 1
+    per ITEMS_PER_WEIGHT rows). The rule is exact for a one-page read and a
+    lower bound once `aggregate_by_time` merged partial fills; the page cap
+    (W_FILLS_PAGE, 120) is what `estimate_weight` ADMITS against, never what
+    a 12-row warm tail is charged (21)."""
 
     def __init__(self, venue: Venue) -> None:
         self._v = venue
         self.weight = 0.0
         self.calls: Dict[str, int] = {}
         self.weight_by: Dict[str, float] = {}   # per-endpoint weight, for instrumentation
+        self.pages_by: Dict[str, int] = {}      # pages that came back per paginated endpoint
 
-    def _charge(self, name: str, w: float) -> None:
+    def _charge(self, name: str, w: float, pages: int = 0) -> None:
         self.weight += w
         self.calls[name] = self.calls.get(name, 0) + 1
         self.weight_by[name] = self.weight_by.get(name, 0.0) + w
+        if pages:
+            self.pages_by[name] = self.pages_by.get(name, 0) + pages
+
+    def _paginated_cost(self, req_type: str, rows: Any, page_rows: int) -> "tuple[float, int]":
+        """(weight, pages) HL metered for the paginated read that just returned `rows`."""
+        meta = getattr(self._v, "last_read", None)
+        if isinstance(meta, dict) and meta.get("type") == req_type:
+            return float(meta.get("weight") or 0.0), int(meta.get("pages") or 0)
+        n = len(rows or [])
+        pages = max(1, math.ceil(n / page_rows))
+        return float(C.W_INFO * pages + math.ceil(n / C.ITEMS_PER_WEIGHT)), pages
 
     def portfolio(self, user: str) -> Any:
         self._charge("portfolio", C.W_PORTFOLIO)
@@ -99,8 +122,8 @@ class CountingVenue:
         if max_pages is not None and "max_pages" in params:
             kwargs["max_pages"] = max_pages
         rows = self._v.fills(user, start_ms, end_ms, **kwargs)
-        pages = max(1, math.ceil(len(rows or []) / 2000))
-        self._charge("fills", C.W_FILLS_PAGE * pages)
+        w, pages = self._paginated_cost("userFillsByTime", rows, C.FILLS_PAGE_ROWS)
+        self._charge("fills", w, pages)
         return rows
 
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> Any:
@@ -110,8 +133,8 @@ class CountingVenue:
 
     def _funding(self, user: str, start_ms: int, end_ms: int) -> Any:
         rows = self._v.funding(user, start_ms, end_ms)  # type: ignore[attr-defined]
-        pages = max(1, math.ceil(len(rows or []) / 500))
-        self._charge("funding", C.W_FUNDING_PAGE * pages)
+        w, pages = self._paginated_cost("userFunding", rows, C.FUNDING_PAGE_ROWS)
+        self._charge("funding", w, pages)
         return rows
 
     def __getattr__(self, name: str) -> Any:     # max_leverage, leaderboard, ...: uncharged / meta-cached
@@ -364,7 +387,7 @@ class WalletCost:
     address: str
     weight: float
     seconds: float
-    pages: float          # fills + funding pages (weight / per-page cost), fractional
+    pages: float          # fills + funding pages that came back (CountingVenue.pages_by)
     due_full: bool
     calls: Dict[str, int] = field(default_factory=dict)
 
@@ -450,7 +473,7 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         elapsed = time.monotonic() - t0
         budget.charge(cv.weight)
         res.weight += cv.weight
-        pages = (cv.weight_by.get("fills", 0.0) / C.W_FILLS_PAGE) + (cv.weight_by.get("funding", 0.0) / C.W_FUNDING_PAGE)
+        pages = float(cv.pages_by.get("fills", 0) + cv.pages_by.get("funding", 0))
         cost = WalletCost(address=a, weight=cv.weight, seconds=elapsed, pages=pages,
                           due_full="account_state" in cv.calls, calls=dict(cv.calls))
         res.costs.append(cost)

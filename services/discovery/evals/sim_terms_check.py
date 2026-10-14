@@ -20,6 +20,7 @@ Prints PASS/FAIL per step; exit code = failures.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -31,8 +32,10 @@ from discovery.scout import refresh as R
 from contracts.models import ScoutSimTerms
 
 API, TOKEN = sys.argv[1], sys.argv[2]
-REFRESH_WAIT_S = 2400.0    # the first full A+B+C build: real HL reads, 40 wallets; sharing the per-IP
-                           # budget with the live scout's hourly pass it took over 10 min (2026-10-15)
+# The first full A+B+C build: real HL reads, 40 wallets. Alone it is minutes; sharing the per-IP
+# budget with the live scout's hourly pass (COPYCAT_HL_BUCKET_PATH) a 40-wallet cold stage B alone
+# measured 3,090 s on 2026-10-15, so a run beside a live stack sets COPYCAT_SIM_TERMS_REFRESH_WAIT_S.
+REFRESH_WAIT_S = float(os.environ.get("COPYCAT_SIM_TERMS_REFRESH_WAIT_S") or 2400.0)
 RESIM_WAIT_S = 300.0       # a cache-only resim of 40 wallets: measured ~0.07s/wallet, plus the
                            # scheduler tick (10 s) and a possible stage-B pass in front of it
 fails = 0
