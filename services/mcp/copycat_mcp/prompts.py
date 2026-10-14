@@ -21,6 +21,7 @@ THESIS_SECTIONS = (
     "When they trade",
     "What a copier should know",
     "What you can learn and practice",
+    "Invalidation",
     "Confidence & caveats",
 )
 
@@ -31,12 +32,40 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower().replace("&", " and ")).strip()
 
 
+def _headings(markdown: str) -> List[str]:
+    return [_norm(m.group(1)) for m in re.finditer(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", markdown, re.M)]
+
+
 def missing_sections(markdown: str) -> List[str]:
     """Required sections with no matching markdown heading (any level).
     A heading matches if it starts with the section name, ignoring case,
     punctuation and `&` vs `and`; e.g. "## How they enter (evidence)" counts."""
-    headings = [_norm(m.group(1)) for m in re.finditer(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", markdown, re.M)]
+    headings = _headings(markdown)
     return [s for s in THESIS_SECTIONS if not any(h.startswith(_norm(s)) for h in headings)]
+
+
+def out_of_order_sections(markdown: str) -> List[str]:
+    """Required sections that ARE present (missing_sections() already covers
+    absent ones) but appear out of THESIS_SECTIONS's order, e.g. "Exits"
+    before "Sizing & risk". One message per section that comes before an
+    earlier-required section it should follow, so a draft that is merely
+    shuffled gets a precise, fixable complaint instead of a silent pass.
+    Found reconciling a real thesis eval run (2026-10-14): a judge scored
+    "Format discipline" 1/2 for exactly this, something missing_sections()
+    alone never catches."""
+    headings = _headings(markdown)
+    present = [s for s in THESIS_SECTIONS if any(h.startswith(_norm(s)) for h in headings)]
+    positions = {s: next(i for i, h in enumerate(headings) if h.startswith(_norm(s))) for s in present}
+    out: List[str] = []
+    worst_pos_so_far = -1
+    worst_name = None
+    for s in present:   # present is already in THESIS_SECTIONS order
+        if positions[s] < worst_pos_so_far:
+            out.append(f'"{s}" appears before "{worst_name}" in the draft, but the required order is '
+                      f'"{worst_name}" then "{s}"')
+        else:
+            worst_pos_so_far, worst_name = positions[s], s
+    return out
 
 
 def write_thesis_prompt(address: str) -> str:
@@ -60,6 +89,9 @@ Use `trader_fills(address)` only if a round trip needs fill-level detail.
 
 ## 2. Write the thesis in markdown, with exactly these sections as `##` headings, in this order:
 {sections}
+Copy each heading's text verbatim (e.g. `## Exits`, not `## How they exit` or `## Exit strategy`):
+save_thesis checks both presence and order of these exact strings and will tell you what is wrong,
+but get it right the first time instead of relying on that.
 
 What each section must contain:
 - Edge in one sentence: the single most defensible claim about where their returns come from.
@@ -72,8 +104,15 @@ What each section must contain:
   leverage and liquidation risk at the copier's own leverage, latency sensitivity (short holds and
   breakout entries degrade most when copied seconds late), concentration in one coin.
 - What you can learn and practice: concrete habits a trader could study or paper-trade.
+- Invalidation: the specific, checkable signals that mean stop copying this trader, separate from the
+  general caveats below. Name concrete thresholds using this trader's own numbers where you can, e.g.
+  drawdown past their worst historical trip, a style change (leverage, hold time or coin mix drifting
+  far from the fingerprint), inactivity (no new trips for an unusual stretch for their pace), leverage
+  creep above their own max_leverage, or a liquidation. A thesis with nothing that could prove it wrong
+  is not a thesis.
 - Confidence & caveats: sample size (trips_analyzed, window_days), missing candles, regime dependence,
-  the fingerprint's own caveats, and what would change your mind.
+  and the fingerprint's own caveats. This is about how much to trust the numbers above, not about when
+  to stop copying (that's Invalidation).
 
 ## 3. Rules
 - Cite trade examples by coin, side and UTC date (e.g. "BTC long, 2026-09-14"). Convert timestamps with
@@ -86,8 +125,9 @@ What each section must contain:
 
 ## 4. Save
 Call `save_thesis(address="{address}", title=<short title naming the style>, markdown=<the thesis>,
-author=<your model name> + " via copycat MCP")`. If it reports missing sections, fix the draft and
-save again. Then show the user the title and the "Edge in one sentence" line.
+author=<your model name> + " via copycat MCP")`. If it reports missing_sections or order_issues, fix
+the draft and save again; do not stop until both are empty. Then show the user the title and the
+"Edge in one sentence" line.
 """
 
 
@@ -105,6 +145,7 @@ COPY_TRADER_QUESTIONS = (
 COPY_TRADER_SECTIONS = (
     "Strategy in one sentence",
     "Thesis",
+    "When not to copy",
     "Their book at your amount",
     "Risks for a copier",
 )
@@ -132,6 +173,11 @@ and only execute it after an explicit yes. You are handling the user's real mone
 {sections}
 - Strategy and thesis: quote the fingerprint's numbers and the saved thesis; never invent numbers.
   Under ~30 round trips, say the sample is small first.
+- When not to copy: BEFORE the book table and risks, pull the saved thesis's own "Invalidation" section
+  if it has one, plus the fingerprint's caveats (small sample, truncated fills, no candle context,
+  concentration, hidden PnL outside the counted trips). If there is no saved thesis yet, derive this
+  from the fingerprint alone: say so, and name what you'd want a thesis for. This section exists so the
+  user sees the reasons to walk away before they see a table that makes copying look easy.
 - Their book at your amount: a table of his current positions (coin, side, his notional, your copy,
   status) from the plan's preview, the margin you would use, and what is skipped and why.
 - Risks: leverage and liquidation distance, latency (short holds and breakouts degrade when copied

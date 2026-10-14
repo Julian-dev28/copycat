@@ -55,6 +55,11 @@ ALGO_CAVEAT_OPENS_PER_DAY = 100.0
 FILLS_CAP = 10_000                     # userFillsByTime serves only the newest 10k fills
 TRUNCATED_MIN_FILLS = 9_000
 
+# ── hidden PnL (a position opened before the window or still open) ───────
+HIDDEN_PNL_MIN_USD = 1_000.0           # ignore gaps smaller than this in absolute $
+HIDDEN_PNL_MIN_SHARE = 0.2             # ... and smaller than this share of that coin's own window PnL
+MAX_HIDDEN_PNL_CAVEATS = 3             # name this many coins individually; roll the rest into one line
+
 # ── timing ───────────────────────────────────────────────────────────────
 SESSION_HOURS = 6                      # session trader: >= SESSION_MIN_PCT of entries in one 6h UTC window
 

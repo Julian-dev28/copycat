@@ -81,21 +81,57 @@ def fills_truncated(fills: Sequence[Dict[str, Any]], window_start_ms: int) -> bo
 
 
 def coin_stats(fills: Sequence[Dict[str, Any]], trips: Sequence[Trip]) -> List[CoinStat]:
-    """Per perp coin over the window's fills: volume sum(px*sz), realized
-    PnL sum(closed_pnl - fee), closed trips. Ranked by volume desc, coin name
-    breaks ties."""
+    """Per perp coin: trading volume sum(px*sz) over ALL the window's fills
+    (every order placed in that coin, whatever trip it belongs to), but
+    realized PnL and trip count from the SAME population as trips_analyzed
+    -- only the round trips counted there (sum of each Trip.net_pnl_usd).
+
+    Bug this replaced (found reconciling a real HIP-3 wallet by hand against
+    raw fills, 2026-10-14): pnl_usd used to sum closed_pnl-fee over every
+    window fill, including reduces on a position opened before the window or
+    still open at the end. For that wallet it made "56% of profit from
+    xyz:SKHX" out of a single still-open short that was never a counted
+    trip (1 trip, $18k) plus $233k of profit the trips list never mentions:
+    the concentration number and trips_analyzed described different
+    samples. See hidden_coin_pnl for the caveat that now flags that gap
+    instead of silently folding it into the percentage."""
     perp, _ = positions.split_perp(list(fills))
-    agg: Dict[str, List[float]] = {}
+    volume: Dict[str, float] = {}
     for f in perp:
-        a = agg.setdefault(f["coin"], [0.0, 0.0])
-        a[0] += abs(float(f["px"]) * float(f["sz"]))
-        a[1] += float(f.get("closed_pnl", 0.0)) - float(f.get("fee", 0.0))
+        volume[f["coin"]] = volume.get(f["coin"], 0.0) + abs(float(f["px"]) * float(f["sz"]))
+    pnl: Dict[str, float] = {}
     n: Dict[str, int] = {}
     for t in trips:
+        pnl[t.coin] = pnl.get(t.coin, 0.0) + t.net_pnl_usd
         n[t.coin] = n.get(t.coin, 0) + 1
-    out = [CoinStat(coin=c, volume_usd=round(v, 2), pnl_usd=round(p, 2), trips=n.get(c, 0))
-           for c, (v, p) in agg.items()]
+    out = [CoinStat(coin=c, volume_usd=round(volume.get(c, 0.0), 2), pnl_usd=round(pnl.get(c, 0.0), 2),
+                    trips=n.get(c, 0)) for c in (set(volume) | set(pnl))]
     out.sort(key=lambda s: (-s.volume_usd, s.coin))
+    return out
+
+
+def hidden_coin_pnl(fills: Sequence[Dict[str, Any]], trips: Sequence[Trip]) -> List[Tuple[str, float]]:
+    """Per perp coin, realized PnL (closed_pnl - fee) from window fills that
+    no counted round trip explains: a position opened before the window, or
+    still open at the end, that HL nonetheless reports partial closes or
+    adds for inside the window. Only coins where that gap is both a real
+    amount and a material share of that coin's own window PnL are returned
+    (sorted, largest first), so a copier is told about a trade the rest of
+    the fingerprint is silent on instead of it being blended into a
+    percentage that claims to be about the counted trips."""
+    perp, _ = positions.split_perp(list(fills))
+    fill_pnl: Dict[str, float] = {}
+    for f in perp:
+        fill_pnl[f["coin"]] = fill_pnl.get(f["coin"], 0.0) + float(f.get("closed_pnl", 0.0)) - float(f.get("fee", 0.0))
+    trip_pnl: Dict[str, float] = {}
+    for t in trips:
+        trip_pnl[t.coin] = trip_pnl.get(t.coin, 0.0) + t.net_pnl_usd
+    out = []
+    for coin, fp in fill_pnl.items():
+        hidden = fp - trip_pnl.get(coin, 0.0)
+        if abs(hidden) >= C.HIDDEN_PNL_MIN_USD and abs(hidden) >= abs(fp) * C.HIDDEN_PNL_MIN_SHARE:
+            out.append((coin, round(hidden, 2)))
+    out.sort(key=lambda kv: -abs(kv[1]))
     return out
 
 
@@ -320,7 +356,7 @@ def build_fingerprint(address: str, fills: Sequence[Dict[str, Any]],
     tags = assign_tags(metrics, n, context_n)
 
     caveats = build_caveats(n, views, still_open, equity_points, window_fills, ws, window_days,
-                            opens_per_day, bool(levs))
+                            opens_per_day, bool(levs), trips)
     caveats.extend(c for c in extra_caveats if c not in caveats)
 
     fp = StrategyFingerprint(
@@ -332,7 +368,7 @@ def build_fingerprint(address: str, fills: Sequence[Dict[str, Any]],
 
 def build_caveats(n: int, views: Sequence[TripView], still_open: int, equity_points: Sequence[Point],
                   fills: Sequence[Dict[str, Any]], ws: int, window_days: int, opens_per_day: float,
-                  has_leverage: bool) -> List[str]:
+                  has_leverage: bool, trips: Sequence[Trip] = ()) -> List[str]:
     out: List[str] = []
     if n == 0:
         out.append(f"No closed round trips in the last {window_days} days, so there is nothing to fingerprint yet.")
@@ -363,4 +399,20 @@ def build_caveats(n: int, views: Sequence[TripView], still_open: int, equity_poi
                    "context.")
     if opens_per_day > C.ALGO_CAVEAT_OPENS_PER_DAY:
         out.append(f"{opens_per_day:.0f} opens per day looks automated; it cannot be followed by hand.")
+    hidden = hidden_coin_pnl(fills, trips)
+    if hidden:
+        shown, rest = hidden[:C.MAX_HIDDEN_PNL_CAVEATS], hidden[C.MAX_HIDDEN_PNL_CAVEATS:]
+        for coin, v in shown:
+            verb = "lost" if v < 0 else "made"
+            out.append(f"{coin} {verb} an extra ${abs(v):,.0f} in the window from a position opened "
+                       f"before it or still open now, not one of the {n} round trips above: win rate, "
+                       f"hold time, payoff and the examples do not cover it.")
+        if rest:
+            total = sum(abs(v) for _, v in rest)
+            out.append(f"{len(rest)} more coin{'s' if len(rest) != 1 else ''} (total ${total:,.0f}) have "
+                       f"PnL the same way, from positions outside the {n} round trips above.")
+        if len(hidden) >= 3:
+            out.append(f"Most of this wallet's realized PnL in the window comes from positions opened "
+                       f"before it or still open, not from the {n} round trips this fingerprint counts: "
+                       "treat it as a position-holder, not a flipper, whatever the tags above say.")
     return out

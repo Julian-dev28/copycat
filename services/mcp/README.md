@@ -101,8 +101,10 @@ Prompt: `copy_trader(address, amount_usd)`: research, present the strategy at
 that amount, ask leverage / entry deviation / copy-counter / follow-one-shot,
 make the plan and show it; you read the confirm code in copycat (Portfolio > Pending MCP plans) and type it; Claude executes only on your explicit yes with that code. Claude never sees the code (audit H2).
 
-Prompt: `write_thesis(address)`, eight required sections, checked
-deterministically by `prompts.missing_sections()` when saving.
+Prompt: `write_thesis(address)`, nine required sections (including a standalone
+`Invalidation` section: the concrete signals that mean stop copying, separate
+from caveats), checked deterministically by `prompts.missing_sections()` when
+saving.
 
 ## Tests
 
@@ -132,3 +134,39 @@ to approve; on the explicit yes it executed and reported that no orders were
 placed because trading was off. An earlier open-ended run ("copy this trader
 with $50") researched, built a plan, recommended against the trade and
 stopped for approval without executing.
+
+## Thesis eval: does write_thesis clear the quality bar
+
+`services/mcp/evals/thesis_eval.sh` (periodic lane; uses Claude usage) runs a
+real `write_thesis` session over the MCP (read-only: no execute tool at all)
+against a throwaway api, for three real wallets picked to exercise different
+fingerprint shapes, then scores each saved thesis with a second, tool-less
+`claude -p` judge against the 12-criterion rubric in
+`docs/research/user_consensus_2026-10.md` ("Thesis quality rubric"). Pass =
+18/24 with no criterion at 0.
+
+2026-10-14 result, after fixing the harness's own MCP connection (a worktree
+checkout has no `.venv`; `run.sh` was silently failing to launch and a
+capable model was hand-rolling its own stdio MCP client over Bash instead of
+failing loudly -- `COPYCAT_PYTHON` in the eval's `mcp.json` plus
+`--disallowedTools` now make that fail visibly if it ever regresses):
+
+| wallet | result | notes |
+|---|---|---|
+| `0x0871deb3...a47e927` (intraday crypto, hit HL's 10k-fill cap) | **22/24 PASS** | every criterion >= 1; #11 (traceability) and #12 (format) docked -- see below |
+| `0x2eaca7c0...8724bcef` (HIP-3 stock-perp, large still-open position outside its counted trips) | saved, `missing_sections: ['Exits']` (wrote "How they exit") | fixed: the prompt now demands verbatim heading text and the Save step checks `order_issues` too; not yet re-verified (see below) |
+| `0xedab6e39...ca2a3cff8d3370` (small sample, demo's signature wallet) | did not run | blocked by the Claude account's 5-hour usage cap (`api_error: usage_limit_reached`), not a quality failure |
+
+The 22/24 thesis's two dock-worthy findings, both genuine and worth keeping
+in mind: (11) a "current book" table was reconstructed from memory without
+building `trader_profile`, and the writer honestly flagged the numbers could
+be off by a third -- traceability was still docked one point; (12) one
+required heading was present but out of order ("Sizing & risk" written after
+"Exits"), which `missing_sections()` alone did not catch -- fixed same day by
+`out_of_order_sections()`.
+
+The "How they exit" miss on wallet 2 is fixed in the prompt (exact heading
+text now demanded explicitly) but not yet re-run: the account's usage limit
+was already exhausted by the time of the fix (resets 9:50am Asia/Manila).
+Re-run with `services/mcp/evals/thesis_eval.sh` once usage resets; all three
+default wallets are hardcoded as the script's defaults.
