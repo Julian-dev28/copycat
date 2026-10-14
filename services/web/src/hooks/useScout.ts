@@ -108,6 +108,40 @@ export function useWhatIf(address: string) {
   return useMutation({ mutationFn: (body: WhatIfRequest) => source.whatIf(address, body) });
 }
 
+// ── custom wallets (v15) ─────────────────────────────────────────────────────
+
+/** Every wallet added by hand (GET /api/scout/custom). */
+export function useScoutCustom() {
+  const { demo, source, enabled } = useScoutMode();
+  return useQuery({
+    queryKey: ["scout", "custom", demo],
+    queryFn: () => source.customList(),
+    enabled,
+    staleTime: 30_000,
+    retry: noRetryOnTooOld,
+  });
+}
+
+/** What an add or remove changes: the board, its preset counts, the custom list and both profile views. */
+const CUSTOM_DEPENDENTS = [["scout", "traders"], ["scout", "presets"], ["scout", "custom"], ["scout", "profile"], ["scout", "file", "profile"]];
+
+function useInvalidateCustom() {
+  const qc = useQueryClient();
+  return () => Promise.all(CUSTOM_DEPENDENTS.map((queryKey) => qc.invalidateQueries({ queryKey })));
+}
+
+export function useAddCustomWallet() {
+  const { source } = useScoutMode();
+  const invalidate = useInvalidateCustom();
+  return useMutation({ mutationFn: (address: string) => source.customAdd(address), onSuccess: () => invalidate() });
+}
+
+export function useRemoveCustomWallet() {
+  const { source } = useScoutMode();
+  const invalidate = useInvalidateCustom();
+  return useMutation({ mutationFn: (address: string) => source.customRemove(address), onSuccess: () => invalidate() });
+}
+
 const DEMO_SETTINGS_KEY = ["scout", "demo-settings"] as const;
 
 export interface ScoutBook {

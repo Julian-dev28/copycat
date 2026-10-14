@@ -56,7 +56,7 @@ export interface BoardState {
   window: PnlWindow;
   sort: SortKey;
   order: SortOrder;
-  /** "all", "hip3" or "coin:<COIN>". */
+  /** "all", "hip3", "custom" (hand-added wallets) or "coin:<COIN>". */
   preset: string;
   coins: string[];
   minAv: number | null;
@@ -118,8 +118,8 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
-function isPreset(p: string): boolean {
-  if (p === "all" || p === "hip3") return true;
+export function isPreset(p: string): boolean {
+  if (p === "all" || p === "hip3" || p === "custom") return true;
   return p.startsWith("coin:") && COIN_RE.test(p.slice(5));
 }
 
@@ -279,7 +279,7 @@ export function clearFilters(s: BoardState): BoardState {
  * chips", never a crash. Malformed coin names are dropped.
  */
 export function normalizePresets(raw: unknown): ScoutPresets {
-  const out: ScoutPresets = { coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 };
+  const out: ScoutPresets = { coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0 };
   if (!raw || typeof raw !== "object") return out;
   const r = raw as Record<string, unknown>;
   const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
@@ -287,6 +287,7 @@ export function normalizePresets(raw: unknown): ScoutPresets {
   out.total = count(r.total);
   out.departed = count(r.departed_30d ?? r.departed);
   out.departedLiquidated = count(r.departed_liquidated_30d ?? r.departedLiquidated);
+  out.custom = count(r.custom);
   const counts = r.coin_counts && typeof r.coin_counts === "object" ? (r.coin_counts as Record<string, unknown>) : {};
   const seen = new Set<string>();
   for (const c of Array.isArray(r.coins) ? r.coins : []) {
@@ -338,6 +339,7 @@ export function applyBoardQuery(rows: TraderRow[], s: BoardState, nowMs: number)
   const filtered = rows.filter((r) => {
     const perf = windowPerf(r, s.window);
     if (s.preset === "hip3" && hip3Share(r) < 0.5) return false;
+    if (s.preset === "custom" && !r.custom) return false;
     if (s.preset.startsWith("coin:") && r.top_coins[0]?.coin !== s.preset.slice(5)) return false;
     if (s.coins.length && !s.coins.every((c) => r.top_coins.some((tc) => tc.coin === c))) return false;
     if (s.minAv !== null && r.account_value_usd < s.minAv) return false;

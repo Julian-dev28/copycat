@@ -51,6 +51,46 @@ test.describe("demo Scout", () => {
     await expect(same.getByRole("button", { name: /Already copying|Copying/ })).toBeVisible();
   });
 
+  test("add a custom wallet from the board: file opens, Custom preset shows it, remove takes it off", async ({ page }) => {
+    const errors = trackErrors(page);
+    const addr = "0x" + "5a".repeat(20);     // not on the demo board
+    await gotoDemo(page, "/scout");
+    await expect(page.getByRole("heading", { level: 1, name: "Scout" })).toBeVisible();
+    // no custom wallets yet: no Custom chip
+    await expect(page.getByRole("group", { name: "Presets" }).getByRole("button", { name: /^Custom/ })).toHaveCount(0);
+
+    const box = page.getByRole("textbox", { name: "Add a wallet to Scout" });
+    // garbage is refused inline, no navigation
+    await box.fill("vitalik.eth");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: /not a wallet address/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/scout\?demo=1$/);
+
+    await box.fill(`https://app.hyperliquid.xyz/explorer/address/${addr}`);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/scout/${addr}\\?demo=1`));
+    await expect(page.getByRole("heading", { name: "Performance" })).toBeVisible();
+    await expect(page.getByText("Custom", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove from Scout" })).toBeVisible();
+
+    // back on the board, the Custom preset lists it with the badge
+    await gotoDemo(page, "/scout", "&preset=custom");
+    const chip = page.getByRole("group", { name: "Presets" }).getByRole("button", { name: /^Custom/ });
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    const cards = page.locator("main article");
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toContainText(addr.slice(0, 6));
+    await expect(cards.first().getByText("Custom", { exact: true })).toBeVisible();
+
+    // remove it: the card goes and so does the chip
+    await cards.first().getByRole("button", { name: /Remove .* from Scout/ }).click();
+    await expect(page.getByText("Removed from Scout")).toBeVisible();
+    await expect(page.locator("main article")).toHaveCount(0);
+    await gotoDemo(page, "/scout");
+    await expect(page.getByRole("group", { name: "Presets" }).getByRole("button", { name: /^Custom/ })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test("Discover runs a canned scan with the inputs given", async ({ page }) => {
     const errors = trackErrors(page);
     await gotoDemo(page, "/discover");

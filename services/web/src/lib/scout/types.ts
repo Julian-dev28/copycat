@@ -88,6 +88,8 @@ export interface TraderRow {
   score: TraderScore;
   in_book: boolean;
   flags: string[];
+  /** v15: added by hand (POST /api/scout/custom). Scored and simmed like the top 300, kept through refreshes. */
+  custom?: boolean;
 }
 
 export interface TraderPage {
@@ -259,6 +261,8 @@ export interface ScoutPresetsWire {
   /** v13 (user_consensus P1 #7): wallets that fell out of the ranked top-300 in 30d. */
   departed_30d?: number;
   departed_liquidated_30d?: number;
+  /** v15: hand-added wallets on the served board. */
+  custom?: number;
 }
 
 /** What the preset row renders; lib/scout/query.ts::normalizePresets builds it from the wire shape. */
@@ -268,6 +272,17 @@ export interface ScoutPresets {
   total: number;
   departed: number;
   departedLiquidated: number;
+  custom: number;
+}
+
+/** v15: one hand-added wallet (GET/POST /api/scout/custom). */
+export interface CustomWallet {
+  address: string;
+  added_ms: number;
+  /** It has a row on the served board already. */
+  on_board: boolean;
+  /** A build (stats, sim, then the row) is queued for scout serve. */
+  queued: boolean;
 }
 
 // ── Strategy (contract v3.1): fingerprint, evidence trades, theses ──────────

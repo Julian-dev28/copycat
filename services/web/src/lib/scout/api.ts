@@ -8,10 +8,13 @@ import { apiFetch, ApiError, isNotSupported } from "@/lib/api/client";
 import { normAddr } from "@/lib/address";
 import { applyBoardQuery, normalizePresets, parseBoardState, type BoardState } from "./query";
 import { normalizeOrders, type OpenOrderView } from "./labels";
+import { demoFileRow } from "./file/fixtures";
 import {
   fixtureFills, fixtureOrders, fixturePage, fixturePresets, fixtureProfile, fixtureRows, fixtureStatus, fixtureWhatIf,
 } from "./fixtures";
-import type { LeaderFillView, ScoutPresets, ScoutStatus, TraderPage, TraderProfile, TraderRow, WhatIfRequest, WhatIfResult } from "./types";
+import type {
+  CustomWallet, LeaderFillView, ScoutPresets, ScoutStatus, TraderPage, TraderProfile, TraderRow, WhatIfRequest, WhatIfResult,
+} from "./types";
 
 /** A trader file is either ready, or being built on demand (202 + ScoutStatus, spec 7.3). */
 export type ProfileResult = { kind: "ready"; profile: TraderProfile } | { kind: "building"; status: ScoutStatus };
@@ -25,6 +28,10 @@ export interface ScoutSource {
   presets(): Promise<ScoutPresets>;
   status(): Promise<ScoutStatus>;
   refresh(): Promise<ScoutStatus>;
+  /** v15: wallets added by hand (scored and simmed like the top 300, kept through refreshes). */
+  customList(): Promise<CustomWallet[]>;
+  customAdd(address: string): Promise<CustomWallet>;
+  customRemove(address: string): Promise<void>;
 }
 
 const enc = (a: string) => encodeURIComponent(normAddr(a));
@@ -52,6 +59,10 @@ export const liveScout: ScoutSource = {
   presets: async () => normalizePresets(await apiFetch<unknown>("/api/scout/presets")),
   status: () => apiFetch<ScoutStatus>("/api/scout/status"),
   refresh: () => apiFetch<ScoutStatus>("/api/scout/refresh", { method: "POST" }),
+  customList: () => apiFetch<CustomWallet[]>("/api/scout/custom"),
+  customAdd: (address) =>
+    apiFetch<CustomWallet>("/api/scout/custom", { method: "POST", body: JSON.stringify({ address: normAddr(address) }) }),
+  customRemove: (address) => apiFetch<void>(`/api/scout/custom/${enc(address)}`, { method: "DELETE" }),
 };
 
 // ── demo ─────────────────────────────────────────────────────────────────────
@@ -65,9 +76,57 @@ export function demoNowMs(): number {
   return demoNow;
 }
 
+/**
+ * Demo custom wallets: in memory for the session, never sent anywhere. An
+ * address already on the fixture board is just marked `custom`; any other
+ * valid address gets a deterministic row (the trader file's demoFileRow) so
+ * the board row and the file exist at once, like the api after its build.
+ */
+const DEMO_CUSTOM_KEY = "copycat.demo.custom";
+let demoCustomCache: Map<string, number> | null = null;   // address -> added_ms
+
+/** The session's demo custom wallets. sessionStorage so a reload keeps them; absent or blocked storage = none. */
+function demoCustom(): Map<string, number> {
+  if (demoCustomCache) return demoCustomCache;
+  demoCustomCache = new Map();
+  try {
+    const raw = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(DEMO_CUSTOM_KEY);
+    for (const [a, t] of Object.entries(JSON.parse(raw ?? "{}") as Record<string, unknown>)) {
+      if (typeof t === "number") demoCustomCache.set(normAddr(a), t);
+    }
+  } catch {
+    /* no storage, or junk in it: start empty */
+  }
+  return demoCustomCache;
+}
+
+function saveDemoCustom(): void {
+  try {
+    sessionStorage.setItem(DEMO_CUSTOM_KEY, JSON.stringify(Object.fromEntries(demoCustom())));
+  } catch {
+    /* storage blocked: the in-memory map still works for this page */
+  }
+}
+
+/** Test hook: forget every demo custom wallet. */
+export function resetDemoCustom(): void {
+  demoCustomCache = new Map();
+  saveDemoCustom();
+}
+
 function demoRows(): TraderRow[] {
   if (!demoRowsCache) demoRowsCache = fixtureRows(demoNowMs());
-  return demoRowsCache;
+  const custom = demoCustom();
+  if (!custom.size) return demoRowsCache;
+  const onBoard = new Set(demoRowsCache.map((r) => r.address));
+  return [
+    ...demoRowsCache.map((r) => (custom.has(r.address) ? { ...r, custom: true } : r)),
+    ...[...custom.keys()].filter((a) => !onBoard.has(a)).map((a) => ({ ...demoFileRow(a, demoNowMs()), custom: true })),
+  ];
+}
+
+function demoCustomView(address: string): CustomWallet {
+  return { address, added_ms: demoCustom().get(address) ?? 0, on_board: true, queued: false };
 }
 
 function demoRow(address: string): TraderRow {
@@ -91,6 +150,20 @@ export const demoScout: ScoutSource = {
   presets: () => later(normalizePresets(fixturePresets(demoRows()))),
   status: () => later(fixtureStatus(demoNowMs())),
   refresh: () => later({ ...fixtureStatus(demoNowMs()), state: "running" as const, stage: "stats" as const, done: 40, total: 280, eta_s: 1260 }),
+  customList: () => later([...demoCustom().keys()].map(demoCustomView)),
+  customAdd: (address) => {
+    const a = normAddr(address);
+    if (!demoCustom().has(a)) {
+      demoCustom().set(a, Date.now());
+      saveDemoCustom();
+    }
+    return later(demoCustomView(a), 200);
+  },
+  customRemove: (address) => {
+    demoCustom().delete(normAddr(address));
+    saveDemoCustom();
+    return later(undefined);
+  },
 };
 
 /**
