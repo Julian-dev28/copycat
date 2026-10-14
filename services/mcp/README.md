@@ -157,6 +157,19 @@ failing loudly -- `COPYCAT_PYTHON` in the eval's `mcp.json` plus
 | `0x2eaca7c0...8724bcef` (HIP-3 stock-perp, large still-open position outside its counted trips) | saved, `missing_sections: ['Exits']` (wrote "How they exit") | fixed: the prompt now demands verbatim heading text and the Save step checks `order_issues` too; not yet re-verified (see below) |
 | `0xedab6e39...ca2a3cff8d3370` (small sample, demo's signature wallet) | did not run | blocked by the Claude account's 5-hour usage cap (`api_error: usage_limit_reached`), not a quality failure |
 
+Full rerun on merged main (c08d0db), 2026-10-14, all three wallets, no usage cap hit:
+
+| wallet | result |
+|---|---|
+| `0x0871deb3...e927` | **22/24 PASS** |
+| `0x2eaca7c0...bcef` | **20/24 PASS** |
+| `0xedab6e39...3370` | **21/24 PASS** |
+
+0 of 3 failed; every criterion >= 1 on all three. Lowest criteria across the run: #10
+(no-advice framing: imperatives in the "what to learn" section) and #11
+(traceability: a few numbers not tied to a tool call). Both are docked points, not
+zeros.
+
 The 22/24 thesis's two dock-worthy findings, both genuine and worth keeping
 in mind: (11) a "current book" table was reconstructed from memory without
 building `trader_profile`, and the writer honestly flagged the numbers could
