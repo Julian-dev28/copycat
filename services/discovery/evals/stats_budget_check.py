@@ -100,16 +100,22 @@ def run_pass(label: str) -> Tuple[Dict[str, Any], float, List[Sample]]:
     if proc.returncode != 0:
         print(out)
         raise RuntimeError(f"{label} pass: `scout refresh` exited {proc.returncode}")
-    rep = json.loads(out[out.index("{"): out.rindex("}") + 1])
+    # The report is the LAST pretty-printed JSON object in the output (`scout refresh`
+    # prints it with indent=2, so it starts on a line that is exactly "{"). Log lines
+    # before it may contain braces too: stage B's INFO summary did, and the first "{"
+    # in the stream broke the first recorded run of this eval (2026-10-14).
+    start = out.rindex("\n{\n") + 1
+    end = out.index("\n}", start) + 2
+    rep = json.loads(out[start:end])
     return rep, wall_s, samples
 
 
 def eta_gate_evidence(samples: List[Sample]) -> Tuple[bool, bool]:
     """(saw a sample before the gate with no eta, saw a sample after the gate
     with a real eta). Mirrors refresh.eta_s's own gate: hidden while
-    done < 10 AND done < total * 0.10."""
-    before = [(d, t, e) for d, t, e in samples if t > 0 and d >= 1 and d < 10 and d < t * 0.10]
-    after = [(d, t, e) for d, t, e in samples if t > 0 and (d >= 10 or d >= t * 0.10)]
+    done < 10 OR done < total * 0.10 (both gates must be met)."""
+    before = [(d, t, e) for d, t, e in samples if t > 0 and d >= 1 and (d < 10 or d < t * 0.10)]
+    after = [(d, t, e) for d, t, e in samples if t > 0 and d >= 10 and d >= t * 0.10]
     return any(e is None for _, _, e in before), any(e is not None for _, _, e in after)
 
 

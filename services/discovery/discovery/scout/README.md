@@ -176,6 +176,39 @@ $15.20) -- a different, smaller, differently-composed sample than the live
 300-wallet board. The full-universe live run below is what actually confirms
 or revises this; reopen the choice if it does not.
 
+**Full-cohort measurement, 2026-10-15 (297 live board wallets, a read-only
+`.backup` of the live `discovery.db`, stage C cache-only, zero HL calls, ~60 s
+per terms sheet, 17 s to switch back to an already-simmed sheet):**
+
+| terms (target mode, isolated, $1K equity unless noted) | Fit<=20 / 297 | >=5 sim copies | 0 copies | liquidated cap | sim liquidations | rows with $10.50 skips |
+|---|---|---|---|---|---|---|
+| $100 @3x concentrate (the default) | 227 | 95 | 115 | 29 | 37 | 167 |
+| $250 @3x | 221 | 108 | 104 | 34 | 57 | 179 |
+| $500 @3x | 221 | 116 | 100 | 40 | 66 | 183 |
+| $1,000 @3x (all in) | 216 | 119 | 95 | 42 | 74 | 190 |
+| $500 @5x | 252 | 117 | 96 | 86 | 184 | 188 |
+| $1,000 @2x | 209 | 115 | 99 | 28 | 34 | 183 |
+| $100 @3x bump | 221 | 113 | 101 | 37 | 57 | 200 |
+| $250 @3x bump | 216 | 121 | 95 | 41 | 75 | 210 |
+| $1,000 @3x bump | 219 | 127 | 88 | 56 | 95 | 191 |
+| $1,000 @3x bump on a $10K account | 220 | 129 | 88 | 56 | 100 | 206 |
+
+Reading: allocation, equity and the bump mode move the copyable set by at
+most 34 wallets (95 to 129 with >= 5 sim copies) while every step up buys
+more sim liquidations (37 to 100). The ~170 wallets that stay under 5 sim
+copies are a population property of the top 300, not a terms lever: 50 are
+`inactive` (no fill in 7 d or under $1,000), the rest nibble (a whale with
+50-130 open positions adds 0.1% slices that are under $10.50 even on a $3,000
+copy notional; median capacity of the skipped rows stays at 9-10% for every
+sheet) or trade too rarely. Leverage is the one lever that matters for risk:
+5x doubles the liquidated caps of 3x. The default stays $100 @3x concentrate:
+the cheapest sheet with the fewest sim liquidations and the same ranking at
+the top (the live top 10 at it: Fit 78-85, 5 to 143 copies, 9 of 10 uncapped).
+The honest leaderboard is therefore ~100 copyable wallets ranked by copy
+result, then ~200 that the row explains ("under the $10.50 minimum at your
+size", "only n trades in 30d", inactive), capped at Fit 20-40 so they never
+outrank a real copy.
+
 **Real-HL moratorium (as of this writing):** the operator stopped every
 throwaway stack's real Hyperliquid reads mid-build (multiple qa2/* sessions'
 stacks were running at once, each its own rate bucket on the same IP, and the

@@ -109,13 +109,16 @@ def _had_real_liquidation(conn: Any, address: str) -> bool:
 
 def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
     """None until there is enough signal to be honest (indexing tightening):
-    at least C.ETA_MIN_DONE wallets done, OR C.ETA_MIN_FRAC of the total,
-    whichever comes first. A 7/301 pass (2.3%, 7 done) used to show
+    at least C.ETA_MIN_DONE wallets done AND C.ETA_MIN_FRAC of the total,
+    whichever comes LAST. A 7/301 pass (2.3%, 7 done) used to show
     "eta 394m02s" from the first few wallets' rate -- a number dressed up
-    as a fact. Below the gate, the web badge shows progress with no time."""
+    as a fact. "Either" was not enough: at 10/301 (3.3%) the first live pass
+    on the warm path printed "eta 261m03s" from ten wallets built while two
+    evals shared the HL budget. Below the gate, the web badge shows progress
+    with no time."""
     if done <= 0 or total <= 0 or elapsed_s <= 0:
         return None
-    if done < C.ETA_MIN_DONE and done < total * C.ETA_MIN_FRAC:
+    if done < C.ETA_MIN_DONE or done < total * C.ETA_MIN_FRAC:
         return None
     return max(0, total - done) * elapsed_s / done
 

@@ -270,13 +270,18 @@ def test_scheduler_stays_alive_during_a_long_refresh(w, monkeypatch):
 
 # ── ETA honesty gate (indexing tightening: "eta 394m02s" from 7/301) ────────
 
-def test_eta_hidden_below_both_thresholds_then_shown():
+def test_eta_hidden_until_both_thresholds_are_met():
+    """Both gates, not either: the first live pass on the warm path printed
+    "eta 261m03s" at 10/301 (3.3%) from ten wallets built under HL budget
+    contention. Ten wallets of a 301 pass is not a rate; 10% of them is."""
     assert R.eta_s(0, 301, 10.0) is None                 # no progress at all
-    assert R.eta_s(7, 301, 60.0) is None                 # the exact regression: 7/301, 2.3%
-    assert R.eta_s(9, 301, 90.0) is None                 # still under 10 done AND under 10%
-    assert R.eta_s(10, 301, 100.0) is not None            # clears ETA_MIN_DONE
-    assert R.eta_s(5, 20, 20.0) is not None               # 25%: clears ETA_MIN_FRAC despite < 10 done
-    assert R.eta_s(30, 301, 150.0) == pytest.approx((301 - 30) * 150.0 / 30)
+    assert R.eta_s(7, 301, 60.0) is None                 # the first regression: 7/301, 2.3%
+    assert R.eta_s(10, 301, 100.0) is None               # the second: 10 done but 3.3%
+    assert R.eta_s(5, 20, 20.0) is None                  # 25% but only 5 wallets
+    assert R.eta_s(31, 301, 310.0) is not None            # 10 done and 10.3%
+    assert R.eta_s(10, 20, 20.0) is not None              # 10 done and 50%
+    assert R.eta_s(30, 301, 150.0) is None               # 30 done but 9.97%
+    assert R.eta_s(31, 301, 150.0) == pytest.approx((301 - 31) * 150.0 / 31)
 
 
 def test_progress_step_does_not_write_an_eta_before_the_gate(w):

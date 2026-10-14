@@ -60,7 +60,7 @@ FULL_REFRESH_EVERY_S = _f("COPYCAT_SCOUT_FULL_EVERY_S", 6 * 60 * 60)
 # MAX_FILLS_PAGES_PER_WALLET, honestly short on the recent edge (flagged fills_truncated),
 # caught up over the next few passes as the tail keeps advancing forward.
 MAX_FILLS_PAGES_PER_WALLET = int(_f("COPYCAT_SCOUT_MAX_FILLS_PAGES", 5))
-# ETA honesty gate (refresh.eta_s): no estimate from 1-2 samples.
+# ETA honesty gate (refresh.eta_s): no estimate until BOTH are met (10 wallets AND 10% of the pass).
 ETA_MIN_DONE = int(_f("COPYCAT_SCOUT_ETA_MIN_DONE", 10))
 ETA_MIN_FRAC = _f("COPYCAT_SCOUT_ETA_MIN_FRAC", 0.10)
 

@@ -136,13 +136,19 @@ def check_wallet(address: str) -> None:
     funding = real_funding(address, lo_ms, hi_ms)
     check(f"{address[:10]}: real HL read for the served span returned fills", bool(ground), f"[{lo_ms}, {hi_ms}], {len(ground)} fills")
 
-    # 2. per-coin closedPnl tie-out, summed per TRIP's own [opened_ms, closed_ms] span, not the
+    # 2. per-coin closedPnl tie-out, summed per TRIP's own (opened_ms, closed_ms] span, not the
     # whole [lo_ms, hi_ms] window: `recent_trips` is capped at 100 total across every coin,
     # so for a hyperactive multi-coin wallet, some of a coin's OTHER trips inside [lo_ms, hi_ms]
     # can be pushed out of the cap by other coins -- comparing coin sums over the whole span
     # would then show a real-looking but false mismatch. Per-trip spans never have this problem:
     # round trips partition a coin's fills exactly, so whatever ground-truth fills a trip's own
     # span contains are indeed only that trip's.
+    # The span is half-open on purpose. A flip (long to short with no flat) is ONE fill that
+    # closes a trip and opens the next at the same ms; HL books its closedPnl on the position
+    # being closed and positions.reconstruct puts it on the close event. Counting both ends
+    # inclusively credited that fill to both trips: on 2026-10-15 a wallet with 20 XPL flips
+    # read "served -30,706 vs HL -50,451" while every one of its 8 trips tied out exactly under
+    # (opened, closed]. A fresh open's own fill has closedPnl 0, so excluding opened_ms loses nothing.
     ground_by_coin: Dict[str, List[Dict[str, Any]]] = {}
     for f in ground:
         ground_by_coin.setdefault(f["coin"], []).append(f)
@@ -151,7 +157,7 @@ def check_wallet(address: str) -> None:
     for t in trips:
         coin_fills = ground_by_coin.get(t["coin"], [])
         real_gross = sum(float(f.get("closed_pnl") or 0.0) for f in coin_fills
-                         if t["opened_ms"] <= int(f["time_ms"]) <= t["closed_ms"])
+                         if t["opened_ms"] < int(f["time_ms"]) <= t["closed_ms"])
         per_coin_served[t["coin"]] = per_coin_served.get(t["coin"], 0.0) + t["gross_pnl_usd"]
         per_coin_real[t["coin"]] = per_coin_real.get(t["coin"], 0.0) + real_gross
     for coin, served in per_coin_served.items():
