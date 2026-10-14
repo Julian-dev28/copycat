@@ -49,6 +49,21 @@ STAGE_C_MAX_WEIGHT = _f("COPYCAT_SCOUT_C_MAX_WEIGHT", 720 * 30)
 STAGE_C_MAX_S = _f("COPYCAT_SCOUT_C_MAX_S", 40 * 60)
 FAILS_BEFORE_SKIP = 2             # a wallet failing twice in a row sits out one cycle, flagged stale
 
+# ── stage B warm path (indexing tightening, 2026-10) ──────────────────────
+# account_state, extras, userFunding and the one-time liquidation backfill move off the
+# hourly cadence onto this slower one. A wallet still gets them right away when a new
+# fill just landed (its account genuinely changed) or on its first-ever build.
+FULL_REFRESH_EVERY_S = _f("COPYCAT_SCOUT_FULL_EVERY_S", 6 * 60 * 60)
+# Per-wallet cap on real userFillsByTime pages ANY one sync_fills call may spend (first-ever
+# sync, or a wallet whose tail has not caught up yet): a 53,520-fill wallet backfilling 30d
+# in one call paid 27 pages (3,240 weight) in a single pass; this bounds that to
+# MAX_FILLS_PAGES_PER_WALLET, honestly short on the recent edge (flagged fills_truncated),
+# caught up over the next few passes as the tail keeps advancing forward.
+MAX_FILLS_PAGES_PER_WALLET = int(_f("COPYCAT_SCOUT_MAX_FILLS_PAGES", 5))
+# ETA honesty gate (refresh.eta_s): no estimate from 1-2 samples.
+ETA_MIN_DONE = int(_f("COPYCAT_SCOUT_ETA_MIN_DONE", 10))
+ETA_MIN_FRAC = _f("COPYCAT_SCOUT_ETA_MIN_FRAC", 0.10)
+
 # HL /info weights (services/hl/hl/rate_limit.py), used to charge the budget
 W_PORTFOLIO = 20
 W_ACCOUNT_STATE = 8               # clearinghouseState x dexes (2 each) + spot (2), typical 3 dexes

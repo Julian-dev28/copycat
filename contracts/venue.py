@@ -74,12 +74,15 @@ class Venue(Protocol):
     def is_isolated_only(self, coin: str) -> bool: ...
     def size_for(self, coin: str, notional_usd: float, mid: float) -> float: ...  # rounded to szDecimals
     def fills(self, user: str, start_ms: int, end_ms: int,
-              aggregate_by_time: bool = False) -> Optional[List[Fill]]: ...
+              aggregate_by_time: bool = False, max_pages: Optional[int] = None) -> Optional[List[Fill]]: ...
         # [start_ms, end_ms] inclusive, oldest first. aggregate_by_time: one Fill per order per
         # millisecond (HL aggregateByTime): sz/closed_pnl/fee summed, px = VWAP, start_position
         # and dir from the first partial. dir can then be stale on a flip (Close Short with
         # sz past zero): classify from start_position + side + sz. Optional for implementers:
-        # callers check the signature before passing it.
+        # callers check the signature before passing it. max_pages: cap real HTTP pages this
+        # call makes (discovery.fills_cache's per-pass budget); a capped result is a partial
+        # answer, same shape as hitting the real page-count ceiling early. Also optional for
+        # implementers: callers check the signature before passing it.
     def funding(self, user: str, start_ms: int, end_ms: int) -> Optional[List[Dict[str, Any]]]: ...
         # [start_ms, end_ms] inclusive, oldest first (HL userFunding). Each row:
         # {time_ms, coin, usdc, funding_rate}. usdc is HL's own sign: positive = credited

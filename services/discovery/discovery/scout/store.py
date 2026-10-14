@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS scout_stats (
   portfolio_json TEXT, account_json TEXT, positions_json TEXT, positions_ms INTEGER,
   stats_json TEXT,
   fail_count INTEGER NOT NULL DEFAULT 0, skip_until_ms INTEGER NOT NULL DEFAULT 0,
-  last_try_ms INTEGER NOT NULL DEFAULT 0, last_error TEXT);
+  last_try_ms INTEGER NOT NULL DEFAULT 0, last_error TEXT,
+  full_ms INTEGER NOT NULL DEFAULT 0);   -- last account_state/extras/funding/liq-backfill read (warm path)
 
 CREATE TABLE IF NOT EXISTS scout_sim (
   address TEXT, settings_hash TEXT, sim_equity REAL, updated_ms INTEGER, stats_ms INTEGER,
@@ -89,6 +90,12 @@ UNIVERSE_COLUMNS = ("address", "display_name", "account_value", "pnl_1d", "pnl_7
                     "roi_1d", "roi_7d", "roi_30d", "roi_all", "vlm_1d", "vlm_7d", "vlm_30d", "vlm_all",
                     "is_vault", "source", "seen_ms")
 
+# Columns added after the first schema (sqlite has no ADD COLUMN IF NOT EXISTS). A fresh
+# database gets them from SCHEMA above already; this is for an existing data/discovery.db.
+_MIGRATIONS = (
+    "ALTER TABLE scout_stats ADD COLUMN full_ms INTEGER NOT NULL DEFAULT 0",
+)
+
 _schema_lock = threading.Lock()
 
 
@@ -110,6 +117,12 @@ def connect(path: Optional[Path] = None) -> sqlite3.Connection:
         with _schema_lock:
             conn.executescript(SCHEMA)
             conn.commit()
+    for stmt in _MIGRATIONS:
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass   # already migrated (or a fresh db: SCHEMA above already has the column)
+    conn.commit()
     return conn
 
 
@@ -261,24 +274,33 @@ def stats_row(conn: sqlite3.Connection, address: str) -> Optional[Dict[str, Any]
 
 
 def stats_index(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
-    """address -> {updated_ms, fail_count, skip_until_ms, last_try_ms}; no blobs."""
-    rows = conn.execute("SELECT address, updated_ms, fail_count, skip_until_ms, last_try_ms FROM scout_stats")
+    """address -> {updated_ms, fail_count, skip_until_ms, last_try_ms, full_ms}; no blobs.
+    full_ms: last time account_state/extras/funding/liq-backfill actually ran (warm path)."""
+    rows = conn.execute(
+        "SELECT address, updated_ms, fail_count, skip_until_ms, last_try_ms, full_ms FROM scout_stats")
     return {r["address"]: dict(r) for r in rows.fetchall()}
 
 
 def save_stats(conn: sqlite3.Connection, address: str, now_ms: int, portfolio: Any, account: Any,
-               positions: Any, stats: Any) -> None:
+               positions: Any, stats: Any, positions_as_of_ms: Optional[int] = None,
+               full_ms: Optional[int] = None) -> None:
+    """positions_as_of_ms/full_ms default to now_ms (the original, always-fresh behavior);
+    the stage-B warm path passes the PRIOR value through on a pass that reused the prior
+    account_state read instead of re-fetching it."""
+    pos_ms = now_ms if positions_as_of_ms is None else positions_as_of_ms
+    full_ms_v = now_ms if full_ms is None else full_ms
     with conn:
         conn.execute(
             "INSERT INTO scout_stats (address, updated_ms, portfolio_json, account_json, positions_json, "
-            "positions_ms, stats_json, fail_count, skip_until_ms, last_try_ms, last_error) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL) ON CONFLICT(address) DO UPDATE SET "
+            "positions_ms, stats_json, full_ms, fail_count, skip_until_ms, last_try_ms, last_error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL) ON CONFLICT(address) DO UPDATE SET "
             "updated_ms = excluded.updated_ms, portfolio_json = excluded.portfolio_json, "
             "account_json = excluded.account_json, positions_json = excluded.positions_json, "
-            "positions_ms = excluded.positions_ms, stats_json = excluded.stats_json, fail_count = 0, "
+            "positions_ms = excluded.positions_ms, stats_json = excluded.stats_json, "
+            "full_ms = excluded.full_ms, fail_count = 0, "
             "skip_until_ms = 0, last_try_ms = excluded.last_try_ms, last_error = NULL",
-            (address, now_ms, json.dumps(portfolio), json.dumps(account), json.dumps(positions), now_ms,
-             json.dumps(stats), now_ms))
+            (address, now_ms, json.dumps(portfolio), json.dumps(account), json.dumps(positions), pos_ms,
+             json.dumps(stats), full_ms_v, now_ms))
 
 
 def record_stats_failure(conn: sqlite3.Connection, address: str, now_ms: int, error: str,

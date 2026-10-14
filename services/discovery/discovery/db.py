@@ -265,6 +265,13 @@ def get_cached_fills(conn: sqlite3.Connection, wallet: str, start_ms: int, end_m
     return [dict(r) for r in rows]
 
 
+def newest_fill_ms(conn: sqlite3.Connection, wallet: str) -> Optional[int]:
+    """The latest cached fill's time_ms across the whole cache (not windowed),
+    or None if nothing is cached yet. Cheap: one indexed MAX() query, no blobs."""
+    r = conn.execute("SELECT MAX(time_ms) FROM fills_v2 WHERE wallet = ?", (wallet,)).fetchone()
+    return int(r[0]) if r and r[0] is not None else None
+
+
 # ── funding (userFunding, for round-trip funding netting) ──────────────────
 
 def get_funding_coverage(conn: sqlite3.Connection, wallet: str) -> Optional[Dict[str, int]]:
