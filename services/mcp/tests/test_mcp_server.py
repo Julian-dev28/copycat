@@ -30,9 +30,13 @@ PLAN = {"plan_id": PLAN_ID, "confirm_code": "ABC234", "created_ms": 0, "expires_
         "trading_live": False, "executable": True, "warnings": ["Trading is not live"],
         "book_fingerprint": "f" * 64, "book_summary": ["BTC long $50,000"]}
 
-EXPECTED_TOOLS = {"scout_list", "trader_profile", "trader_fingerprint", "trader_trades", "trader_fills",
-                  "market_candles", "list_theses", "save_thesis", "copycat_settings",
+EXPECTED_TOOLS = {"scout_list", "scout_add_wallet", "trader_profile", "trader_fingerprint", "trader_trades",
+                  "trader_fills", "market_candles", "list_theses", "save_thesis", "copycat_settings",
                   "engine_status", "my_wallets", "preview_copy", "copy_plan"}
+# The two writes that need no flag: a thesis (text) and a wallet on the Scout board (research
+# scope: no order, no setting, no leader; the user removes it in the web app, there is no
+# remove tool, see FORBIDDEN_TOOL_WORDS).
+TEXT_WRITERS = {"save_thesis", "scout_add_wallet"}
 # Audit H1: no add_leader. A trader joins the book only through copy_plan -> execute_copy_plan.
 # v0.3: the one money-moving tool, present ONLY with COPYCAT_MCP_ALLOW_TRADING=1 in the server env
 TRADING_TOOLS = {"execute_copy_plan"}
@@ -57,10 +61,10 @@ def test_tool_list_is_exactly_the_allowlist():
         assert t.description and len(t.description) > 60, t.name
 
 
-def test_only_save_thesis_writes_without_the_flag_and_it_is_not_destructive():
+def test_only_text_writers_write_without_the_flag_and_none_is_destructive():
     tools = run(make_server(FakeApi()), lambda c: c.list_tools()).tools
     writers = {t.name for t in tools if not (t.annotations and t.annotations.read_only_hint)}
-    assert writers == {"save_thesis"}
+    assert writers == TEXT_WRITERS
     for t in tools:
         if t.name in writers:
             assert t.annotations.destructive_hint is False
@@ -77,7 +81,7 @@ def test_trading_flag_adds_exactly_execute_copy_plan_marked_destructive():
     assert (a.read_only_hint, a.destructive_hint, a.idempotent_hint, a.open_world_hint) == \
         (False, True, False, True)
     writers = {t.name for t in tools if not (t.annotations and t.annotations.read_only_hint)}
-    assert writers == {"save_thesis", "execute_copy_plan"}
+    assert writers == TEXT_WRITERS | {"execute_copy_plan"}
 
 
 def test_flag_comes_from_the_server_env_only_never_dotenv(tmp_path):
@@ -128,6 +132,17 @@ def test_h1_there_is_no_add_leader_tool_with_or_without_the_flag():
 
 
 # ── request mapping + auth header ────────────────────────────────────────
+
+def test_scout_add_wallet_posts_the_normalized_address_and_hints_while_building():
+    fake = FakeApi(routes={("POST", "/api/scout/custom"): {"address": ADDR, "added_ms": 1, "on_board": False,
+                                                           "queued": True}})
+    out = sc(call(make_server(fake), "scout_add_wallet", {"address": ADDR_MIXED}))
+    assert [(r.method, r.url.path) for r in fake.requests] == [("POST", "/api/scout/custom")]
+    assert fake.last_json() == {"address": ADDR}
+    assert "trader_profile" in (out.get("hint") or "")
+    fake.routes[("POST", "/api/scout/custom")] = {"address": ADDR, "added_ms": 1, "on_board": True, "queued": False}
+    assert "hint" not in sc(call(make_server(fake), "scout_add_wallet", {"address": ADDR}))
+
 
 def test_scout_list_maps_query_and_sends_bearer():
     fake = FakeApi(routes={("GET", "/api/scout/traders"): {"rows": [], "total": 0}})

@@ -39,6 +39,7 @@ import os
 from typing import Any, Dict, List, Optional, Protocol, Union
 
 from contracts.models import (
+    CustomWallet,
     LeaderFillView,
     LeaderOverride,
     OpenOrderView,
@@ -76,6 +77,13 @@ class ScoutClient(Protocol):
     def status(self) -> ScoutStatus: ...
 
     def refresh(self) -> ScoutStatus: ...
+
+    # v15: custom wallets (hand-added, scored like the top 300)
+    def custom_list(self) -> List[CustomWallet]: ...
+
+    def custom_add(self, address: str) -> Optional[CustomWallet]: ...
+
+    def custom_remove(self, address: str) -> bool: ...
 
 
 def _plain(v: Any) -> Any:
@@ -162,3 +170,13 @@ class RealScoutClient:
 
     def refresh(self) -> ScoutStatus:
         return ScoutStatus.model_validate(_plain(self._call("scout_refresh")))
+
+    def custom_list(self) -> List[CustomWallet]:
+        return [CustomWallet.model_validate(_plain(c)) for c in self._call("scout_custom_list")]
+
+    def custom_add(self, address: str) -> Optional[CustomWallet]:
+        out = self._call("scout_custom_add", address)
+        return None if out is None else CustomWallet.model_validate(_plain(out))
+
+    def custom_remove(self, address: str) -> bool:
+        return bool(self._call("scout_custom_remove", address))

@@ -269,6 +269,23 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
             params["hide_flagged"] = "true"
         return await call("GET", "/api/scout/traders", params=params)
 
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                          idempotent_hint=True, open_world_hint=False))
+    async def scout_add_wallet(address: Address) -> Dict[str, Any]:
+        """Add any Hyperliquid wallet to copycat's Scout board by hand (contract v15). It is not
+        limited to the leaderboard: the wallet gets stats, the board's copy sim and Copy Fit,
+        ranks alongside the top 300 with `custom: true`, and stays through refreshes until the
+        user removes it on the Scout page. The build is queued for the scout process, which
+        serves it even during a full refresh (usually under a minute); call trader_profile
+        with wait_s to read the file once it is ready, or scout_list to see its row. Places
+        no orders and changes no settings; the user removes custom wallets in the web app."""
+        res = await call("POST", "/api/scout/custom", json={"address": norm_address(address)})
+        out = dict(res) if isinstance(res, dict) else {"result": res}
+        if out.get("queued"):
+            out["hint"] = ("copycat is building this wallet's stats and copy sim now. Call trader_profile "
+                           "with wait_s=60 to read the file, or scout_list once it ranks.")
+        return out
+
     @mcp.tool(annotations=READ)
     async def trader_profile(
         address: Address,

@@ -240,9 +240,15 @@ def build_wallet(conn: sqlite3.Connection, venue: CountingVenue, address: str, n
                                              (state.get("positions") or {}).items()},
                "equity_perp_usd": float(state.get("equity_perp_usd") or 0.0)}
     store.save_stats(conn, address, now_ms, portfolio, account, [v.model_dump(mode="json") for v in views], stats)
-    if source_if_new and store.universe_row(conn, address) is None:
+    existing = store.universe_row(conn, address)
+    # A wallet the leaderboard does not feed (on-demand file, hand-added custom wallet) gets
+    # its universe row, and every later rebuild its fresh account value and window PnL,
+    # from its own portfolio. Before this, such a row was written once and never updated.
+    if (source_if_new and existing is None) or (existing is not None and existing.get("source") in ("ondemand", "custom")):
         port = M.parse_portfolio(portfolio)
-        row: Dict[str, Any] = {"address": address, "display_name": None, "is_vault": 0, "source": source_if_new,
+        row: Dict[str, Any] = {"address": address, "display_name": (existing or {}).get("display_name"),
+                               "is_vault": int((existing or {}).get("is_vault") or 0),
+                               "source": (existing or {}).get("source") or source_if_new,
                                "seen_ms": now_ms,
                                "account_value": float(state.get("equity_perp_usd") or 0.0)
                                + float(state.get("spot_usdc") or 0.0)}
@@ -263,13 +269,14 @@ class StageResult:
 def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str], now_ms: int, budget: Budget,
                 book: Sequence[str] = (), requested: Sequence[str] = (), limit: Optional[int] = None,
                 progress: Optional[Callable[[int, int], None]] = None,
-                clock_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> StageResult:
+                clock_ms: Callable[[], int] = lambda: int(time.time() * 1000),
+                custom: Sequence[str] = ()) -> StageResult:
     index = store.stats_index(conn)
-    order = order_wallets(addresses, index, book, requested, now_ms)
+    order = order_wallets(addresses, index, list(book) + list(custom), requested, now_ms)   # custom: book priority
     if limit is not None:
         order = order[:limit]
     res = StageResult()
-    book_set, req_set = set(book), set(requested)
+    book_set, req_set, custom_set = set(book), set(requested), set(custom)
     for i, a in enumerate(order):
         est = estimate_weight(a in index and bool(index[a].get("updated_ms")))
         if not budget.allows(est):
@@ -280,7 +287,7 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         cv = CountingVenue(venue)
         t = clock_ms()
         try:
-            src = "book" if a in book_set else ("ondemand" if a in req_set else None)
+            src = "book" if a in book_set else ("custom" if a in custom_set else ("ondemand" if a in req_set else None))
             build_wallet(conn, cv, a, t, source_if_new=src)
             res.done.append(a)
         except Exception as exc:

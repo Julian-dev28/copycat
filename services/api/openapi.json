@@ -994,6 +994,47 @@
         "title": "CurvePoint",
         "type": "object"
       },
+      "CustomWallet": {
+        "properties": {
+          "added_ms": {
+            "title": "Added Ms",
+            "type": "integer"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "on_board": {
+            "title": "On Board",
+            "type": "boolean"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "address",
+          "added_ms",
+          "on_board",
+          "queued"
+        ],
+        "title": "CustomWallet",
+        "type": "object"
+      },
+      "CustomWalletRequest": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "CustomWalletRequest",
+        "type": "object"
+      },
       "DiscoveryRun": {
         "properties": {
           "candidates": {
@@ -2498,6 +2539,11 @@
             "title": "Coins",
             "type": "array"
           },
+          "custom": {
+            "default": 0,
+            "title": "Custom",
+            "type": "integer"
+          },
           "departed_30d": {
             "default": 0,
             "title": "Departed 30D",
@@ -2675,7 +2721,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 14,
+            "default": 15,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -4108,6 +4154,11 @@
           "address": {
             "title": "Address",
             "type": "string"
+          },
+          "custom": {
+            "default": false,
+            "title": "Custom",
+            "type": "boolean"
           },
           "display_name": {
             "anyOf": [
@@ -6982,6 +7033,113 @@
         ]
       }
     },
+    "/api/scout/custom": {
+      "get": {
+        "description": "Every wallet added by hand, with whether it is on the served board yet.",
+        "operationId": "list_custom_api_scout_custom_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomWallet"
+                  },
+                  "title": "Response List Custom Api Scout Custom Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "List Custom",
+        "tags": [
+          "scout"
+        ]
+      },
+      "post": {
+        "description": "Add any wallet to the Scout board. It gets stats, the board's copy sim and Copy\nFit, ranks alongside the leaderboard wallets with `custom=true`, and stays through\nrefreshes until removed. The build is queued for `scout serve` (`queued`), which\nserves it even during a full refresh; poll GET /api/scout/traders/{address} (202\nwhile building) or the board's `preset=custom`. Idempotent.",
+        "operationId": "add_custom_api_scout_custom_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomWalletRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomWallet"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "not a 0x address"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Add Custom",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
+    "/api/scout/custom/{address}": {
+      "delete": {
+        "description": "Take a hand-added wallet off the board at once. Its cached stats stay.",
+        "operationId": "remove_custom_api_scout_custom__address__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "title": "Address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "not a custom wallet"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "discovery.scout isn't importable"
+          }
+        },
+        "summary": "Remove Custom",
+        "tags": [
+          "scout"
+        ]
+      }
+    },
     "/api/scout/presets": {
       "get": {
         "description": "Coin chips + hip3 count from the current `scout_rows`.",
@@ -7077,7 +7235,7 @@
             "required": false,
             "schema": {
               "default": "all",
-              "pattern": "^(all|hip3|coin:[A-Za-z0-9_:.\\-]{1,32})$",
+              "pattern": "^(all|hip3|custom|coin:[A-Za-z0-9_:.\\-]{1,32})$",
               "title": "Preset",
               "type": "string"
             }

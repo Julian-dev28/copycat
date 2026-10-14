@@ -555,6 +555,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scout/custom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Custom
+         * @description Every wallet added by hand, with whether it is on the served board yet.
+         */
+        get: operations["list_custom_api_scout_custom_get"];
+        put?: never;
+        /**
+         * Add Custom
+         * @description Add any wallet to the Scout board. It gets stats, the board's copy sim and Copy
+         *     Fit, ranks alongside the leaderboard wallets with `custom=true`, and stays through
+         *     refreshes until removed. The build is queued for `scout serve` (`queued`), which
+         *     serves it even during a full refresh; poll GET /api/scout/traders/{address} (202
+         *     while building) or the board's `preset=custom`. Idempotent.
+         */
+        post: operations["add_custom_api_scout_custom_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scout/custom/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Custom
+         * @description Take a hand-added wallet off the board at once. Its cached stats stay.
+         */
+        delete: operations["remove_custom_api_scout_custom__address__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scout/presets": {
         parameters: {
             query?: never;
@@ -1412,6 +1460,22 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** CustomWallet */
+        CustomWallet: {
+            /** Added Ms */
+            added_ms: number;
+            /** Address */
+            address: string;
+            /** On Board */
+            on_board: boolean;
+            /** Queued */
+            queued: boolean;
+        };
+        /** CustomWalletRequest */
+        CustomWalletRequest: {
+            /** Address */
+            address: string;
+        };
         /** DiscoveryRun */
         DiscoveryRun: {
             /** Candidates */
@@ -1956,6 +2020,11 @@ export interface components {
             /** Coins */
             coins?: string[];
             /**
+             * Custom
+             * @default 0
+             */
+            custom: number;
+            /**
              * Departed 30D
              * @default 0
              */
@@ -2030,7 +2099,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 14
+             * @default 15
              */
             contract_version: number;
             /**
@@ -2520,6 +2589,11 @@ export interface components {
             account_value_usd: number;
             /** Address */
             address: string;
+            /**
+             * Custom
+             * @default false
+             */
+            custom: boolean;
             /** Display Name */
             display_name?: string | null;
             /** Flags */
@@ -4071,6 +4145,114 @@ export interface operations {
             };
             /** @description rate limit */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_custom_api_scout_custom_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomWallet"][];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    add_custom_api_scout_custom_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomWalletRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomWallet"];
+                };
+            };
+            /** @description not a 0x address */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_custom_api_scout_custom__address__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not a custom wallet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -97,8 +97,8 @@ def parse(d: Optional[Dict[str, Any]]) -> Query:
     if q.window not in WINDOWS:
         raise ScoutQueryError(f"window: {q.window!r} not in {sorted(WINDOWS)}")
     q.preset = str(_val(d.get("preset")) or "all")
-    if not (q.preset in ("all", "hip3") or (q.preset.startswith("coin:") and len(q.preset) > 5)):
-        raise ScoutQueryError(f"preset: {q.preset!r} (all, hip3, coin:<COIN>)")
+    if not (q.preset in ("all", "hip3", "custom") or (q.preset.startswith("coin:") and len(q.preset) > 5)):
+        raise ScoutQueryError(f"preset: {q.preset!r} (all, hip3, custom, coin:<COIN>)")
     q.coins = _list(d.get("coin"))
     q.styles = _list(d.get("style"))
     bad = [s for s in q.styles if s not in STYLES]
@@ -168,6 +168,8 @@ def where(q: Query, refresh_id: str, now_ms: Optional[int] = None) -> Tuple[str,
     if q.preset == "hip3":
         clauses.append("coins_csv LIKE ?")       # any HIP-3 (dex:COIN) market in the top 5
         args.append("%:%")
+    elif q.preset == "custom":                   # v15: wallets the user added by hand
+        clauses.append("address IN (SELECT address FROM scout_custom)")
     elif q.preset.startswith("coin:"):
         clauses.append("top_coin = ?")
         args.append(q.preset[5:])

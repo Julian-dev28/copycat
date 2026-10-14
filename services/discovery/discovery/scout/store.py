@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS scout_departures (   -- survivorship trail (user_cons
   address TEXT PRIMARY KEY, display_name TEXT, last_account_value REAL, last_pnl_30d REAL,
   had_liquidation INTEGER NOT NULL DEFAULT 0, last_seen_ms INTEGER, departed_ms INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_scout_departures_ms ON scout_departures (departed_ms);
+
+CREATE TABLE IF NOT EXISTS scout_custom (       -- v15: wallets the user added to the board by hand
+  address TEXT PRIMARY KEY, added_ms INTEGER NOT NULL);
 """
 
 ROW_COLUMNS = ("refresh_id", "settings_hash", "address", "display_name", "fit", "sim_return", "sim_dd",
@@ -96,14 +99,14 @@ def connect(path: Optional[Path] = None) -> sqlite3.Connection:
     bug, ids are reused after a connection is collected.
 
     The sentinel is the NEWEST table SCHEMA creates (currently
-    scout_departures): a database that already has every older scout table
+    scout_custom): a database that already has every older scout table
     but not this one still needs the (idempotent, CREATE TABLE IF NOT
     EXISTS) script run once. Bumping SCHEMA with a new table must move this
     sentinel to that table's name, or an existing data/discovery.db never
     gets it (caught live: scout_presets() 500'd with "no such table:
     scout_departures" against a database that predated it)."""
     conn = discovery_db.connect(path or C.db_path())
-    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_departures'").fetchone() is None:
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_custom'").fetchone() is None:
         with _schema_lock:
             conn.executescript(SCHEMA)
             conn.commit()
@@ -159,9 +162,60 @@ def upsert_universe(conn: sqlite3.Connection, row: Dict[str, Any]) -> None:
                      f"VALUES ({','.join('?' * len(UNIVERSE_COLUMNS))})", tuple(row.get(c) for c in UNIVERSE_COLUMNS))
 
 
-def universe(conn: sqlite3.Connection, sources: Sequence[str] = ("lb", "book")) -> List[Dict[str, Any]]:
+BOARD_SOURCES = ("lb", "book", "custom")   # universe rows that form the board cohort ("ondemand" files do not)
+
+
+def universe(conn: sqlite3.Connection, sources: Sequence[str] = BOARD_SOURCES) -> List[Dict[str, Any]]:
     q = f"SELECT * FROM scout_universe WHERE source IN ({','.join('?' * len(sources))}) ORDER BY pnl_30d DESC"
     return [dict(r) for r in conn.execute(q, tuple(sources)).fetchall()]
+
+
+def delete_universe_row(conn: sqlite3.Connection, address: str, only_source: Optional[str] = None) -> bool:
+    """Drop one universe row; with only_source, only when its source matches (a custom
+    wallet that is also on the leaderboard keeps its lb row)."""
+    with conn:
+        if only_source is None:
+            cur = conn.execute("DELETE FROM scout_universe WHERE address = ?", (address,))
+        else:
+            cur = conn.execute("DELETE FROM scout_universe WHERE address = ? AND source = ?", (address, only_source))
+    return cur.rowcount > 0
+
+
+# ── custom wallets (v15: added by hand, scored like the top 300, kept across refreshes) ──
+
+def custom_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    return [dict(r) for r in conn.execute("SELECT address, added_ms FROM scout_custom ORDER BY added_ms").fetchall()]
+
+
+def custom_addresses(conn: sqlite3.Connection) -> List[str]:
+    return [r["address"] for r in custom_rows(conn)]
+
+
+def add_custom(conn: sqlite3.Connection, address: str, now_ms: int) -> bool:
+    """True when the wallet was not custom before."""
+    with conn:
+        cur = conn.execute("INSERT OR IGNORE INTO scout_custom (address, added_ms) VALUES (?, ?)", (address, now_ms))
+    return cur.rowcount > 0
+
+
+def remove_custom(conn: sqlite3.Connection, address: str) -> bool:
+    with conn:
+        cur = conn.execute("DELETE FROM scout_custom WHERE address = ?", (address,))
+    return cur.rowcount > 0
+
+
+def drop_row(conn: sqlite3.Connection, refresh_id: str, address: str) -> bool:
+    """Remove one wallet from a served build right away (a removed custom wallet must
+    not wait for the next publish to leave the board)."""
+    with conn:
+        cur = conn.execute("DELETE FROM scout_rows WHERE refresh_id = ? AND address = ?", (refresh_id, address))
+    return cur.rowcount > 0
+
+
+def set_row_json(conn: sqlite3.Connection, refresh_id: str, address: str, row_json: str) -> None:
+    with conn:
+        conn.execute("UPDATE scout_rows SET row_json = ? WHERE refresh_id = ? AND address = ?",
+                     (row_json, refresh_id, address))
 
 
 def universe_row(conn: sqlite3.Connection, address: str) -> Optional[Dict[str, Any]]:

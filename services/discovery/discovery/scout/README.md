@@ -29,6 +29,9 @@ Nothing heavy runs in the api process.
 | `scout_presets()` | `ScoutPresets` | `hip3_count` uses the same predicate as `preset=hip3` (any `dex:COIN` in top 5), so a tab count equals its total |
 | `scout_status()` | `ScoutStatus` | `refresh_id` = the latest pipeline run; `error` says when `serve` is not running |
 | `scout_refresh()` | `ScoutStatus` | queues A+B+C for `serve` (picked up within 10 s); `ScoutBusy` when running or already queued |
+| `scout_custom_list()` | `List[CustomWallet]` | v15: wallets added by hand, with `on_board` / `queued` |
+| `scout_custom_add(address)` | `CustomWallet` / `None` | v15: adds to `scout_custom` and queues the build (`None` = not an address). Served even mid-refresh, then the board is republished at once |
+| `scout_custom_remove(address)` | `bool` | v15: drops the custom row, a universe row that existed only for it, and its served board row (or just the `custom` mark when it is on the leaderboard anyway) |
 | `run_scheduler(settings_provider, ...)`, `serve(...)` | blocking | settings re-read every tick |
 
 ## Pipeline (spec 7.2)
@@ -39,6 +42,26 @@ Nothing heavy runs in the api process.
 | B stats | 60 min, budgeted | per wallet: `portfolio` + `account_state` + `extras` + incremental fills sync (discovery's fills cache). All-or-nothing per wallet; 2 failures in a row -> sits out a cycle, row flagged `stale`. Order: book, on-demand, stalest, then universe rank | ~170 warm, ~340 cold (measured) |
 | C sim | after B; on settings change | `sim.simulate_wallet` on cached fills, candles via the shared cache; Copy Fit over the cohort | candles only |
 | publish | after every run | rows -> `scout_rows` under a new `refresh_id`, pointer switched in one transaction | 0 |
+
+Custom wallets (contract v15): `scout_custom` holds every address the user
+added by hand. Stage A keeps them through the universe swap (source `custom`
+when the leaderboard lists them below the cut, `lb` when they are in the top
+300 anyway); a wallet the leaderboard has never listed gets its universe row
+from stage B (`stats.build_wallet`, account value and window PnL from its own
+portfolio, refreshed on every rebuild). The cohort is every `lb`, `book` and
+`custom` universe row with stats (`store.BOARD_SOURCES`); `ondemand` rows
+(trader files opened by address) still stay off the board. Rows carry
+`custom=true`, `preset=custom` filters on `scout_custom`, `ScoutPresets.custom`
+counts them.
+
+On-demand requests (trader files for untracked wallets, custom wallets just
+added) are served by `refresh.service_requests`: between refreshes through
+`run_refresh(only=[a])` as before, and DURING a refresh from the scheduler's
+progress beat (`refresh.build_one`: stage B then C for that one wallet, no
+slot, no progress row), so a request made 2 minutes into a 45-minute refresh
+is built in about a minute instead of waiting for the refresh to end. A
+custom wallet's build ends with `refresh.republish` (the board rebuilt from
+stored stats and sims, no HL call) so its row shows at once.
 
 Budget per B pass: `COPYCAT_SCOUT_B_MAX_WEIGHT` (default 28,800 = 40 min at
 the ~720/min background share) and `COPYCAT_SCOUT_B_MAX_S` (50 min), charged by
@@ -52,7 +75,10 @@ default `COPYCAT_SCOUT_SIM_EQUITY=1000`). On a change the old board keeps
 serving with `stale_settings=true` until C has re-simulated every wallet.
 
 Progress: `scout_refresh` row (stage, done/total, eta, heartbeat) and
-`tail -f /tmp/scout-refresh/progress.log`.
+`tail -f /tmp/scout-refresh/progress.log`. The scheduler heartbeat
+(`scheduler_heartbeat_ms`, what health and `scout_build().alive` read) is
+beaten at every progress step too, so a long refresh never reads as "serve
+is not running".
 
 ## Storage
 

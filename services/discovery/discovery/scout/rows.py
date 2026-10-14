@@ -91,7 +91,7 @@ def fit_input(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], fla
 
 def make_row(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], sim_curve: Sequence[Dict[str, Any]],
              flags: Sequence[str], fit: Optional[CopyFit],
-             coattail: Optional[Tuple[str, float, int]] = None) -> TraderRow:
+             coattail: Optional[Tuple[str, float, int]] = None, custom: bool = False) -> TraderRow:
     style = TradingStyle(stats["style"]) if stats.get("style") else None
     all_flags = sorted(set(flags) | set(fit.caps if fit else []))
     score = TraderScore(
@@ -124,7 +124,7 @@ def make_row(u: Dict[str, Any], stats: Dict[str, Any], sim: Dict[str, Any], sim_
         top_coins=[CoinStat(**c) for c in (stats.get("coins") or [])[:5]],
         pnl_spark_30d=[CurvePoint(**p) for p in (stats.get("pnl_spark_30d") or [])][: C.SPARK_MAX_POINTS],
         sim_spark_30d=M.downsample([CurvePoint(**p) for p in sim_curve], C.SPARK_MAX_POINTS),
-        score=score, in_book=False, flags=all_flags)
+        score=score, in_book=False, flags=all_flags, custom=custom)
 
 
 def sql_row(row: TraderRow, refresh_id: str, settings_hash: str, u: Dict[str, Any], stats: Dict[str, Any]) -> Dict[str, Any]:
@@ -189,7 +189,8 @@ def _coattail_map(conn: sqlite3.Connection, addresses: Sequence[str],
 
 def build(conn: sqlite3.Connection, refresh_id: str, settings_hash: str, sim_equity: float, now_ms: int) -> int:
     """Write a full board for refresh_id, then switch to it. Returns the cohort size."""
-    uni = store.universe(conn)
+    uni = store.universe(conn)                      # lb + book + custom rows
+    custom = set(store.custom_addresses(conn))
     stats = _load_stats(conn, [u["address"] for u in uni])
     sims = _load_sims(conn, settings_hash, sim_equity)
     cohort = [u for u in uni if u["address"] in stats]
@@ -205,7 +206,7 @@ def build(conn: sqlite3.Connection, refresh_id: str, settings_hash: str, sim_equ
     out = []
     for u, st, sim, curve, flags in prepared:
         a = u["address"]
-        row = make_row(u, st, sim, curve, flags, fits[a], coattail=coattails.get(a))
+        row = make_row(u, st, sim, curve, flags, fits[a], coattail=coattails.get(a), custom=a in custom)
         out.append(sql_row(row, refresh_id, settings_hash, u, st))
     store.write_rows(conn, out)
     store.switch(conn, refresh_id, settings_hash, now_ms, len(out), sim_equity)

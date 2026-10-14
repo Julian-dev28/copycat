@@ -16,6 +16,7 @@ from api.thesis_client import ThesisUnavailable
 
 from contracts.models import (
     AccountRisk,
+    CustomWallet,
     DiscoveryRun,
     EngineEvent,
     EngineStatus,
@@ -259,6 +260,22 @@ class FakeScoutClient:
             raise ScoutBusy("a Scout refresh is already running")
         self._status = ScoutStatus(refresh_id="r1", state="running", stage="leaderboard")
         return self._status
+
+    # v15 custom wallets: an in-memory set; A and B count as "on the board"
+    def custom_list(self) -> List[CustomWallet]:
+        return [CustomWallet(address=a, added_ms=1, on_board=a in (ADDR_A, ADDR_B), queued=a not in (ADDR_A, ADDR_B))
+                for a in sorted(getattr(self, "custom", set()))]
+
+    def custom_add(self, address: str) -> Optional[CustomWallet]:
+        if not address.startswith("0x") or len(address) != 42:
+            return None
+        self.custom = getattr(self, "custom", set()) | {address}
+        return next(c for c in self.custom_list() if c.address == address)
+
+    def custom_remove(self, address: str) -> bool:
+        had = address in getattr(self, "custom", set())
+        self.custom = getattr(self, "custom", set()) - {address}
+        return had
 
 
 class UnavailableScoutClient:

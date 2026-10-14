@@ -28,7 +28,7 @@ import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
-export const CONTRACT_VERSION = 14;
+export const CONTRACT_VERSION = 15;
 export const MAX_LEADERS = 25;
 export const HL_MIN_ORDER_USD = 10.5;
 export const MAX_LEVERAGE_CAP = 50;

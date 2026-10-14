@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import JSONResponse
 
 from contracts.models import (
+    CustomWallet,
+    CustomWalletRequest,
     LeaderFillView,
     OpenOrderView,
     ScoutPresets,
@@ -165,6 +167,48 @@ def get_presets(scout: ScoutClient = Depends(get_scout_client)) -> ScoutPresets:
         return scout.presets()
     except ScoutUnavailable as e:
         raise _unavailable(e) from e
+
+
+# ── custom wallets (v15): any address on the board, scored like the top 300 ──
+
+@router.get("/custom", response_model=List[CustomWallet], responses=_UNAVAILABLE)
+def list_custom(scout: ScoutClient = Depends(get_scout_client)) -> List[CustomWallet]:
+    """Every wallet added by hand, with whether it is on the served board yet."""
+    try:
+        return scout.custom_list()
+    except ScoutUnavailable as e:
+        raise _unavailable(e) from e
+
+
+@router.post("/custom", response_model=CustomWallet, status_code=status.HTTP_201_CREATED,
+             responses={422: {"description": "not a 0x address"}, **_UNAVAILABLE})
+def add_custom(body: CustomWalletRequest, scout: ScoutClient = Depends(get_scout_client)) -> CustomWallet:
+    """Add any wallet to the Scout board. It gets stats, the board's copy sim and Copy
+    Fit, ranks alongside the leaderboard wallets with `custom=true`, and stays through
+    refreshes until removed. The build is queued for `scout serve` (`queued`), which
+    serves it even during a full refresh; poll GET /api/scout/traders/{address} (202
+    while building) or the board's `preset=custom`. Idempotent."""
+    try:
+        out = scout.custom_add(body.address)
+    except ScoutUnavailable as e:
+        raise _unavailable(e) from e
+    if out is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"not a 0x address: {body.address!r}")
+    return out
+
+
+@router.delete("/custom/{address}", status_code=status.HTTP_204_NO_CONTENT,
+               responses={404: {"description": "not a custom wallet"}, **_UNAVAILABLE})
+def remove_custom(address: str, scout: ScoutClient = Depends(get_scout_client)) -> Response:
+    """Take a hand-added wallet off the board at once. Its cached stats stay."""
+    a = valid_address(address)
+    try:
+        ok = scout.custom_remove(a)
+    except ScoutUnavailable as e:
+        raise _unavailable(e) from e
+    if not ok:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"{a} is not a custom wallet")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/status", response_model=ScoutStatus, responses=_UNAVAILABLE)

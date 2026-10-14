@@ -7,12 +7,17 @@ percentages as percent (10.0 = 10%), timestamps as epoch milliseconds.
 """
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 14  # v14: TraderScore.liquidations_30d/last_liquidation_ms (the wallet's OWN real
+CONTRACT_VERSION = 15  # v15: custom wallets on the Scout board. TraderRow.custom (the viewer added
+#                        this wallet by hand: it is scored and simmed like the top 300 and survives
+#                        refreshes), ScoutPresets.custom (count), CustomWallet/CustomWalletRequest
+#                        (GET/POST /api/scout/custom, DELETE /api/scout/custom/{address})
+# v14: TraderScore.liquidations_30d/last_liquidation_ms (the wallet's OWN real
 #                        liquidations, distinct from sim_liquidations), sim_capacity_note,
 #                        coattail_leader/coattail_share_pct; ScoutPresets.departed_30d/departed_liquidated_30d
 #                        (user_consensus_2026-10 P0/P1: leaderboard trust gaps)
@@ -419,6 +424,10 @@ class TraderRow(BaseModel):              # one Scout board row; what the list ro
     score: TraderScore                   # sim + Copy Fit at settings_hash
     in_book: bool = False                # filled by api from Settings.leaders
     flags: List[str] = Field(default_factory=list)
+    # v15: added by hand (POST /api/scout/custom). Scored and simmed exactly like a
+    # leaderboard wallet, kept across refreshes until removed; also true for a custom
+    # wallet that happens to be in the top 300 right now.
+    custom: bool = False
 
 class TraderPage(BaseModel):
     as_of_ms: int
@@ -559,6 +568,27 @@ class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /
     # stats showed a real (not sim) liquidation before it dropped off.
     departed_30d: int = 0
     departed_liquidated_30d: int = 0
+    # v15: wallets added by hand that are on the served board (the `preset=custom` tab's total)
+    custom: int = 0
+
+
+class CustomWalletRequest(BaseModel):    # v15: POST /api/scout/custom
+    address: str
+
+    @field_validator("address")
+    @classmethod
+    def _addr(cls, v: str) -> str:
+        a = v.strip()
+        if not re.fullmatch(r"0x[0-9a-fA-F]{40}", a):
+            raise ValueError("not a 0x address with 40 hex characters")
+        return norm_addr(a)
+
+
+class CustomWallet(BaseModel):           # v15: one hand-added wallet (GET/POST /api/scout/custom)
+    address: str
+    added_ms: int
+    on_board: bool                       # it has a row on the served board already
+    queued: bool                         # a build is queued for `scout serve` (stats + sim, then the row)
 
 
 TraderScore.model_rebuild()

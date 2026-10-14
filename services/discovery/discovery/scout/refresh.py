@@ -194,27 +194,34 @@ def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optio
 def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: RefreshOptions, sizing: Any,
          rep: RefreshReport, prog: Progress) -> None:
     book = list(settings.leaders)
+    custom = store.custom_addresses(conn)
     want = settings_hash(settings, sim_equity)
     store.meta_set(conn, {"wanted_hash": want})
 
     if "A" in opts.stages:
         t = time.monotonic()
         prog.begin("leaderboard", 1)
-        prev = {r["address"]: r for r in store.universe(conn)}
-        sel = universe.run_stage_a(venue, now_ms(), book)
+        prev = {r["address"]: r for r in store.universe(conn, ("lb", "book"))}
+        sel = universe.run_stage_a(venue, now_ms(), book, custom)
         if sel is not None:
             new_addrs = {r["address"] for r in sel}
             dropped = [dict(r, had_liquidation=_had_real_liquidation(conn, a))
                       for a, r in prev.items() if a not in new_addrs]
             if dropped:
                 store.record_departures(conn, dropped, now_ms())
-            store.replace_universe(conn, sel, keep_sources=("ondemand",))
+            store.replace_universe(conn, sel, keep_sources=("ondemand", "custom"))
             store.meta_set(conn, {"last_a_ms": now_ms()})
         elif not store.universe(conn):
             raise RuntimeError("leaderboard read failed and there is no previous universe")
         prog.step(1, 1)
         rep.timings_s["A"] = round(time.monotonic() - t, 2)
-    addrs = opts.only if opts.only is not None else [u["address"] for u in store.universe(conn)]
+    if opts.only is not None:
+        addrs = list(opts.only)
+    else:
+        # every board-source universe row, plus hand-added wallets the leaderboard has never
+        # listed (no universe row yet: stage B creates it from the wallet's own portfolio)
+        addrs = [u["address"] for u in store.universe(conn)]
+        addrs += [a for a in custom if a not in set(addrs)]
     rep.universe = len(addrs)
 
     if "B" in opts.stages:
@@ -223,7 +230,7 @@ def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: R
         n = len(addrs) if opts.limit_b is None else min(len(addrs), opts.limit_b)
         prog.begin("stats", n)
         res = stats.run_stage_b(conn, venue, addrs, now_ms(), budget, book=book,
-                                requested=opts.only or (), limit=opts.limit_b, progress=prog.step)
+                                requested=opts.only or (), limit=opts.limit_b, progress=prog.step, custom=custom)
         prog.errors += len(res.failed)
         rep.stats_done, rep.stats_failed, rep.stats_deferred = len(res.done), len(res.failed), len(res.deferred)
         rep.weight_b = res.weight
@@ -292,6 +299,68 @@ def next_due_ms(conn: Any) -> int:
     return min(last_a + int(C.STAGE_A_EVERY_S * 1000), last_b + int(C.STAGE_B_EVERY_S * 1000))
 
 
+def _stats_error(conn: Any, address: str) -> Optional[str]:
+    """None when the wallet's stage-B stats are good, else why not."""
+    ok = store.stats_row(conn, address)
+    if ok and ok.get("updated_ms") and not ok.get("fail_count"):
+        return None
+    return (ok or {}).get("last_error") or "no stats"
+
+
+def build_one(conn: Any, venue: Venue, settings: Settings, sim_equity: float, sizing: Any,
+              address: str, book: Sequence[str], custom: Sequence[str]) -> Optional[str]:
+    """Stage B then C for one wallet without claiming the refresh slot or writing a
+    progress row: the nested path a running refresh uses to serve an on-demand request
+    between two of its own wallets. Returns the stats error, None when built."""
+    stats.run_stage_b(conn, venue, [address], now_ms(), stats.Budget(C.STAGE_B_MAX_WEIGHT, C.STAGE_B_MAX_S),
+                      book=book, requested=[address], custom=custom)
+    err = _stats_error(conn, address)
+    if err is None:
+        simstage.run_stage_c(conn, venue, [address], settings, sim_equity, settings_hash(settings, sim_equity),
+                             stats.Budget(C.STAGE_C_MAX_WEIGHT, C.STAGE_C_MAX_S), sizing or simstage.default_sizing())
+    return err
+
+
+def republish(conn: Any, sim_equity: float) -> Optional[int]:
+    """Rebuild the served board from what is stored (no HL call) so a wallet built just now
+    shows up at once instead of at the end of the next full refresh. None before the
+    first build. Uses the served build's settings hash and equity, so rows stay comparable."""
+    ptr = store.pointer(conn)
+    if ptr is None:
+        return None
+    return rows.build(conn, uuid.uuid4().hex, ptr["settings_hash"], float(ptr.get("sim_equity") or sim_equity), now_ms())
+
+
+def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: float, sizing: Any,
+                     db_path: Optional[Path], on_beat: Optional[Callable[[], None]] = None,
+                     nested: bool = False) -> None:
+    """Build every queued on-demand wallet (trader files opened for wallets Scout does not
+    track, and custom wallets just added). `nested` = called from inside a running
+    refresh's progress beat: build without the slot. A custom wallet gets the board
+    republished as soon as it is built."""
+    book = list(settings.leaders)
+    custom = store.custom_addresses(conn)
+    for a in store.pending_requests(conn, MAX_REQUEST_ATTEMPTS):
+        if store.request_row(conn, a) is None:        # served meanwhile by a nested beat
+            continue
+        try:
+            if nested:
+                err = build_one(conn, venue, settings, sim_equity, sizing, a, book, custom)
+            else:
+                run_refresh(venue, settings, sim_equity,
+                            RefreshOptions(stages=("B", "C"), only=[a], kind="ondemand", on_beat=on_beat),
+                            sizing, db_path)
+                err = _stats_error(conn, a)
+            store.finish_request(conn, a, err)
+            if err is None and a in custom:
+                republish(conn, sim_equity)
+        except ScoutBusy:
+            return
+        except Exception as exc:
+            logger.warning("scout on-demand build of %s failed: %s", a, exc)
+            store.finish_request(conn, a, f"{type(exc).__name__}: {exc}")
+
+
 def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None,
          db_path: Optional[Path] = None) -> Optional[RefreshReport]:
     """One scheduler step: heartbeat, on-demand requests, then the due stages."""
@@ -299,6 +368,7 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
     t = now_ms()
     want = settings_hash(settings, sim_equity)
     store.meta_set(conn, {"scheduler_heartbeat_ms": t, "wanted_hash": want})
+    draining = {"on": False}
 
     def beat() -> None:
         # Before this, the heartbeat was written only here and after the stages
@@ -306,18 +376,19 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
         # takes 20 minutes) made health report scout `alive: False` and the
         # status say "scout serve is not running" while it was running.
         store.meta_set(conn, {"scheduler_heartbeat_ms": now_ms()})
-
-    for a in store.pending_requests(conn, MAX_REQUEST_ATTEMPTS):
+        # A trader file or custom wallet requested during that refresh used to wait for
+        # it to finish (45 minutes live) behind "usually under a minute". The refresh
+        # now serves the queue between two of its own wallets. `draining` guards the
+        # beat the nested build's own stage calls would otherwise re-enter.
+        if draining["on"]:
+            return
+        draining["on"] = True
         try:
-            run_refresh(venue, settings, sim_equity,
-                        RefreshOptions(stages=("B", "C"), only=[a], kind="ondemand", on_beat=beat), sizing, db_path)
-            ok = store.stats_row(conn, a)
-            store.finish_request(conn, a, None if ok and ok.get("updated_ms") and not ok.get("fail_count")
-                                 else (ok or {}).get("last_error") or "no stats")
-        except ScoutBusy:
-            return None
-        except Exception as exc:
-            store.finish_request(conn, a, f"{type(exc).__name__}: {exc}")
+            service_requests(conn, venue, settings, sim_equity, sizing, db_path, nested=True)
+        finally:
+            draining["on"] = False
+
+    service_requests(conn, venue, settings, sim_equity, sizing, db_path, on_beat=beat)
     p = plan(conn, want, t)
     rep = None
     if p is not None:

@@ -25,6 +25,8 @@ ROUTES = [
     ("GET", "/api/scout/presets", None),
     ("GET", "/api/scout/status", None),
     ("POST", "/api/scout/refresh", None),
+    ("GET", "/api/scout/custom", None),
+    ("POST", "/api/scout/custom", {"address": ADDR_A}),
 ]
 
 
@@ -40,7 +42,7 @@ def test_every_scout_route_requires_auth(client: TestClient, method: str, path: 
 @pytest.mark.parametrize("method,path,body", ROUTES)
 def test_every_scout_route_ok_with_auth(client: TestClient, auth_headers: dict,
                                         method: str, path: str, body) -> None:
-    assert client.request(method, path, json=body, headers=auth_headers).status_code == 200
+    assert client.request(method, path, json=body, headers=auth_headers).status_code in (200, 201)
 
 
 def test_scout_routes_are_sync_so_they_run_on_the_threadpool() -> None:
@@ -272,7 +274,7 @@ def test_what_if_discovery_busy_409_and_lock_released(client: TestClient, auth_h
 def test_presets(client: TestClient, auth_headers: dict) -> None:
     r = client.get("/api/scout/presets", headers=auth_headers)
     assert r.json() == {"refresh_id": "r1", "coins": ["BTC"], "coin_counts": {"BTC": 2},
-                        "hip3_count": 1, "total": 2, "departed_30d": 0, "departed_liquidated_30d": 0}
+                        "hip3_count": 1, "total": 2, "departed_30d": 0, "departed_liquidated_30d": 0, "custom": 0}
 
 
 def test_status_and_refresh(client: TestClient, auth_headers: dict) -> None:
@@ -288,3 +290,44 @@ def test_refresh_while_running_409(client: TestClient, auth_headers: dict,
     r = client.post("/api/scout/refresh", headers=auth_headers)
     assert r.status_code == 409
     assert "already running" in r.json()["detail"]
+
+
+# ── custom wallets (v15) ─────────────────────────────────────────────────────
+
+def test_custom_wallet_add_list_remove(client: TestClient, auth_headers: dict, app) -> None:
+    fake = FakeScoutClient()
+    app.dependency_overrides[get_scout_client] = lambda: fake
+    assert client.get("/api/scout/custom", headers=auth_headers).json() == []
+    r = client.post("/api/scout/custom", json={"address": "0x" + "D" * 40}, headers=auth_headers)   # normalized
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["address"] == ADDR_UNKNOWN and body["queued"] is True and body["on_board"] is False
+    # idempotent, and an on-board wallet is not queued
+    assert client.post("/api/scout/custom", json={"address": ADDR_UNKNOWN}, headers=auth_headers).status_code == 201
+    r = client.post("/api/scout/custom", json={"address": ADDR_A}, headers=auth_headers)
+    assert r.json()["on_board"] is True and r.json()["queued"] is False
+    listed = client.get("/api/scout/custom", headers=auth_headers).json()
+    assert [c["address"] for c in listed] == sorted([ADDR_A, ADDR_UNKNOWN])
+    assert client.delete(f"/api/scout/custom/{ADDR_UNKNOWN}", headers=auth_headers).status_code == 204
+    assert client.delete(f"/api/scout/custom/{ADDR_UNKNOWN}", headers=auth_headers).status_code == 404
+    assert client.delete("/api/scout/custom/not-an-address", headers=auth_headers).status_code == 404
+    assert [c["address"] for c in client.get("/api/scout/custom", headers=auth_headers).json()] == [ADDR_A]
+
+
+@pytest.mark.parametrize("bad", ["", "0x123", "0x" + "g" * 40, "vitalik.eth"])
+def test_custom_wallet_add_rejects_non_addresses(client: TestClient, auth_headers: dict, bad: str) -> None:
+    assert client.post("/api/scout/custom", json={"address": bad}, headers=auth_headers).status_code == 422
+
+
+def test_custom_wallet_routes_require_auth_and_503_when_scout_missing(client: TestClient, auth_headers: dict, app) -> None:
+    assert client.delete(f"/api/scout/custom/{ADDR_A}").status_code == 401
+    app.dependency_overrides[get_scout_client] = lambda: UnavailableScoutClient()
+    assert client.delete(f"/api/scout/custom/{ADDR_A}", headers=auth_headers).status_code == 503
+
+
+def test_traders_accepts_the_custom_preset(client: TestClient, auth_headers: dict, app) -> None:
+    fake = FakeScoutClient()
+    app.dependency_overrides[get_scout_client] = lambda: fake
+    assert client.get("/api/scout/traders?preset=custom", headers=auth_headers).status_code == 200
+    assert fake.queries[-1]["preset"] == "custom"
+    assert client.get("/api/scout/traders?preset=mine", headers=auth_headers).status_code == 422

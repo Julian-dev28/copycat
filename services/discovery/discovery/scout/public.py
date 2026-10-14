@@ -26,8 +26,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from contracts.models import (
+    CustomWallet,
     LeaderFillView,
     LeaderOverride,
+    norm_addr,
     ScoutPresets,
     ScoutStatus,
     Settings,
@@ -36,7 +38,6 @@ from contracts.models import (
     TraderRow,
     TraderScore,
     WhatIfResult,
-    norm_addr,
 )
 
 from . import config as C
@@ -145,8 +146,68 @@ def scout_presets() -> ScoutPresets:
             counts[c] = counts.get(c, 0) + 1
     order = sorted(counts, key=lambda c: (-counts[c], c))
     dep = store.departures_summary(conn, R.now_ms() - 30 * C.DAY_MS)
+    custom = conn.execute("SELECT COUNT(*) FROM scout_rows WHERE refresh_id = ? "
+                          "AND address IN (SELECT address FROM scout_custom)", (rid,)).fetchone()[0]
     return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total,
-                        departed_30d=dep["departed"], departed_liquidated_30d=dep["departed_liquidated"])
+                        departed_30d=dep["departed"], departed_liquidated_30d=dep["departed_liquidated"],
+                        custom=int(custom))
+
+
+# ── custom wallets (v15): any address, scored and simmed like the top 300 ─────
+
+def _custom_view(conn: Any, address: str, added_ms: int) -> CustomWallet:
+    ptr = store.pointer(conn)
+    on_board = ptr is not None and store.row_json(conn, ptr["refresh_id"], address) is not None
+    return CustomWallet(address=address, added_ms=int(added_ms), on_board=on_board,
+                        queued=store.request_row(conn, address) is not None)
+
+
+def scout_custom_list() -> List[CustomWallet]:
+    conn = _conn()
+    return [_custom_view(conn, r["address"], r["added_ms"]) for r in store.custom_rows(conn)]
+
+
+def scout_custom_add(address: str) -> Optional[CustomWallet]:
+    """Add a wallet to the board by hand. None: not a 0x address. The build (stats, the
+    $sim_equity copy sim, then the board row) is queued for `serve`, which serves it
+    even in the middle of a full refresh (refresh.tick beat); the row appears as soon
+    as it is built. Never builds in this process."""
+    a = _addr(address)
+    if a is None:
+        return None
+    conn = _conn()
+    now = R.now_ms()
+    store.add_custom(conn, a, now)
+    row = store.custom_rows(conn)
+    added = next((r["added_ms"] for r in row if r["address"] == a), now)
+    ptr = store.pointer(conn)
+    if ptr is None or store.row_json(conn, ptr["refresh_id"], a) is None:
+        store.request_build(conn, a, now)
+    return _custom_view(conn, a, added)
+
+
+def scout_custom_remove(address: str) -> bool:
+    """Take a hand-added wallet off the board right away: its custom row goes, a
+    universe row that existed only because of it goes, and the served build loses
+    the row (or just the custom mark when the wallet is on the leaderboard anyway).
+    Stats, fills and sims stay cached. False when it was not custom."""
+    a = _addr(address)
+    if a is None:
+        return False
+    conn = _conn()
+    if not store.remove_custom(conn, a):
+        return False
+    ptr = store.pointer(conn)
+    if store.delete_universe_row(conn, a, only_source="custom"):
+        if ptr is not None:
+            store.drop_row(conn, ptr["refresh_id"], a)
+    elif ptr is not None:
+        raw = store.row_json(conn, ptr["refresh_id"], a)
+        if raw is not None:
+            row = TraderRow.model_validate_json(raw)
+            row.custom = False
+            store.set_row_json(conn, ptr["refresh_id"], a, row.model_dump_json())
+    return True
 
 
 # ── trader file ───────────────────────────────────────────────────────────
@@ -171,7 +232,7 @@ def scout_profile(address: str) -> Union[TraderProfile, ScoutStatus, None]:
     if prof is not None:
         st = store.stats_row(conn, a) or {}
         u = store.universe_row(conn, a)
-        on_board = u is not None and u.get("source") != "ondemand"
+        on_board = u is not None and u.get("source") in store.BOARD_SOURCES
         if not on_board and R.now_ms() - int(st.get("updated_ms") or 0) > C.STAGE_B_EVERY_S * 1000:
             store.request_build(conn, a, R.now_ms())
         return prof

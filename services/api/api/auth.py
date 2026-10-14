@@ -42,6 +42,7 @@ MCP_SCOPE: FrozenSet[Tuple[str, str]] = frozenset({
     ("PUT", "/api/scout/traders/{address}/thesis"),
     ("GET", "/api/scout/presets"),
     ("GET", "/api/scout/status"),
+    ("POST", "/api/scout/custom"),             # v15: a wallet on the Scout board (research scope, no money)
     ("GET", "/api/market/candles"),
     ("GET", "/api/settings"),
     ("GET", "/api/status"),

@@ -85,10 +85,18 @@ def to_universe_row(r: Dict[str, Any], source: str, now_ms: int) -> Dict[str, An
 
 
 def select(rows: Sequence[Dict[str, Any]], now_ms: int, book: Iterable[str] = (),
-           size: int = C.UNIVERSE_SIZE, include_vaults: bool = C.INCLUDE_VAULTS) -> List[Dict[str, Any]]:
+           size: int = C.UNIVERSE_SIZE, include_vaults: bool = C.INCLUDE_VAULTS,
+           custom: Iterable[str] = ()) -> List[Dict[str, Any]]:
+    """Top `size` leaderboard rows by 30d PnL that pass the filters (source lb), then
+    every book wallet the leaderboard knows (source book) and every hand-added wallet
+    it knows (source custom), whatever their rank or filters. A custom wallet the
+    leaderboard has never listed gets its universe row from stage B instead
+    (stats.build_wallet source_if_new="custom", fields from its portfolio)."""
     book_set = {a.lower() for a in book}
+    custom_set = {a.lower() for a in custom} - book_set
     keep: List[Dict[str, Any]] = []
     in_book: Dict[str, Dict[str, Any]] = {}
+    in_custom: Dict[str, Dict[str, Any]] = {}
     seen = set()
     for r in rows:
         a = r["address"]
@@ -97,6 +105,8 @@ def select(rows: Sequence[Dict[str, Any]], now_ms: int, book: Iterable[str] = ()
         seen.add(a)
         if a in book_set:
             in_book[a] = r
+        elif a in custom_set:
+            in_custom[a] = r
         if r["account_value"] < C.UNIVERSE_MIN_ACCOUNT_VALUE:
             continue
         if r["month"]["vlm"] < C.UNIVERSE_MIN_VLM_30D:
@@ -112,10 +122,14 @@ def select(rows: Sequence[Dict[str, Any]], now_ms: int, book: Iterable[str] = ()
     for a, r in sorted(in_book.items()):
         if a not in have:
             out.append(to_universe_row(r, "book", now_ms))
+    for a, r in sorted(in_custom.items()):
+        if a not in have:
+            out.append(to_universe_row(r, "custom", now_ms))
     return out
 
 
-def run_stage_a(venue: Venue, now_ms: int, book: Iterable[str] = ()) -> Optional[List[Dict[str, Any]]]:
+def run_stage_a(venue: Venue, now_ms: int, book: Iterable[str] = (),
+                custom: Iterable[str] = ()) -> Optional[List[Dict[str, Any]]]:
     """None when the leaderboard read failed (the old universe keeps serving)."""
     raw = venue.leaderboard()
     if raw is None:
@@ -125,6 +139,6 @@ def run_stage_a(venue: Venue, now_ms: int, book: Iterable[str] = ()) -> Optional
     if not rows:
         logger.warning("scout stage A: leaderboard parsed to 0 rows, keeping the previous universe")
         return None
-    sel = select(rows, now_ms, book)
+    sel = select(rows, now_ms, book, custom=custom)
     logger.info("scout stage A: %d leaderboard rows -> %d in universe", len(rows), len(sel))
     return sel
