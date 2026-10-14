@@ -12,6 +12,11 @@
 # bucket can take well over 10 minutes for 40 wallets once per-item charges push
 # it below the background reserve floor; the warm pass should be much faster
 # since it makes far fewer of those charges. Exit code = failed checks.
+#
+# On a host where a live copycat trades, ALWAYS pass the live stack's bucket so
+# this run shares the per-IP HL budget as a background caller instead of drawing
+# 429s on the engine:  COPYCAT_HL_BUCKET_PATH=<live data dir>/hl_rate.bucket
+# (inherited by the env below; nothing else of the live stack is touched).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MAIN_CHECKOUT="${COPYCAT_MAIN_CHECKOUT:-$HOME/Documents/code/copycat}"   # the venv lives there, not in this worktree

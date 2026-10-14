@@ -202,6 +202,23 @@ def test_default_limiter_is_shared_file_in_data_dir(monkeypatch, tmp_path):
     assert lim.path.exists()
 
 
+def test_default_limiter_honors_bucket_path_env(monkeypatch, tmp_path):
+    """A second stack on the same host (an eval, a QA worktree) with its own data dir
+    got its own full 1200/min and drew 429s on the live engine (2026-10-14). With
+    COPYCAT_HL_BUCKET_PATH it draws from the live bucket as a background caller."""
+    shared = tmp_path / "live" / "hl_rate.bucket"
+    monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path / "throwaway"))
+    monkeypatch.setenv("COPYCAT_HL_BUCKET_PATH", str(shared))
+    monkeypatch.setenv("COPYCAT_HL_PRIORITY", "background")
+    lim = rate_limit.build_default_limiter()
+    assert lim.path == shared and rate_limit.bucket_path() == shared
+    engine = SharedTokenBucket(shared, 100.0, 0.0, priority="engine")
+    assert engine.acquire(60, max_wait=0) is True          # the live engine spent 60 of 100
+    assert lim.acquire(2, max_wait=0) is False             # background: only 40 left = the reserve
+    monkeypatch.setenv("COPYCAT_HL_BUCKET_PATH", "   ")
+    assert rate_limit.bucket_path() == tmp_path / "throwaway" / "hl_rate.bucket"
+
+
 def test_set_priority_rebuilds_the_module_limiter(monkeypatch, tmp_path):
     monkeypatch.setenv("COPYCAT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(rate_limit, "HL_LIMITER", rate_limit.HL_LIMITER)   # restored after test

@@ -178,7 +178,11 @@ discovery (inside the api process today). `hl.rate_limit.HL_LIMITER` is a
 Capacity 1200, refill 20/s, env-tunable via `COPYCAT_HL_RATE_CAPACITY` /
 `COPYCAT_HL_RATE_REFILL_PER_SEC`. The file is created on first acquire,
 not at import. Both processes must see the same `COPYCAT_DATA_DIR` (it
-defaults to the relative `./data`).
+defaults to the relative `./data`), or the same `COPYCAT_HL_BUCKET_PATH`,
+which overrides the location: a second stack on the host with its own data
+dir (an eval, a QA worktree) points it at the live stack's file and runs as
+`background`, because the budget is per IP and two private buckets together
+drew 429s on the live engine (2026-10-14).
 
 | `COPYCAT_HL_PRIORITY` | may spend |
 |---|---|

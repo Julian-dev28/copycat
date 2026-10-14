@@ -105,7 +105,10 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
   `vault/` (services/vault, written by the api, read by the engine and `hl`), `discovery.db`,
   `close_all.flag` (api writes, engine deletes), `stop/<address>.flag` (api writes, engine deletes once
   that wallet is stopped), `api_token` (api), `engine.lock` (flock held by the one
-  engine worker; a second worker on the same dir exits 1), `hl_rate.bucket` (shared HL token bucket).
+  engine worker; a second worker on the same dir exits 1), `hl_rate.bucket` (shared HL token bucket;
+  the HL budget is per IP, so a second stack on the same host, an eval or a QA worktree, must point
+  `COPYCAT_HL_BUCKET_PATH` at the live stack's file and run as `COPYCAT_HL_PRIORITY=background`, or the
+  two private buckets together draw 429s on the trading engine).
 - Discovery runs execute in a child process spawned by the api (`api.discovery_client.run_child`) with
   `COPYCAT_HL_PRIORITY=background` and no agent key: its HL reads only take rate tokens while the
   engine's reserve (`COPYCAT_HL_RESERVE_FRAC`, default 40%) stays in the shared bucket, and its CPU never

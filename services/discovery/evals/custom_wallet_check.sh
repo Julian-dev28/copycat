@@ -9,6 +9,11 @@
 #
 # Takes 2 to 6 minutes (a 40-wallet universe refresh runs in the background while
 # the custom wallet is served). Exit code = failed checks.
+#
+# On a host where a live copycat trades, ALWAYS pass the live stack's bucket so
+# this run shares the per-IP HL budget as a background caller instead of drawing
+# 429s on the engine:  COPYCAT_HL_BUCKET_PATH=<live data dir>/hl_rate.bucket
+# (inherited by ENV below; nothing else of the live stack is touched).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 WALLET="${1:-0xedab6e3998ffddcb354094ffe8ca2a3cff8d3370}"

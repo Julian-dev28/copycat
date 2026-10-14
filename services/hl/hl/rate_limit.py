@@ -316,15 +316,28 @@ def data_dir() -> Path:
     return Path(os.environ.get("COPYCAT_DATA_DIR", "./data"))
 
 
+def bucket_path() -> Path:
+    """Where the shared bucket lives: COPYCAT_HL_BUCKET_PATH when set, else
+    $COPYCAT_DATA_DIR/hl_rate.bucket. The budget is per IP, so every copycat
+    process on the host must draw from ONE file. A second stack on the same
+    host with its own data dir (an eval, a QA worktree, a second install) gets
+    its own full 1200/min by default, and the two together draw 429s on the
+    live engine: on 2026-10-14 two throwaway stacks cost a trading engine a
+    leader read. Such a stack sets COPYCAT_HL_BUCKET_PATH to the live data
+    dir's hl_rate.bucket (and COPYCAT_HL_PRIORITY=background) and then only
+    spends what the engine's reserve leaves."""
+    p = (os.environ.get("COPYCAT_HL_BUCKET_PATH") or "").strip()
+    return Path(p) if p else data_dir() / BUCKET_FILENAME
+
+
 def build_default_limiter():
-    """The process-wide limiter: a SharedTokenBucket at
-    $COPYCAT_DATA_DIR/hl_rate.bucket with this process's priority class.
-    Capacity/refill default to the full documented budget (1200, 20/s) and
-    stay env-tunable (COPYCAT_HL_RATE_CAPACITY / _REFILL_PER_SEC). The file
-    is only touched on first acquire, so importing this module has no
-    filesystem side effect."""
+    """The process-wide limiter: a SharedTokenBucket at `bucket_path()` with
+    this process's priority class. Capacity/refill default to the full
+    documented budget (1200, 20/s) and stay env-tunable
+    (COPYCAT_HL_RATE_CAPACITY / _REFILL_PER_SEC). The file is only touched
+    on first acquire, so importing this module has no filesystem side effect."""
     return SharedTokenBucket(
-        path=data_dir() / BUCKET_FILENAME,
+        path=bucket_path(),
         capacity=_env_float("COPYCAT_HL_RATE_CAPACITY", 1200.0),
         refill_per_sec=_env_float("COPYCAT_HL_RATE_REFILL_PER_SEC", 20.0),
         priority=None,             # dynamic: COPYCAT_HL_PRIORITY at every acquire (audit M1)
