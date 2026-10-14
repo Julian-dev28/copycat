@@ -1,7 +1,8 @@
 /**
  * Version-skew banner text (audit M12). GET /api/health lists the processes
- * running other code than the api (`stale`); after a pull, the api's preview,
- * what-if and MCP plans would otherwise silently disagree with the engine.
+ * running older code than what is on disk for them (`stale`, each process
+ * against the packages it imports); after a pull, the api's preview, what-if
+ * and MCP plans would otherwise silently disagree with the engine.
  */
 import type { HealthResponse } from "@/lib/api/types";
 import { CONTRACT_VERSION } from "@/lib/api/types";
@@ -19,8 +20,7 @@ export function staleBuildText(h: Pick<HealthResponse, "stale" | "contract_versi
   const parts: string[] = [];
   if (stale.length) {
     const who = stale.map((s) => NAMES[s] ?? s).join(" and ");
-    const than = stale.includes("api") ? "the code on disk" : "the api";
-    parts.push(`The ${who} ${stale.length > 1 ? "are" : "is"} running older code than ${than}. Restart ${stale.length > 1 ? "them" : "it"} so previews match what the engine does.`);
+    parts.push(`The ${who} ${stale.length > 1 ? "are" : "is"} running older code than the code on disk. Restart ${stale.length > 1 ? "them" : "it"} so previews match what the engine does.`);
   }
   if (webOld) parts.push("This page is older than the api. Reload it.");
   return parts.join(" ");

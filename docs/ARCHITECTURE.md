@@ -41,7 +41,7 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 
 | method | path | body / returns |
 |---|---|---|
-| GET | /api/health | `{ok, version}` |
+| GET | /api/health | `HealthResponse`: `{ok, version, contract_version, builds, stale, checkout_build}`. Version-skew guard (audit M12): `builds` has each process's build id (`contracts.build`: a content hash of the packages that process imports, so a web, docs or scout-only commit does not move the engine's) next to `checkout`, the id of the same packages on disk; `stale` names the processes to restart. `contracts/evals/build_skew_check.sh` proves the edit-to-process mapping on a throwaway worktree |
 | GET | /api/settings | `Settings` |
 | PUT | /api/settings | full `Settings` -> `Settings` (validated) |
 | PATCH | /api/settings | partial `Settings` -> `Settings`. `leader_overrides` replace per leader; `null` clears one |

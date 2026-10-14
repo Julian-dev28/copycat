@@ -96,13 +96,18 @@ class DiscoveryRunResponse(BaseModel):
 
 
 class ComponentBuild(BaseModel):
-    """One process's code identity (contracts.build). `build` None: unknown
-    (the process never recorded one: not started, or started on older code)."""
+    """One process's code identity (contracts.build: a content hash of the
+    packages that process imports). `build` None: unknown (the process never
+    recorded one: not started, or started on older code). `checkout`: the id
+    of the same packages on disk now; when it differs from `build` the process
+    runs older code and is listed in `HealthResponse.stale`. None when it
+    cannot be computed (no packages on disk): never a false alarm."""
     component: str
     build: Optional[str] = None
     contract_version: Optional[int] = None
     started_ms: Optional[int] = None
     alive: bool = False
+    checkout: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -111,12 +116,13 @@ class HealthResponse(BaseModel):
     # the running contracts.models.CONTRACT_VERSION (audit H4): the web's feature caps
     # read this, never a value stored in settings.json
     contract_version: int
-    # audit M12: every long-running process's build, and the ones running other
-    # code than this api (restart them). Empty `stale` = all on the same code.
+    # audit M12: every long-running process's build next to the id of its own code
+    # on disk, and the ones that differ (restart them). Empty `stale` = every
+    # process runs the code on disk for it.
     builds: List[ComponentBuild] = Field(default_factory=list)
     stale: List[str] = Field(default_factory=list)
-    # the code on disk (git HEAD, plus a hash when edited). When it differs from the
-    # api's own build, "api" is in `stale` too: restart it after a pull.
+    # the api's own `checkout` (the id of the api's packages on disk). When it
+    # differs from the api's build, "api" is in `stale` too: restart it after a pull.
     checkout_build: Optional[str] = None
 
 

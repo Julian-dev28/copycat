@@ -540,7 +540,7 @@
         "type": "object"
       },
       "ComponentBuild": {
-        "description": "One process's code identity (contracts.build). `build` None: unknown\n(the process never recorded one: not started, or started on older code).",
+        "description": "One process's code identity (contracts.build: a content hash of the\npackages that process imports). `build` None: unknown (the process never\nrecorded one: not started, or started on older code). `checkout`: the id\nof the same packages on disk now; when it differs from `build` the process\nruns older code and is listed in `HealthResponse.stale`. None when it\ncannot be computed (no packages on disk): never a false alarm.",
         "properties": {
           "alive": {
             "default": false,
@@ -557,6 +557,17 @@
               }
             ],
             "title": "Build"
+          },
+          "checkout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout"
           },
           "component": {
             "title": "Component",

@@ -1294,8 +1294,12 @@ export interface components {
         };
         /**
          * ComponentBuild
-         * @description One process's code identity (contracts.build). `build` None: unknown
-         *     (the process never recorded one: not started, or started on older code).
+         * @description One process's code identity (contracts.build: a content hash of the
+         *     packages that process imports). `build` None: unknown (the process never
+         *     recorded one: not started, or started on older code). `checkout`: the id
+         *     of the same packages on disk now; when it differs from `build` the process
+         *     runs older code and is listed in `HealthResponse.stale`. None when it
+         *     cannot be computed (no packages on disk): never a false alarm.
          */
         ComponentBuild: {
             /**
@@ -1305,6 +1309,8 @@ export interface components {
             alive: boolean;
             /** Build */
             build?: string | null;
+            /** Checkout */
+            checkout?: string | null;
             /** Component */
             component: string;
             /** Contract Version */

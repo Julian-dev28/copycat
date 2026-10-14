@@ -2,8 +2,9 @@
 docs/ARCHITECTURE.md: "on every route except GET /api/health".
 
 Also the version-skew guard (audit M12, api.build_skew): every long-running
-process's build and the ones running other code than this api. Every probe
-is best effort: health never fails because the engine or scout is down.
+process's build, the id of its code on disk, and the ones that differ. Every
+probe is best effort: health never fails because the engine or scout is
+down or git is missing.
 """
 from __future__ import annotations
 
@@ -46,17 +47,20 @@ def _scout_build(request: Request) -> Tuple[Optional[Dict[str, Any]], bool]:
         return None, False
 
 
+def _checkout(component: str) -> Optional[str]:
+    try:
+        return build_mod.checkout_build_id(component)
+    except Exception:
+        logger.debug("checkout build probe failed for %s", component, exc_info=True)
+        return None
+
+
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     api_b = getattr(request.app.state, "build", None) or {}
-    api = build_skew.component("api", api_b, True)
-    others = [build_skew.component("engine", *_engine_build(request)),
-              build_skew.component("scout", *_scout_build(request))]
-    try:
-        checkout = build_mod.checkout_build_id()
-    except Exception:
-        logger.debug("checkout build probe failed", exc_info=True)
-        checkout = None
+    api = build_skew.component("api", api_b, True, _checkout("api"))
+    others = [build_skew.component("engine", *_engine_build(request), checkout=_checkout("engine")),
+              build_skew.component("scout", *_scout_build(request), checkout=_checkout("scout"))]
     return HealthResponse(ok=True, version=API_VERSION, contract_version=CONTRACT_VERSION,
-                          builds=[api, *others], stale=build_skew.stale(api, others, checkout),
-                          checkout_build=checkout)
+                          builds=[api, *others], stale=build_skew.stale(api, others),
+                          checkout_build=api.checkout)
