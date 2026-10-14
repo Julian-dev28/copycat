@@ -84,17 +84,6 @@ class AddLeaderRequest(BaseModel):
     address: str
 
 
-class DiscoveryRunRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    sim_equity_usd: float
-    top_n: int
-    settings: Optional[Settings] = None
-
-
-class DiscoveryRunResponse(BaseModel):
-    run_id: str
-
-
 class ComponentBuild(BaseModel):
     """One process's code identity (contracts.build: a content hash of the
     packages that process imports). `build` None: unknown (the process never

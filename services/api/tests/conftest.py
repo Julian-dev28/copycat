@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from api.config import Config
 from api.deps import (
-    get_discovery_client,
     get_engine_client,
     get_market_client,
     get_scout_client,
@@ -15,7 +14,6 @@ from api.fingerprint_jobs import FingerprintJobs
 from api.main import create_app
 from api_fakes import (
     OUR_ADDRESS,
-    FakeDiscoveryClient,
     FakeEngineClient,
     FakeMarketClient,
     FakeScoutClient,
@@ -62,11 +60,6 @@ def fake_engine() -> FakeEngineClient:
 
 
 @pytest.fixture
-def fake_discovery() -> FakeDiscoveryClient:
-    return FakeDiscoveryClient()
-
-
-@pytest.fixture
 def fake_scout() -> FakeScoutClient:
     return FakeScoutClient()
 
@@ -101,7 +94,7 @@ def jobs(clock: Clock) -> FingerprintJobs:
 
 
 @pytest.fixture
-def app(config: Config, fake_engine: FakeEngineClient, fake_discovery: FakeDiscoveryClient,
+def app(config: Config, fake_engine: FakeEngineClient,
         fake_scout: FakeScoutClient, fake_thesis: FakeThesisClient, fake_market: FakeMarketClient,
         jobs: FingerprintJobs):
     application = create_app(config)
@@ -110,7 +103,6 @@ def app(config: Config, fake_engine: FakeEngineClient, fake_discovery: FakeDisco
     application.dependency_overrides[get_market_client] = lambda: fake_market
     application.dependency_overrides[get_scout_client] = lambda: fake_scout
     application.dependency_overrides[get_engine_client] = lambda: fake_engine
-    application.dependency_overrides[get_discovery_client] = lambda: fake_discovery
     return application
 
 

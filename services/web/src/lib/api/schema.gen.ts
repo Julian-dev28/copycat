@@ -283,57 +283,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/discovery/runs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start Run */
-        post: operations["start_run_api_discovery_runs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/discovery/runs/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Latest Run */
-        get: operations["get_latest_run_api_discovery_runs_latest_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/discovery/runs/{run_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Run */
-        get: operations["get_run_api_discovery_runs__run_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/engine/close-all": {
         parameters: {
             query?: never;
@@ -1510,44 +1459,6 @@ export interface components {
         CustomWalletRequest: {
             /** Address */
             address: string;
-        };
-        /** DiscoveryRun */
-        DiscoveryRun: {
-            /** Candidates */
-            candidates: number;
-            /** Error */
-            error?: string | null;
-            /** Finished Ms */
-            finished_ms?: number | null;
-            /** Results */
-            results?: components["schemas"]["TraderScore"][];
-            /** Run Id */
-            run_id: string;
-            /** Scored */
-            scored: number;
-            /** Sim Equity Usd */
-            sim_equity_usd: number;
-            sim_settings: components["schemas"]["Settings"];
-            /** Started Ms */
-            started_ms: number;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "running" | "done" | "failed";
-        };
-        /** DiscoveryRunRequest */
-        DiscoveryRunRequest: {
-            settings?: components["schemas"]["Settings"] | null;
-            /** Sim Equity Usd */
-            sim_equity_usd: number;
-            /** Top N */
-            top_n: number;
-        };
-        /** DiscoveryRunResponse */
-        DiscoveryRunResponse: {
-            /** Run Id */
-            run_id: string;
         };
         /**
          * EngineEvent
@@ -3838,90 +3749,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountSummary"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_run_api_discovery_runs_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DiscoveryRunRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryRunResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_latest_run_api_discovery_runs_latest_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryRun"];
-                };
-            };
-        };
-    };
-    get_run_api_discovery_runs__run_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryRun"];
                 };
             };
             /** @description Validation Error */

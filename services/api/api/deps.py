@@ -7,7 +7,6 @@ from __future__ import annotations
 from fastapi import Request
 
 from .config import Config
-from .discovery_client import DiscoveryClient
 from .engine_client import EngineClient
 from .market_client import MarketClient
 from .scout_client import ScoutClient
@@ -25,10 +24,6 @@ def get_store(request: Request) -> SettingsStore:
 
 def get_engine_client(request: Request) -> EngineClient:
     return request.app.state.engine_client_factory()
-
-
-def get_discovery_client(request: Request) -> DiscoveryClient:
-    return request.app.state.discovery_client_factory()
 
 
 def get_scout_client(request: Request) -> ScoutClient:

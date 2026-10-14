@@ -32,8 +32,6 @@ are dropped.
 | GET | /events/stream | SSE, tails `data/events.jsonl` from its end, one `EngineEvent` JSON per message |
 | POST | /engine/halt | `enabled=false`; exits keep mirroring |
 | POST | /engine/close-all | `enabled=false`, then writes `data/close_all.flag`; returns `{requested_ms, pending, settings}`. The engine's next cycle closes every copy |
-| POST | /discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}`; 409 if one is running |
-| GET | /discovery/runs/latest, /discovery/runs/{id} | `DiscoveryRun`; 404 when none / unknown |
 | GET | /scout/traders | `TraderPage`; filters/sorts below; `in_book` from `Settings.leaders`; `ETag` + 304 |
 | GET | /scout/traders/{address} | `TraderProfile`; 404 bad address or no data; 202 + `ScoutStatus` while being built |
 | GET | /scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]`, limit 1..500 (100) |
@@ -86,12 +84,11 @@ PATCHes never lose an update. A missing file serves defaults
 
 ## Discovery
 
-Runs execute in a spawned child process (`api.discovery_client.run_child`)
-with `COPYCAT_HL_PRIORITY=background`, the absolute data dir, and no agent
-key. The child sends back the run id (or busy/error) over a pipe and lives
-until the run finishes. The api reads progress from `discovery.db` via
-`discovery.public.get_run/latest`. Keeps discovery's CPU and HL reads away
-from the halt/close-all routes and the engine's rate reserve.
+The one-off discovery run (`python -m discovery`, services/discovery/README.md)
+has no HTTP surface any more: `/api/discovery/runs*` and `api.discovery_client`
+went with the Discover page (v16; Scout is the board). The thesis fingerprint
+child (`api.thesis_client`) keeps the same recipe: `COPYCAT_HL_PRIORITY=background`,
+absolute data dir, no agent key, result over a pipe.
 
 ## Scout
 

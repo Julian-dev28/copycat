@@ -63,9 +63,6 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | GET | /api/events/stream | SSE of `EngineEvent` |
 | POST | /api/engine/halt | flips `enabled` false (exits keep mirroring) |
 | POST | /api/engine/close-all | flips `enabled` false, then writes `data/close_all.flag` -> `{requested_ms, pending, settings}`. Next engine cycle closes every copy reduce-only (even in dry_run), keeps the flag until none remain, then logs `halt` "close-all complete" |
-| POST | /api/discovery/runs | `{sim_equity_usd, top_n, settings?}` -> `{run_id}` (409 if one is running) |
-| GET | /api/discovery/runs/latest | `DiscoveryRun` |
-| GET | /api/discovery/runs/{id} | `DiscoveryRun` (404 unknown id) |
 | GET | /api/scout/traders | `TraderPage`. Query (spec section 5): `window` 1d/7d/30d/all, `preset` all/hip3/custom/copyable/coin:X (copyable = >= 5 sim copies at the served sim terms, v18), `coin` (repeat), `min_av` `max_av` `min_pnl` `max_pnl`, `style` (repeat), `min_fit` `max_fit` 0..100, `max_dd` 0..100, `min_trips`, `active_within_h`, `hide_flagged`, `q`, `sort` (fit default, sim_return, sim_dd, pnl, roi, account_value, sharpe, max_dd, win_rate, trips, last_active, volume), `order` asc/desc, `limit` 1..200, `offset`. Unknown param or min > max is 422. `in_book` filled from `Settings.leaders`. Weak `ETag` = refresh_id:settings_hash:book, `If-None-Match` -> 304 |
 | GET | /api/scout/traders/{address} | `TraderProfile`; 404 not a 0x address or no data; 202 + `ScoutStatus` while discovery builds it (poll) |
 | GET | /api/scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]` from the fills cache, `limit` 1..500 (default 100) |
@@ -111,10 +108,12 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
   the HL budget is per IP, so a second stack on the same host, an eval or a QA worktree, must point
   `COPYCAT_HL_BUCKET_PATH` at the live stack's file and run as `COPYCAT_HL_PRIORITY=background`, or the
   two private buckets together draw 429s on the trading engine).
-- Discovery runs execute in a child process spawned by the api (`api.discovery_client.run_child`) with
+- Thesis fingerprints (`api.thesis_client`) execute in a child process spawned by the api with
   `COPYCAT_HL_PRIORITY=background` and no agent key: its HL reads only take rate tokens while the
   engine's reserve (`COPYCAT_HL_RESERVE_FRAC`, default 40%) stays in the shared bucket, and its CPU never
-  competes with the api's halt/close-all routes. The api reads results from `discovery.db`.
+  competes with the api's halt/close-all routes. The one-off discovery CLI (`python -m discovery`,
+  services/discovery/README.md) is a manual tool with no HTTP surface: `/api/discovery/runs*` went
+  with the Discover page (v16; Scout is the board).
 - Scout: `python -m discovery.scout serve` (Makefile `dev`, compose service `scout`) is its own process,
   `COPYCAT_HL_PRIORITY=background`, no agent key, the single writer of the `scout_*` tables in
   `discovery.db`. The api only reads them through `discovery.scout.public` (`api.scout_client`), on

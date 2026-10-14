@@ -5,10 +5,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api.config import Config
-from api.deps import get_discovery_client, get_engine_client
+from api.deps import get_engine_client
 from api.main import create_app
 
-from api_fakes import FakeDiscoveryClient, FakeEngineClient
+from api_fakes import FakeEngineClient
 
 
 def test_rejects_missing_token(client: TestClient) -> None:
@@ -44,7 +44,6 @@ def test_no_token_configured_still_requires_one(data_dir: Path) -> None:
                     allowed_hosts=["testserver"])
     app = create_app(config)
     app.dependency_overrides[get_engine_client] = lambda: FakeEngineClient()
-    app.dependency_overrides[get_discovery_client] = lambda: FakeDiscoveryClient()
     client = TestClient(app)
 
     assert client.get("/api/settings").status_code == 401

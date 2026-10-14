@@ -9,9 +9,9 @@ the thesis routes when it isn't importable). Routes depend on the
 
 `fingerprint` pulls up to 30 days of fills plus candles for every coin he
 traded and replays them: seconds to minutes of HL reads and CPU. It never
-runs in the api process. `RealThesisClient.fingerprint` spawns a child (same
-recipe as api.discovery_client.run_child: COPYCAT_HL_PRIORITY=background,
-absolute data dir, no agent key) that computes the fingerprint, then the
+runs in the api process. `RealThesisClient.fingerprint` spawns a child
+(COPYCAT_HL_PRIORITY=background, absolute data dir, no agent key: the recipe
+for every HL-reading child of the api) that computes the fingerprint, then the
 "ta" thesis from it and saves that, and sends the fingerprint back over a
 pipe. The caller of `fingerprint` is the single worker thread of
 api.fingerprint_jobs, which only waits on the pipe, so the api's event loop

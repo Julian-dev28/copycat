@@ -91,16 +91,8 @@ export type TraderScore = Omit<Schemas["TraderScore"], "coins" | "flags"> & {
   flags: string[];
 };
 
-export type DiscoveryRun = Omit<Schemas["DiscoveryRun"], "results" | "sim_settings"> & {
-  results: TraderScore[];
-  sim_settings: Settings;
-};
-
 export type HealthResponse = Schemas["HealthResponse"];
 
 /** One live MCP plan WITH its confirm code (admin token only). See lib/mcp/pendingPlans.ts. */
 export type McpPendingPlan = Schemas["McpPendingPlan"];
 
-export type StartDiscoveryRunBody = Omit<Schemas["DiscoveryRunRequest"], "settings"> & {
-  settings?: Settings;
-};

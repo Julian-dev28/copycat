@@ -22,7 +22,6 @@ from contracts import build as build_mod
 
 from .auth import BearerAuth
 from .config import API_VERSION, Config
-from .discovery_client import RealDiscoveryClient
 from .engine_client import RealEngineClient
 from .errors import register_exception_handlers
 from .fingerprint_jobs import FingerprintJobs
@@ -32,7 +31,6 @@ from .routes import (
     accounts_common,
     accounts_funding,
     accounts_onboard,
-    discovery,
     engine,
     events_stream,
     health,
@@ -53,7 +51,7 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     # The api never signs anything. `make dev` runs load_dotenv() in
     # api.__main__, which would otherwise leave the agent's private key in
     # this process's environment (and in every subprocess it spawns, such as
-    # discovery runs). Drop it before anything else happens.
+    # the thesis fingerprint child). Drop it before anything else happens.
     os.environ.pop("COPYCAT_AGENT_KEY", None)
 
     config = config or Config.from_env()
@@ -69,7 +67,6 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     # factories, not instances: each request gets a fresh client so a
     # lazily-imported engine/discovery module reload is picked up.
     app.state.engine_client_factory = RealEngineClient
-    app.state.discovery_client_factory = lambda: RealDiscoveryClient(config.data_dir)
     app.state.scout_client_factory = RealScoutClient
     # POST /api/scout/traders/{address}/what-if runs one at a time per api
     # process; a second concurrent request is 409 (api.routes.scout).
@@ -99,7 +96,6 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     app.include_router(leaders_routes.router)
     app.include_router(engine.router)
     app.include_router(events_stream.router)
-    app.include_router(discovery.router)
     app.include_router(scout.router)
     app.include_router(thesis.router)
     app.include_router(market.router)

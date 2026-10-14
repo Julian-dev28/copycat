@@ -1,5 +1,5 @@
-"""Fakes for engine.public / discovery.public / discovery.scout.public,
-satisfying the EngineClient / DiscoveryClient / ScoutClient Protocols. Tests inject these via
+"""Fakes for engine.public / discovery.scout.public / discovery.thesis.public,
+satisfying the EngineClient / ScoutClient / ThesisClient Protocols. Tests inject these via
 app.dependency_overrides so no test ever imports the real `engine` or
 `discovery` packages (which may not exist yet / are built in parallel).
 """
@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from api.discovery_client import DiscoveryBusy, DiscoveryUnavailable
 from api.engine_client import EngineUnavailable
 from api.market_client import MarketUnavailable
 from api.schemas import CandleView
@@ -17,7 +16,6 @@ from api.thesis_client import ThesisUnavailable
 from contracts.models import (
     AccountRisk,
     CustomWallet,
-    DiscoveryRun,
     EngineEvent,
     EngineStatus,
     EntryContext,
@@ -114,54 +112,6 @@ class UnavailableEngineClient:
 
     def preview(self, address: str, req: Any, settings: Settings) -> Any:
         raise EngineUnavailable("services/engine isn't importable yet: boom")
-
-
-class FakeDiscoveryClient:
-    def __init__(self) -> None:
-        self.runs: Dict[str, DiscoveryRun] = {}
-        self.calls: List[tuple] = []
-        self._latest: Optional[DiscoveryRun] = None
-        self._next_id = 0
-
-    busy = False
-
-    def start_run(self, settings: Settings, sim_equity_usd: float, top_n: int) -> str:
-        if self.busy:
-            raise DiscoveryBusy("a discovery run is already in progress")
-        self.calls.append((settings, sim_equity_usd, top_n))
-        self._next_id += 1
-        run_id = f"run-{self._next_id}"
-        run = DiscoveryRun(
-            run_id=run_id,
-            started_ms=0,
-            status="running",
-            sim_equity_usd=sim_equity_usd,
-            sim_settings=settings,
-            candidates=0,
-            scored=0,
-        )
-        self.runs[run_id] = run
-        self._latest = run
-        return run_id
-
-    def get_run(self, run_id: str) -> Optional[DiscoveryRun]:
-        return self.runs.get(run_id)      # like discovery.public.get_run: None when unknown
-
-    def latest(self) -> Optional[DiscoveryRun]:
-        return self._latest
-
-
-class UnavailableDiscoveryClient:
-    """Simulates services/discovery not being importable yet."""
-
-    def start_run(self, settings: Settings, sim_equity_usd: float, top_n: int) -> str:
-        raise DiscoveryUnavailable("services/discovery isn't importable yet: boom")
-
-    def get_run(self, run_id: str) -> DiscoveryRun:
-        raise DiscoveryUnavailable("services/discovery isn't importable yet: boom")
-
-    def latest(self) -> Optional[DiscoveryRun]:
-        raise DiscoveryUnavailable("services/discovery isn't importable yet: boom")
 
 
 # ── Scout ────────────────────────────────────────────────────────────────────
