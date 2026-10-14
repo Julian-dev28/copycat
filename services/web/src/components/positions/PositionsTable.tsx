@@ -5,6 +5,7 @@ import { roePct } from "@/lib/positions/view";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
+import { TableScroll } from "@/components/ui/Table";
 
 const COLUMNS: { label: string; numeric?: boolean }[] = [
   { label: "Coin" },
@@ -105,7 +106,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 function PositionsDesktopTable({ positions, nowMs }: { positions: CopyPosition[]; nowMs?: number }) {
   return (
-    <div className="hidden overflow-x-auto border-t border-border md:block">
+    <TableScroll label="Open copy positions" className="hidden border-t border-border md:block">
       <table className="w-full min-w-[820px] text-sm">
         <thead>
           <tr className="text-xs text-muted">
@@ -146,6 +147,6 @@ function PositionsDesktopTable({ positions, nowMs }: { positions: CopyPosition[]
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

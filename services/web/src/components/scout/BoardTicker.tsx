@@ -23,7 +23,7 @@ export function BoardTicker({ rows, window, unit, demo }: { rows: readonly Trade
             href={scoutHref(`/scout/${it.address}`, demo)}
             className="flex items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-2"
           >
-            <span className="num-sm text-faint">{String(it.rank).padStart(2, "0")}</span>
+            <span className="num-sm text-muted">{String(it.rank).padStart(2, "0")}</span>
             <span className="font-num text-fg-soft">{it.name}</span>
             <Pnl value={it.value} format={unit === "pct" ? "pct" : formatSignedUsdCompact} className="num-sm" />
           </Link>

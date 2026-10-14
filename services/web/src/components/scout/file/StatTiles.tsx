@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Panel } from "@/components/ui/Panel";
+import { TableScroll } from "@/components/ui/Table";
 import { formatLeverage, formatPct, formatSignedUsd, formatUsd } from "@/lib/format";
 import { formatHold, liqTone } from "@/lib/scout/labels";
 import type { PnlWindow, TraderProfile } from "@/lib/scout/types";
@@ -44,7 +45,8 @@ export function StatTiles({ profile }: { profile: TraderProfile }) {
         <Tile label="Nearest liq" value={formatPct(account.nearest_liq_pct)} sub="price move to his closest liquidation" tone={LIQ[liqTone(account.nearest_liq_pct)]} />
         <Tile label="Long share" value={formatPct(account.long_bias_pct, 0)} sub={`${formatUsd(account.long_notional_usd, true)} L / ${formatUsd(account.short_notional_usd, true)} S · best streak ${profile.longest_win_streak_days}d`} />
       </div>
-      <Panel className="overflow-x-auto">
+      <Panel className="overflow-hidden">
+        <TableScroll label="Stats by window">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -67,6 +69,7 @@ export function StatTiles({ profile }: { profile: TraderProfile }) {
             ))}
           </tbody>
         </table>
+        </TableScroll>
       </Panel>
     </div>
   );

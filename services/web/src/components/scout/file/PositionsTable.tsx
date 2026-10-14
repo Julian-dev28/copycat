@@ -3,6 +3,7 @@ import { formatPct, formatPrice, formatSignedPct, formatSignedUsd, formatSize, f
 import { liqTone, netFundingSinceOpen } from "@/lib/scout/labels";
 import type { TraderPositionView } from "@/lib/scout/types";
 import { CoinBadge } from "@/components/scout/bits";
+import { TableScroll } from "@/components/ui/Table";
 
 export const TH = "px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted whitespace-nowrap";
 export const TD = "px-3 py-2 whitespace-nowrap font-num";
@@ -13,7 +14,7 @@ export function PositionsTable({ positions, asOfMs }: { positions: TraderPositio
   if (!positions.length) return <p className="p-4 text-sm text-muted">No open positions.</p>;
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
+      <TableScroll label="Open positions">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
@@ -59,7 +60,7 @@ export function PositionsTable({ positions, asOfMs }: { positions: TraderPositio
             })}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <p className="px-3 py-2 text-[11px] text-muted">
         As of {new Date(asOfMs).toLocaleTimeString("en-US", { hour12: false })}. Distance to liq under 10% is red, under 25% amber.
       </p>

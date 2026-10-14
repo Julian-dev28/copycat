@@ -25,7 +25,7 @@ describe("contrast math", () => {
 describe("palette is exactly DESIGN.md", () => {
   it.each([
     ["dark", "bg", "#08080a"], ["dark", "surface", "#101012"], ["dark", "surface-2", "#17171a"], ["dark", "surface-3", "#1e1e22"],
-    ["dark", "fg", "#ececee"], ["dark", "muted", "#8d8d96"], ["dark", "accent", "#7aa2ff"], ["dark", "brand", "#ff7a1a"],
+    ["dark", "fg", "#ececee"], ["dark", "muted", "#96969f"], ["dark", "accent", "#7aa2ff"], ["dark", "brand", "#ff7a1a"],
     ["dark", "warn", "#f2b544"], ["light", "bg", "#f7f7f8"], ["light", "accent", "#2d5bd8"], ["light", "warn", "#8f5a00"],
     ["light", "muted", "#5d5d66"], ["light", "brand", "#b04a08"],
   ] as const)("%s --%s = %s", (theme, name, hex) => {
@@ -59,6 +59,14 @@ describe("WCAG AA (4.5:1) for every text token", () => {
     it(`${theme}: muted on surface-3 (hover row)`, () => {
       expect(contrast(resolve(t, theme, "muted"), resolve(t, theme, "surface-3"))).toBeGreaterThanOrEqual(AA);
     });
+    // Notice bodies, the demo and stale-build strips and the ticket's leverage
+    // alert set --muted text on a tinted well. Dark --muted was #8d8d96, 4.46:1
+    // on --warn-soft, so the Scout axe gate had to exclude color-contrast.
+    for (const bg of ["warn-soft", "danger-soft", "accent-soft", "up-soft", "down-soft"]) {
+      it(`${theme}: muted on --${bg} (Notice body, strips, badge wells)`, () => {
+        expect(contrast(resolve(t, theme, "muted"), resolve(t, theme, bg))).toBeGreaterThanOrEqual(AA);
+      });
+    }
     for (const mode of PNL_MODES) {
       it(`${theme} / ${mode}: up and down on every surface and on their soft tint`, () => {
         for (const k of ["up", "down"]) {

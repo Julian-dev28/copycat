@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 /**
  * Table styles (DESIGN 5 Tables) as class constants plus a scroll wrapper,
@@ -27,8 +27,15 @@ export const TABLE = {
   stickyFirst: "sticky left-0 z-[2] bg-surface group-hover/row:bg-surface-3",
 } as const;
 
-/** Horizontal scroll container with the right-edge fade cue. Focusable so keyboard users can scroll it. */
-export function TableScroll({ children, className, label, ...rest }: HTMLAttributes<HTMLDivElement> & { children: ReactNode; label?: string }) {
+/**
+ * Horizontal scroll container with the right-edge fade cue. With a `label` it
+ * is a focusable region (tabIndex 0), so keyboard users can scroll a wide
+ * table or SVG with the arrow keys: a plain `overflow-x-auto` div is not in
+ * the tab order, which axe flags as scrollable-region-focusable. Every wide
+ * table or chart in components/ goes through this (tableScroll.test.ts).
+ * Takes a `ref` for callers that scroll it programmatically (PnlCalendar).
+ */
+export function TableScroll({ children, className, label, ...rest }: ComponentProps<"div"> & { children: ReactNode; label?: string }) {
   return (
     <div
       role={label ? "region" : undefined}

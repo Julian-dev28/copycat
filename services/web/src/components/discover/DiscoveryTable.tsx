@@ -12,6 +12,7 @@ import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
+import { TableScroll } from "@/components/ui/Table";
 
 type SortKey =
   | "score"
@@ -175,7 +176,7 @@ export function DiscoveryTable({
           })
         )}
       </ul>
-      <div className="hidden overflow-x-auto border-t border-border md:block">
+      <TableScroll label="Discovery results" className="hidden border-t border-border md:block">
         <table className="w-full min-w-[1040px] text-sm">
           <thead>
             <tr className="text-right text-xs text-muted">
@@ -292,7 +293,7 @@ export function DiscoveryTable({
             )}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       {atCap ? (
         <p className="border-t border-border px-5 py-2 text-xs text-muted">
           You&apos;re at the {MAX_LEADERS}-copy cap. Remove one on /copy to add another.

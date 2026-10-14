@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { LoadError } from "@/components/PageStates";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { TableScroll } from "@/components/ui/Table";
 import { CoinBadge } from "@/components/scout/bits";
 import { formatPrice, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
 import { useFileFills, useFileOrders } from "./hooks";
@@ -32,7 +33,7 @@ export function FillsTab({ address }: { address: string }) {
   if (!fills.length) return <p className="p-4 text-sm text-muted">No fills cached for this trader.</p>;
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
+      <TableScroll label="Fills">
         <table className="w-full text-sm">
           <Head cols={["Time", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]} />
           <tbody>
@@ -62,7 +63,7 @@ export function FillsTab({ address }: { address: string }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <div className="flex justify-center p-3">
         {q.hasNextPage ? (
           <Button size="sm" onClick={() => q.fetchNextPage()} disabled={q.isFetchingNextPage}>
@@ -82,7 +83,7 @@ export function OrdersTab({ address }: { address: string }) {
   if (!q.data) return <p className="p-4 text-sm text-muted">Loading open orders…</p>;
   if (!q.data.length) return <p className="p-4 text-sm text-muted">No open orders.</p>;
   return (
-    <div className="overflow-x-auto">
+    <TableScroll label="Open orders">
       <table className="w-full text-sm">
         <Head cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Flags"]} />
         <tbody>
@@ -107,6 +108,6 @@ export function OrdersTab({ address }: { address: string }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

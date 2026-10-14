@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { slugify } from "@/lib/scout/file/strategy";
+import { TableScroll } from "@/components/ui/Table";
 
 /**
  * Thesis markdown, rendered safely. Theses can come from an MCP client
@@ -70,11 +71,11 @@ export function SafeMarkdown({ markdown }: { markdown: string }) {
     ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5">{children}</ol>,
     blockquote: ({ children }) => <blockquote className="mt-2 border-l-2 border-accent/50 pl-3 text-muted">{children}</blockquote>,
     code: ({ children }) => <code className="rounded bg-surface-2 px-1 py-0.5 font-num text-[12px]">{children}</code>,
-    pre: ({ children }) => <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-3 text-[12px]">{children}</pre>,
+    pre: ({ children }) => <pre tabIndex={0} className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-3 text-[12px]">{children}</pre>,
     table: ({ children }) => (
-      <div className="mt-2 overflow-x-auto">
+      <TableScroll label="Table" className="mt-2">
         <table className="w-full border-collapse text-xs">{children}</table>
-      </div>
+      </TableScroll>
     ),
     th: ({ children }) => <th className="border-b border-border px-2 py-1 text-left font-medium text-muted">{children}</th>,
     td: ({ children }) => <td className="border-b border-border/60 px-2 py-1">{children}</td>,

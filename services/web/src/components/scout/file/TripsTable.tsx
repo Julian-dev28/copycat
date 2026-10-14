@@ -3,6 +3,7 @@ import { formatPrice, formatSignedUsd, formatUsd } from "@/lib/format";
 import { formatHold } from "@/lib/scout/labels";
 import type { RoundTrip } from "@/lib/scout/types";
 import { CoinBadge } from "@/components/scout/bits";
+import { TableScroll } from "@/components/ui/Table";
 import { TD, TH } from "./PositionsTable";
 
 export function when(ms: number): string {
@@ -17,7 +18,7 @@ export function whenUtcTitle(ms: number): string {
 export function TripsTable({ trips }: { trips: RoundTrip[] }) {
   if (!trips.length) return <p className="p-4 text-sm text-muted">No closed round trips yet.</p>;
   return (
-    <div className="overflow-x-auto">
+    <TableScroll label="Round trips">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
@@ -53,6 +54,6 @@ export function TripsTable({ trips }: { trips: RoundTrip[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

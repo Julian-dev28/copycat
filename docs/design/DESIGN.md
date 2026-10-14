@@ -96,7 +96,7 @@ The cat stays orange. The logo keeps its identity and stands out more because it
 | `--border-strong` | `#303036` | focus-adjacent, input borders | |
 | `--fg` | `#ececee` | primary text, big numbers | 17.58 / 16.70 / 15.56 |
 | `--fg-soft` | `#c6c6cb` | body copy, table cells | 12.09 / 11.48 / 10.70 |
-| `--muted` | `#8d8d96` | labels, captions, secondary numbers | 6.44 / 6.12 / 5.70 (5.20 on s3) |
+| `--muted` | `#96969f` | labels, captions, secondary numbers | 6.82 / 6.48 / 6.10 (5.66 on s3, 5.01 on warn-soft). Was `#8d8d96`: 4.46 on `--warn-soft`, under AA for Notice bodies and the strips |
 | `--faint` | `#55555c` | decorative only: grid lines, disabled, separators. **Never text** | 3.49 / 3.32 |
 | `--accent` | `#7aa2ff` | links, selected states, primary button bg, focus ring | 8.05 / 7.65 / 7.13 |
 | `--accent-fg` | `#050b1a` | text on accent | 7.89 on accent |

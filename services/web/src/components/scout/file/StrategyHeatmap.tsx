@@ -1,6 +1,7 @@
 import { heatLevel, WEEKDAYS } from "@/lib/scout/file/strategy";
 import type { StrategyFingerprint } from "@/lib/scout/types";
 import { axisBars, realGrid } from "./StrategyHeatmapGrid";
+import { TableScroll } from "@/components/ui/Table";
 
 const CELL = 14;
 const GAP = 2;
@@ -32,7 +33,7 @@ export function StrategyHeatmap({ fp }: { fp: Fp }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto">
+      <TableScroll label="Entry time heatmap">
         <svg width={w} height={h} role="img" aria-label={`Entry times. ${peak}`}>
           {[0, 6, 12, 18].map((hr) => (
             <text key={hr} x={LEFT + hr * (CELL + GAP)} y={10} fontSize="9" fill="var(--muted)">
@@ -70,7 +71,7 @@ export function StrategyHeatmap({ fp }: { fp: Fp }) {
             </rect>
           ))}
         </svg>
-      </div>
+      </TableScroll>
       <p className="text-[11px] text-muted">Times in UTC. Each cell is the number of trips opened in that hour on that weekday; bars are the totals.</p>
     </div>
   );
@@ -86,7 +87,7 @@ function AxisBars({ fp }: { fp: Fp }) {
   const hw = 24 * (CELL + GAP);
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-end gap-6 overflow-x-auto">
+      <TableScroll label="Entries per hour and weekday" className="flex flex-wrap items-end gap-6">
         <svg width={hw} height={H + 14} role="img" aria-label="Entries per UTC hour">
           {b.hours.map((v, hr) => (
             <rect key={hr} x={hr * (CELL + GAP)} y={H - (v / hMax) * H} width={CELL} height={(v / hMax) * H} rx="1" fill="var(--accent)">
@@ -111,7 +112,7 @@ function AxisBars({ fp }: { fp: Fp }) {
             </text>
           ))}
         </svg>
-      </div>
+      </TableScroll>
       <p className="text-[11px] text-muted">Times in UTC. Entries per hour and per weekday. The per-hour-per-day grid appears once this fingerprint is rebuilt.</p>
     </div>
   );

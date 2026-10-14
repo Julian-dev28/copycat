@@ -5,6 +5,7 @@ import { formatSignedUsd } from "@/lib/format";
 import { buildCalendar, type CalendarCell } from "@/lib/scout/calendar";
 import type { CurvePoint } from "@/lib/scout/types";
 import { formatSignedUsdCompact } from "@/lib/scout/window";
+import { TableScroll } from "@/components/ui/Table";
 
 const CELL = 12;
 const GAP = 2;
@@ -67,7 +68,7 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
           ))}
         </div>
       </div>
-      <div ref={scroller} className="overflow-x-auto">
+      <TableScroll ref={scroller} label="Daily PnL calendar">
         <svg width={w} height={h} role="img" aria-label={`Daily PnL calendar, ${grid.green} green and ${grid.red} red days, net ${formatSignedUsd(Math.round(grid.total))}`}>
           {grid.months.map((m) => (
             <text key={`${m.col}-${m.label}`} x={28 + m.col * (CELL + GAP)} y={9} fontSize="9" fill="var(--muted)">
@@ -101,7 +102,7 @@ export function PnlCalendar({ daily }: { daily: CurvePoint[] }) {
             )),
           )}
         </svg>
-      </div>
+      </TableScroll>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted" aria-live="polite">
         <span>
           {shown ? (
