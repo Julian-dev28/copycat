@@ -348,19 +348,29 @@ def sim_index(conn: sqlite3.Connection, settings_hash: str, sim_equity: float) -
     return {r["address"]: int(r["stats_ms"] or 0) for r in rows}
 
 
-def simmed_addresses(conn: sqlite3.Connection, addresses: Sequence[str]) -> set:
-    """Which of `addresses` already have a sim row at ANY settings_hash/sim_equity.
-    Their trip-span candles are already in the candle cache (prepare_wallet needs
-    nothing new from the venue), so a re-sim of one of these at a NEW hash (a sim
-    terms change) can run on CacheOnlyVenue: zero HL calls. A wallet with no prior
-    sim at all (first build, or a brand new custom wallet) is never in this set,
-    so it always gets a real venue the first time."""
+def simmed_addresses(conn: sqlite3.Connection, addresses: Sequence[str],
+                     stats_ms_by: Optional[Dict[str, int]] = None) -> set:
+    """Which of `addresses` already have a sim row at ANY settings_hash/sim_equity
+    and, with `stats_ms_by` (address -> the stats row's updated_ms), one built
+    from the SAME stats. Only then are its trip-span candles already in the
+    candle cache (prepare_wallet needs nothing new from the venue), so a re-sim
+    at a NEW hash (a sim terms change) can run on CacheOnlyVenue: zero HL calls.
+    A wallet with no prior sim (first build, a brand new custom wallet) or whose
+    stats moved since its last sim (new fills: trip spans the cache has never
+    seen) always gets the real venue. Until 2026-10-15 the second case went
+    cache-only too, so every scheduled pass re-simmed its refreshed wallets on
+    the bars of their OLD trips only, `candles_partial` hidden (prepare_wallet
+    skips the flag under cache_only) and liquidation wicks unseen on the new
+    trips; stage C billed 20 per miss as if HL had been read (live pass
+    2026-10-15 04:10: "weight C=12720" for zero HL calls)."""
     addrs = list(addresses)
     if not addrs:
         return set()
-    rows = conn.execute(f"SELECT DISTINCT address FROM scout_sim WHERE address IN ({','.join('?' * len(addrs))})",
+    rows = conn.execute(f"SELECT address, stats_ms FROM scout_sim WHERE address IN ({','.join('?' * len(addrs))})",
                         tuple(addrs)).fetchall()
-    return {r["address"] for r in rows}
+    if stats_ms_by is None:
+        return {r["address"] for r in rows}
+    return {r["address"] for r in rows if int(r["stats_ms"] or 0) == int(stats_ms_by.get(r["address"], -1))}
 
 
 def save_sim(conn: sqlite3.Connection, address: str, settings_hash: str, sim_equity: float, now_ms: int,

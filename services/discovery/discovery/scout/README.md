@@ -237,10 +237,18 @@ end-to-end HTTP version of this check is in `evals/sim_terms_check.sh` step 5,
 pending the operator's post-merge run (see the moratorium note above).
 
 A terms-only resim (not a `Settings` change) runs every ALREADY-simmed wallet
-on `simstage.CacheOnlyVenue` (`store.simmed_addresses`: has a sim at ANY
-hash, so its trip-span candles are on disk already -- the sim's position
-reconstruction depends on `poll_interval_s`, not on anything in
-`ScoutSimTerms`). Measured on the throwaway stack (40-wallet universe, real
+on `simstage.CacheOnlyVenue` (`store.simmed_addresses` with the current
+`stats_ms` per wallet: has a sim at ANY hash built from the SAME stats, so its
+trip-span candles are on disk already -- the sim's position reconstruction
+depends on `poll_interval_s`, not on anything in `ScoutSimTerms`). A wallet
+whose stats moved since its last sim (a scheduled pass found new fills: new
+trip spans) takes the real venue even under a terms run; until 2026-10-15 it
+went cache-only too, so every scheduled pass re-simmed its refreshed wallets
+on their old trips' bars only, `candles_partial` hidden (the flag is skipped
+under cache_only) and liquidation wicks unseen on the new trips, and stage C
+billed 20 per cache miss as if HL had been read ("weight C=12720" on the
+04:10 live pass, zero HL calls; a cache-only miss now costs 0). Measured on
+the throwaway stack (40-wallet universe, real
 HL for the first build, `evals/sim_terms_check.py` / scratch measurement):
 **0.070 s/wallet** cached resim, extrapolated **~21 s for 300 wallets** --
 nowhere near the ~2-minute budget that would have forced an incremental
@@ -450,6 +458,14 @@ page billed at the 2000-row cap (120) for a tail of a dozen rows; the billing
 fix above landed right after this run. Check 2 (warm wall clock <= 240 s) was
 bucket wait, not work: 28.8 s per wallet at two calls. Re-run alone after the
 fix: see the line below once it lands.
+Live scout, first pass under real billing (d89b1d0, 2026-10-15 04:10 to 05:01,
+`stage_b_summary` in scout_meta): n=91, full set on 87 (the 6 h full-refresh
+window had lapsed for the whole deferred backlog), weight p50 92, p95 310,
+pages p50 2.0, seconds p50 29, p95 86; weight B 11,299, C 12,720; 4 failed,
+210 deferred at the 50 min cap. The pass shared the bucket with the live
+engine and, until 04:44, a throwaway eval stack (so 29 s per wallet is wait,
+not work). p50 92 is a full-set wallet at HL's meter: portfolio 20 + account
+state 8 + extras 22 + one fills page and one funding page billed by rows.
 
 Wall clock on a fresh `COPYCAT_DATA_DIR` (new `hl_rate.bucket`, empty): a
 background-priority caller's per-item charge (`rate_limit.charge`) has no
@@ -483,8 +499,10 @@ PUTs the live deployment's own terms ($15.20/wallet, exposure target 50x
 capped 15x), checks the board re-ranks and the Fit distribution is worse than
 the default terms (more rows at Fit <= 20, fewer with >= 5 sim copies, more
 starved on the $10.50 minimum), PUTs the default terms back, checks switching
-to an already-simmed hash is near-instant, and checks PUT validates like
-LeaderOverride (422 on a bad value). 2 to 6 minutes solo; exit code = failed
+to an already-simmed hash is near-instant, checks PUT validates like
+LeaderOverride (422 on a bad value), and (check 7, from the throwaway's own
+scout log) that every stage-C-only refresh reported `weight ... C=0`: a terms
+change must cost zero HL weight. 2 to 6 minutes solo; exit code = failed
 checks. Run it after touching `ScoutSimTerms`, `refresh.effective_hash`/
 `terms_hash`, `simstage.run_stage_c`'s cache-only path, or the sim-terms
 store/api functions. Beside a live copycat (shared per-IP budget,
@@ -496,4 +514,5 @@ dropped from the copy) and its first build is a warm pass. What the eval
 proves is a warm-board property; `stats_budget_check.sh` covers the cold path.
 Last run 2026-10-15 00:49 on e76615c, shared live bucket, background priority: 9/13 PASS, inconclusive. GET/PUT shapes, the documented default and both 422 validations passed; the four failures share one cause: the throwaway stack's first 40-wallet build had not finished after 601 s because the live scout's own hourly stats pass was drawing the same per-IP HL budget at the same time, so no sim existed to re-rank or switch back to (the three comparison checks passed on 0 vs 0). Re-run alone, between live stats passes (`/api/scout/status` idle), for the recorded verdict.
 Second run 2026-10-15 02:42 on 80cf15f (serial after history and budget, same shared bucket) was killed by the operator session's 2 h background limit 30 minutes into the first build, right after the budget eval had measured a 40-wallet cold stage B at 3,090 s beside the live pass. `COPYCAT_SIM_TERMS_REFRESH_WAIT_S` now overrides the 2,400 s first-build wait for a run beside a live stack.
-Third run 2026-10-15 03:37 to 04:44 on 246cfa5, universe 20 (a 40-wallet cold build cannot finish inside the operator session's 2 h background job limit beside the live stack), shared live bucket, background priority: 10/13, invalid. The cold stage B of 20 wallets took 32 min (p50 89 s per wallet beside the live engine and the live scout's own stats pass); stage C then starved on candleSnapshot (30 s wait, then None, coin after coin) and one wallet sat over 15 min, so `/api/scout/status` reported `failed: refresh stopped heartbeating (process died)` while the scout was alive and working. Check 2 accepted that (any state but running) and the four board checks ran on an empty board (three of them "passing" on 0 vs 0). Two fixes came out of it: `refresh.Heartbeat` (Pipeline, Progress above) with check 2 now requiring `idle`, and `COPYCAT_SIM_TERMS_SEED_DB` for a run beside a live stack. Fourth run: see the line below once it lands.
+Third run 2026-10-15 03:37 to 04:44 on 246cfa5, universe 20 (a 40-wallet cold build cannot finish inside the operator session's 2 h background job limit beside the live stack), shared live bucket, background priority: 10/13, invalid. The cold stage B of 20 wallets took 32 min (p50 89 s per wallet beside the live engine and the live scout's own stats pass); stage C then starved on candleSnapshot (30 s wait, then None, coin after coin) and one wallet sat over 15 min, so `/api/scout/status` reported `failed: refresh stopped heartbeating (process died)` while the scout was alive and working. Check 2 accepted that (any state but running) and the four board checks ran on an empty board (three of them "passing" on 0 vs 0). Two fixes came out of it: `refresh.Heartbeat` (Pipeline, Progress above) with check 2 now requiring `idle`, and `COPYCAT_SIM_TERMS_SEED_DB` for a run beside a live stack.
+Fourth run 2026-10-15 04:55 to 05:07 on 6cbc954, universe 20, seeded from the live database, shared live bucket, background priority, beside the live scout's stats pass until 05:01: 13/13 PASS. First build 631 s (stage B 18/19 on the full set since the seed's top 20 sat in the 6 h-lapsed backlog, weight p50 95, 21.6 s per wallet of mostly bucket wait; stage C 22 s), re-rank at the live-style terms 42 s (a cache-only stage C over 20 wallets takes 29 s plus the 10 s tick), back to the default 14 s, switch back to the cached hash 14 s, both 422s. Fit <= 20: 17 of 20 at the default terms against 20 of 20 at the live-style ones; >= 5 sim copies 4 against 4; starved on the minimum 0 against 0. The top 20 by account value are mostly uncopyable at $100 per wallet whatever the terms (the population property measured on the full cohort, "Sim terms" above); the eval's claim is the ordering, not a count.

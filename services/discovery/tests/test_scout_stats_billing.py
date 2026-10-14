@@ -115,3 +115,22 @@ def test_a_warm_wallet_is_portfolio_plus_a_cheap_tail(tmp_path):
     assert cv.weight == C.W_PORTFOLIO + C.W_INFO + math.ceil(returned / C.ITEMS_PER_WEIGHT)
     assert cv.weight <= 60      # the budget eval's warm p50 threshold is reachable by construction
     assert cv.pages_by == {"fills": 1}
+
+
+def test_a_cache_only_candle_miss_is_not_billed():
+    """simstage.CacheOnlyVenue answers every candle read with None and reads nothing
+    from HL; CountingVenue used to bill W_CANDLES per miss anyway, so a cache-only
+    stage C reported hundreds of weight for zero HL calls (live 2026-10-15 04:10:
+    "weight C=12720") and burned the stage C budget on nothing."""
+    from discovery.scout import simstage
+    cv = stats.CountingVenue(simstage.CacheOnlyVenue())
+    assert cv.candles("BTC", "15m", 0, 1) is None
+    assert cv.weight == 0 and "candles" not in cv.weight_by
+
+    class Real:
+        def candles(self, coin, interval, start_ms, end_ms):
+            return None                                  # a real read that failed (or was starved)
+
+    cv = stats.CountingVenue(Real())
+    cv.candles("BTC", "15m", 0, 1)
+    assert cv.weight_by["candles"] == C.W_CANDLES         # a real attempt still counts

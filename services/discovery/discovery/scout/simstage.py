@@ -58,7 +58,10 @@ def default_sizing() -> Any:
 
 
 class CacheOnlyVenue:
-    """No network: candle reads miss, so only cached bars are used."""
+    """No network: candle reads miss, so only cached bars are used. `cache_only`
+    tells CountingVenue a miss here is not an HL call (nothing to bill)."""
+
+    cache_only = True
 
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> None:
         return None
@@ -190,11 +193,13 @@ def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
     derived Settings for every wallet otherwise.
 
     `allow_cache_only`: True for a ScoutSimTerms (not live-settings) run. A
-    wallet that already has a sim at ANY hash (store.simmed_addresses) has its
-    trip-span candles cached already -- a terms change never needs a new HL
-    call for it, so it sims on CacheOnlyVenue (zero HL weight). A wallet with
-    no prior sim (first board build, or a brand new custom wallet) always gets
-    the real venue, whatever allow_cache_only says."""
+    wallet that already has a sim at ANY hash built from its CURRENT stats
+    (store.simmed_addresses with stats_ms_by) has its trip-span candles cached
+    already -- a terms change never needs a new HL call for it, so it sims on
+    CacheOnlyVenue (zero HL weight). A wallet with no prior sim (first board
+    build, a brand new custom wallet) or whose stats moved since its last sim
+    (new fills in a scheduled pass: new trip spans) always gets the real venue,
+    whatever allow_cache_only says."""
     settings_for = get_settings if callable(get_settings) else get_settings.for_leader
     res = StageCResult()
     have = store.sim_index(conn, settings_hash, sim_equity)
@@ -206,7 +211,8 @@ def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         res.deferred = todo[limit:]
         todo = todo[:limit]
     known = store.meta_get(conn, "coin_max_lev", {}) or {}
-    cache_ok = store.simmed_addresses(conn, todo) if allow_cache_only else set()
+    cache_ok = (store.simmed_addresses(conn, todo, {a: int(stats_ix[a]["updated_ms"]) for a in todo})
+                if allow_cache_only else set())
     for i, a in enumerate(todo):
         if not budget.allows(C.W_CANDLES):
             res.deferred = todo[i:] + res.deferred

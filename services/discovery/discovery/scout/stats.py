@@ -128,6 +128,8 @@ class CountingVenue:
 
     def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> Any:
         rows = self._v.candles(coin, interval, start_ms, end_ms)
+        if getattr(self._v, "cache_only", False):      # simstage.CacheOnlyVenue: a miss reads nothing from HL
+            return rows
         self._charge("candles", C.W_CANDLES + math.ceil(len(rows or []) / 60))
         return rows
 

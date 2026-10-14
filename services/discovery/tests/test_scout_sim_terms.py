@@ -15,12 +15,14 @@ from the operator's live trading Settings.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from discovery.scout import public, simstage, stats, store
 from discovery.scout import refresh as R
 from engine import sizing as real_sizing
-from test_scout_helpers import addr, flat_15m, portfolio, trips
-from test_scout_world import BOARD, DAY, EQUITY, NOW, G, q, settings, world
+from test_scout_helpers import HOUR, addr, flat_15m, portfolio, trips
+from test_scout_world import BOARD, DAY, EQUITY, NOW, A, B, G, q, settings, world
 
 from contracts.models import (
     HL_MIN_ORDER_USD,
@@ -126,6 +128,11 @@ def test_store_simmed_addresses(tmp_path):
     assert store.simmed_addresses(conn, ["0xold", "0xnew"]) == {"0xold"}
     # any hash counts, not just the one being asked about
     assert store.simmed_addresses(conn, ["0xold"]) == {"0xold"}
+    # with the current stats_ms per wallet: only a sim built from the SAME stats counts
+    assert store.simmed_addresses(conn, ["0xold", "0xnew"], {"0xold": 1, "0xnew": 1}) == {"0xold"}
+    assert store.simmed_addresses(conn, ["0xold"], {"0xold": 2}) == set()      # stats moved since the sim
+    store.save_sim(conn, "0xold", "hash2", 1000.0, 3, 2, {"score": 1.0}, [])
+    assert store.simmed_addresses(conn, ["0xold"], {"0xold": 2}) == {"0xold"}  # any hash, same stats
 
 
 # ── refresh: pure hash/dispatch functions ────────────────────────────────────
@@ -270,3 +277,48 @@ def test_run_stage_c_real_venue_for_a_never_simmed_wallet_even_with_allow_cache_
                                real_sizing, allow_cache_only=True)
     assert res.done == [h]
     assert v.candles_calls != []                           # a real fetch happened for the new wallet
+
+
+def test_new_fills_since_the_sim_take_the_real_venue_even_under_a_terms_run(w, monkeypatch):
+    """A wallet whose stats moved since its last sim (a scheduled pass found new
+    fills: new trip spans the candle cache has never seen) must sim on the real
+    venue even under a terms run; a wallet whose stats are the ones its sim used
+    stays cache-only. Until 2026-10-15 both went cache-only: every scheduled pass
+    re-simmed its refreshed wallets on their OLD trips' bars only, with the
+    candles_partial flag hidden (prepare_wallet skips it under cache_only), so
+    liquidation wicks on the new trips were never seen, and stage C billed 20 per
+    miss as if HL had been read (live pass 2026-10-15 04:10: "weight C=12720"
+    for zero HL calls; the seeded sim-terms eval the same morning: C=4580)."""
+    v, db = w["venue"], w["db"]
+    conn = store.connect(db)
+    # New fills land AFTER the fills cache's coverage (world()'s build ran at t0): two DOGE
+    # trips an hour later, found by a stage B build of A 12 days on (build_wallet with that
+    # clock; run_stage_b stamps real time per wallet, which would read as fresh coverage).
+    # 12 days puts them in the 15m tier like every other span here. DOGE is a coin no
+    # cached span covers.
+    t0, later = R.now_ms(), R.now_ms() + 12 * DAY
+    v.set_candles("DOGE", "15m", flat_15m(1.0, t0 - DAY, later + DAY))
+    v.set_fills(A, v._fills[A] + trips("DOGE", 2, t0 + HOUR))
+    stats.build_wallet(conn, stats.CountingVenue(v), A, later)
+    assert int(store.stats_row(conn, A)["updated_ms"]) == later        # A's stats moved, B's did not
+    assert store.simmed_addresses(conn, [A, B]) == {A, B}            # both simmed before (world's build)
+    assert "DOGE" in {f["coin"] for f in simstage.wallet_inputs(conn, A)["fills"]}   # the new trips are cached
+    built = []
+    real_init = simstage.CacheOnlyVenue.__init__
+
+    def spy_init(self):
+        built.append(True)
+        real_init(self)
+
+    monkeypatch.setattr(simstage.CacheOnlyVenue, "__init__", spy_init)
+    v.candles_calls.clear()
+    terms = ScoutSimTerms(allocation_usd=222.0)
+    res = simstage.run_stage_c(conn, v, [A, B], R.effective_settings_for_leader(terms, settings()),
+                               terms.sim_equity_usd, R.terms_hash(terms), stats.Budget(1e9, 60),
+                               real_sizing, allow_cache_only=True)
+    assert set(res.done) == {A, B} and res.failed == []
+    assert len(built) == 1                                           # B only; before the fix: 2
+    assert any("DOGE" in str(c) for c in v.candles_calls)           # A's new trips got real bars
+    saved = json.loads(store.sim_row(conn, A, R.terms_hash(terms), terms.sim_equity_usd)["score_json"])
+    assert not any(f.startswith("candles_partial") for f in saved["flags"])
+    assert res.weight > 0                                            # A's real reads, B's misses free

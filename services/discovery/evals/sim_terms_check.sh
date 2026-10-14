@@ -21,7 +21,9 @@
 #
 # The seed is a read-only sqlite backup (the live file is never written); the operator's
 # own stored terms and any queued refresh request are dropped from the copy, so the
-# throwaway starts on the documented default. stats_budget_check.sh covers the cold path.
+# throwaway starts on the documented default. The live file is mostly candle cache
+# (2.7 GB on 2026-10-15; the copy took 5 s and that much temp disk, removed on exit;
+# the logs stay). stats_budget_check.sh covers the cold path.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # A worktree has no .venv of its own (it lives in the main checkout only); fall back to
@@ -59,7 +61,8 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 ( cd "$ROOT" && exec "${ENV[@]}" "$PY" -m api > "$T/api.log" 2>&1 ) & echo $! > "$T/api.pid"
 ( cd "$ROOT" && exec "${ENV[@]}" "$PY" -m discovery.scout serve > "$T/scout.log" 2>&1 ) & echo $! > "$T/scout.pid"
-trap 'kill $(cat "$T/api.pid") $(cat "$T/scout.pid") 2>/dev/null || true; sleep 1; kill -9 $(cat "$T/api.pid") $(cat "$T/scout.pid") 2>/dev/null || true' EXIT
+# The seeded database copy (gigabytes) goes on exit; api.log and scout.log stay in $T.
+trap 'kill $(cat "$T/api.pid") $(cat "$T/scout.pid") 2>/dev/null || true; sleep 1; kill -9 $(cat "$T/api.pid") $(cat "$T/scout.pid") 2>/dev/null || true; [ -n "${COPYCAT_SIM_TERMS_SEED_DB:-}" ] && rm -f "$T/discovery.db" "$T/discovery.db-wal" "$T/discovery.db-shm"' EXIT
 for _ in $(seq 1 30); do curl -s -o /dev/null "localhost:$PORT/api/health" && break; sleep 1; done
 echo "throwaway copycat on :$PORT, data $T (api.log, scout.log kept there)"
 echo
@@ -67,5 +70,17 @@ set +e
 "$PY" "$ROOT/services/discovery/evals/sim_terms_check.py" "http://127.0.0.1:$PORT" "$TOK"
 FAILS=$?
 set -e
+# 7. A terms-change re-sim is zero HL weight. Every stage-C-only refresh in the throwaway's
+# log ("weight B=0 C=<n>": the scheduler's "running C (settings changed)" runs, and the
+# harmless stage-A-only ones) must report C=0. The 2026-10-15 04:55 run printed C=4580 on
+# one: cache-only misses were billed as reads, and a wallet whose stats had moved since its
+# sim went cache-only at all, simming its new trips without bars (fixed the same day).
+N=$(grep -cE "done: .* weight B=0 C=" "$T/scout.log" || true)
+BAD=$(grep -E "done: .* weight B=0 C=[1-9]" "$T/scout.log" | wc -l | tr -d ' ')
+if [ "$N" -gt 0 ] && [ "$BAD" = 0 ]; then
+  echo "PASS  7. every stage-C-only refresh ($N) was zero HL weight (C=0)"
+else
+  echo "FAIL  7. $BAD of $N stage-C-only refreshes charged HL weight"; FAILS=$((FAILS + 1))
+fi
 echo "scout log tail:"; tail -6 "$T/scout.log" | cut -c1-160
 exit $FAILS
