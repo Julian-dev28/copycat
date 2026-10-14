@@ -1,8 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * copycat e2e lane. `make e2e-demo`: demo + a11y + visual (web only, no backend).
- * `make e2e`: the same, then the full stack against the mock Hyperliquid (one worker, serial).
+ * copycat e2e lane (see README.md). `npm run demo` / `make e2e-demo`: demo + a11y + visual
+ * (web only, no backend). `npm run full`: the full stack against the mock Hyperliquid (one
+ * worker, serial); `make e2e` runs demo, then full.
  * baseURL comes from the stack global-setup starts (fixtures.ts reads e2e/.stack.json).
  */
 export default defineConfig({

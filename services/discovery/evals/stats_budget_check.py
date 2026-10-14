@@ -13,13 +13,16 @@ but a wallet whose cadence happened to land exactly on this pass).
 
 Proves, with real data and real timings:
   1. the cold pass actually builds the whole cohort (nothing deferred)
-  2. the warm pass's wall clock and weight/wallet (p50) are inside budget
-     (weight = what HL metered for the pages that came back, HlVenue.last_read:
-     a warm wallet is portfolio 20 + a 1-page tail 20 + 1 per 20 rows, ~41;
-     until 2026-10-15 the budget billed the 2000-row page cap, 120 per page,
-     so this check could not pass with a correct warm path. The wall clock
-     is only meaningful ALONE: beside the live scout's own pass every call
-     waits on the shared per-IP bucket, 28.8 s/wallet measured at 2 calls)
+  2. the warm pass's wall clock NET OF BUCKET WAIT and weight/wallet (p50) are
+     inside budget (weight = what HL metered for the pages that came back,
+     HlVenue.last_read: a warm wallet is portfolio 20 + a 1-page tail 20 + 1
+     per 20 rows, ~41; until 2026-10-15 the budget billed the 2000-row page
+     cap, 120 per page, so this check could not pass with a correct warm path.
+     The wall clock subtracts stage_b_summary.bucket_wait_s, the seconds the
+     pass slept waiting for HL budget (hl.rate_limit.waited_s): beside a live
+     engine every call queues on the shared per-IP bucket, 378 s of wall clock
+     for ~100 s of work on 2026-10-15, and that queue is the engine's, not
+     the warm path's)
   3. the warm pass really is cheaper than the cold one (weight p50 dropped)
   4. most of the warm pass's wallets skipped the slow-cadence set
      (stage_b_summary.full_count < n) -- the whole point of the cadence
@@ -143,7 +146,9 @@ def main() -> int:
     check("1. cold pass built the whole cohort (nothing deferred)", cold_rep["stats_deferred"] == 0,
          f"done={cold_rep['stats_done']} deferred={cold_rep['stats_deferred']} universe={cold_rep['universe']}")
 
-    check("2. warm pass wall clock <= 4 min", warm_s <= WARM_WALL_S_MAX, f"{warm_s:.1f}s")
+    warm_wait = float((warm_summary or {}).get("bucket_wait_s") or 0.0)
+    check("2. warm pass wall clock net of bucket wait <= 4 min", warm_s - warm_wait <= WARM_WALL_S_MAX,
+         f"{warm_s:.1f}s wall, {warm_wait:.1f}s waiting for HL budget, {warm_s - warm_wait:.1f}s of work")
 
     ok_p50 = warm_summary is not None and warm_summary["weight_p50"] <= WARM_WEIGHT_P50_MAX
     check("3. warm pass weight p50/wallet <= 60", ok_p50,

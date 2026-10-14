@@ -60,6 +60,38 @@ except ImportError:  # pragma: no cover - not reachable on macOS/Linux
 
 logger = logging.getLogger(__name__)
 
+# Seconds THIS process has slept waiting for HL budget: every acquire sleep in either
+# bucket and every 429 back-off in hl.http. `waited_s()` never resets. The scout's
+# stage-B summary records the share of a pass that was wait, so an eval beside a live
+# engine can tell "slow work" from "queued behind the engine on the shared bucket"
+# (2026-10-15: a 20-wallet warm pass was 378 s of wall clock for ~100 s of work).
+_wait_lock = threading.Lock()
+_waited_s = 0.0
+
+
+def note_waited(seconds: float) -> None:
+    """Add a wait this process already slept through (hl.http's 429 back-off)."""
+    global _waited_s
+    if seconds <= 0:
+        return
+    with _wait_lock:
+        _waited_s += seconds
+
+
+def sleep_waiting(seconds: float) -> None:
+    """time.sleep that counts toward waited_s()."""
+    if seconds <= 0:
+        return
+    time.sleep(seconds)
+    note_waited(seconds)
+
+
+def waited_s() -> float:
+    """Cumulative seconds this process has spent waiting for HL budget."""
+    with _wait_lock:
+        return _waited_s
+
+
 _BASE_WEIGHT = {
     "l2Book": 2,
     "allMids": 2,
@@ -132,7 +164,7 @@ class TokenBucket:
                 sleep_for = deficit / self._refill
             if time.monotonic() + sleep_for > deadline:
                 return False
-            time.sleep(min(sleep_for, 0.5))
+            sleep_waiting(min(sleep_for, 0.5))
 
     def charge(self, weight: float) -> None:
         """Deduct weight already spent (a post-response surcharge). Never
@@ -287,7 +319,7 @@ class SharedTokenBucket:
             sleep_for = deficit / self._refill
             if time.monotonic() + sleep_for > deadline:
                 return False
-            time.sleep(min(sleep_for, 0.5))
+            sleep_waiting(min(sleep_for, 0.5))
 
     def charge(self, weight: float) -> None:
         """Deduct weight already spent, shared with every process; never

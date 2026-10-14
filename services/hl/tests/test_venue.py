@@ -811,3 +811,30 @@ def test_last_read_is_per_thread(monkeypatch):
     t.join()
     assert seen["thread"]["weight"] == 21
     assert v.last_read["pages"] == 2 and v.last_read["weight"] == 141   # this thread's read, untouched
+
+
+def test_extras_illiquid_marks_are_one_debug_line_not_a_warning_per_coin(monkeypatch, caplog):
+    """Until 2026-10-15 every illiquid spot bag logged a WARNING per coin per read:
+    389 lines in two hours of the live scout log for five meme coins in one wallet,
+    burying the three real warnings. A worthless bag is the expected case, not a
+    warning; one DEBUG roll-up per read names the coins and the marks."""
+    import logging
+
+    def fake_post(path, payload, **kw):
+        t = payload["type"]
+        if t == "spotClearinghouseState":
+            return {"balances": [{"coin": "LICKO", "total": "5"}, {"coin": "WOW", "total": "7"},
+                                 {"coin": "OK", "total": "1"}]}
+        if t == "delegatorSummary":
+            return {"delegated": "0", "undelegated": "0", "totalPendingWithdrawal": "0"}
+        raise AssertionError(payload)
+
+    monkeypatch.setattr(venue_mod, "http_post", fake_post)
+    monkeypatch.setattr(meta, "spot_prices", lambda: {"LICKO": (1.0, 0.0), "WOW": (1.0, 0.0),
+                                                      "OK": (2.0, 500_000.0), "HYPE": (10.0, 1.0)})
+    with caplog.at_level(logging.DEBUG, logger="hl.venue"):
+        assert HlVenue().extras("0xabc")["spot_other_usd"] == 2.0     # the liquid one still counts
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+    rollups = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG and "illiquid" in r.getMessage()]
+    assert len(rollups) == 1
+    assert "2 illiquid" in rollups[0] and "LICKO" in rollups[0] and "WOW" in rollups[0] and "OK" not in rollups[0]

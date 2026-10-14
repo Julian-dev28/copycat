@@ -267,6 +267,9 @@ export async function startStack(mode: StackMode): Promise<StackState> {
         COPYCAT_HL_RATE_CAPACITY: "1000000",
         COPYCAT_HL_RATE_REFILL_PER_SEC: "1000000",
         COPYCAT_HL_TIMEOUT_S: "5",
+        // No "fetched 15 min ago, still fresh" skip on the fills tail: a test seeds a leader's
+        // trade on the mock and refreshes right away; the mock is free, so every pass reads the tail.
+        COPYCAT_DISCOVERY_FRESH_S: "0",
         COPYCAT_LOG_LEVEL: "INFO",
       });
       state.pids.push(launch("mock_hl", PY, [path.join(E2E_DIR, "mock_hl/server.py"), "--port", String(mockPort)],

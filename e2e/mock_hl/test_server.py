@@ -3,7 +3,9 @@ included) talks to it over loopback, and the mock records exactly what was sent.
 No network beyond 127.0.0.1."""
 from __future__ import annotations
 
+import importlib.util
 import json
+import pathlib
 import secrets
 import threading
 import urllib.request
@@ -11,9 +13,6 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 from eth_account import Account
-
-import importlib.util
-import pathlib
 
 _spec = importlib.util.spec_from_file_location("e2e_mock_hl_server", pathlib.Path(__file__).with_name("server.py"))
 mock = importlib.util.module_from_spec(_spec)
@@ -134,3 +133,34 @@ def test_leader_position_control(hl_mock):
     assert st["positions"]["ETH"]["szi"] == -3 and st["positions"]["ETH"]["lev"] == 10
     _ctl(hl_mock, "/__mock/user", {"address": lead, "positions": {"ETH": {"szi": 0}}})
     assert HlVenue().account_state(lead)["positions"] == {}
+
+
+def test_trade_and_keypair_control_routes(hl_mock):
+    """/__mock/trade: a leader trades at mid with no signature; the real venue then
+    sees the position and the fills exactly as after a signed order (the full e2e
+    lane seeds round trips this way). /__mock/keypair: a throwaway main/agent pair."""
+    import urllib.error
+
+    import pytest
+    from hl import HlVenue
+    lead = "0x3333333333333333333333333333333333333333"
+    opened = _ctl(hl_mock, "/__mock/trade", {"address": lead, "coin": "ETH", "is_buy": True, "sz": 2,
+                                             "time": 1_700_000_000_000})
+    assert opened["dir"] == "Open Long"
+    assert HlVenue().account_state(lead)["positions"]["ETH"]["szi"] == 2
+    _ctl(hl_mock, "/__mock/mids", {"ETH": 4100})
+    closed = _ctl(hl_mock, "/__mock/trade", {"address": lead, "coin": "ETH", "is_buy": False, "sz": 2,
+                                             "reduce_only": True})
+    assert closed["dir"] == "Close Long" and float(closed["closedPnl"]) == 200.0
+    assert HlVenue().account_state(lead)["positions"] == {}
+    fills = HlVenue().fills(lead, 0, 2 ** 62)
+    assert [f["dir"] for f in fills] == ["Open Long", "Close Long"]
+    assert fills[0]["time_ms"] == 1_700_000_000_000 and fills[1]["time_ms"] > 1_700_000_000_000
+    # a HYPE/USDC spot price exists, so extras reads (every board card said "extras unavailable" without it)
+    assert HlVenue().extras(lead) == {"spot_other_usd": 0.0, "staked_hype_usd": 0.0}
+    with pytest.raises(urllib.error.HTTPError):
+        _ctl(hl_mock, "/__mock/trade", {"address": lead, "coin": "NOPE", "is_buy": True, "sz": 1})
+    kp = _ctl(hl_mock, "/__mock/keypair", {})
+    assert kp["private_key"].startswith("0x") and len(kp["private_key"]) == 66
+    assert Account.from_key(kp["private_key"]).address.lower() == kp["address"]
+    assert _ctl(hl_mock, "/__mock/keypair", {})["address"] != kp["address"]

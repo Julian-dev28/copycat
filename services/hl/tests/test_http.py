@@ -290,3 +290,17 @@ def test_charge_failure_never_fails_the_read(monkeypatch):
     monkeypatch.setattr(rate_limit, "HL_LIMITER", _Boom())
     monkeypatch.setattr(http, "get_session", lambda: _FakePostSession(response=_FakeResponse([{}] * 40)))
     assert len(http.http_post("/info", {"type": "userFillsByTime"})) == 40
+
+
+def test_429_backoff_counts_toward_the_bucket_wait_meter(monkeypatch):
+    """The scout's stage-B summary reports how long a pass waited for HL budget
+    (rate_limit.waited_s); a 429 back-off is wait too, slept here in hl.http."""
+    sleeps = []
+    monkeypatch.setattr(http.time, "sleep", sleeps.append)
+    monkeypatch.setattr(rate_limit, "HL_LIMITER", _CountingBucket())
+    sess = _SeqSession([_429(), _429(), _FakeResponse({"ok": 1})])
+    monkeypatch.setattr(http, "get_session", lambda: sess)
+    before = rate_limit.waited_s()
+    assert http.http_post("/info", {"type": "meta"}) == {"ok": 1}
+    assert sleeps == [1.0, 2.0]
+    assert rate_limit.waited_s() - before == 3.0

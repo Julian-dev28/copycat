@@ -473,6 +473,7 @@ class HlVenue:
                 return None
 
             spot_other_usd = 0.0
+            illiquid: List[str] = []
             for b in spot["balances"]:
                 if not isinstance(b, dict):
                     continue
@@ -492,12 +493,15 @@ class HlVenue:
                 px, day_ntl_vlm = priced
                 value = total * px
                 if day_ntl_vlm <= 0 or value > 10 * day_ntl_vlm:
-                    logger.warning(
-                        f"[hl.venue] extras: {user} {coin_name} marked ${value:,.0f} vs 24h pair "
-                        f"volume ${day_ntl_vlm:,.0f} -- illiquid mark, counting as 0"
-                    )
+                    illiquid.append(f"{coin_name} ${value:,.0f} vs ${day_ntl_vlm:,.0f} 24h volume")
                     continue
                 spot_other_usd += value
+            if illiquid:
+                # Expected, not a warning: a meme-coin bag with no market is worth 0 to a copier.
+                # One roll-up per read at DEBUG; until 2026-10-15 this was a WARNING per coin per
+                # read (389 lines in two hours of the live scout log, burying the real warnings).
+                logger.debug(f"[hl.venue] extras: {user} {len(illiquid)} illiquid spot mark(s) counted as 0: "
+                             + "; ".join(illiquid))
 
             try:
                 delegated = float(deleg.get("delegated") or 0)

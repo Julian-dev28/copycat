@@ -303,3 +303,30 @@ def test_m1_default_limiter_follows_the_env_priority_at_every_acquire(monkeypatc
     assert b.priority == "background" and b._reserve == 40.0
     pinned = rl.SharedTokenBucket(tmp_path / "c", capacity=100, refill_per_sec=1, priority="engine")
     assert pinned.priority == "engine"                       # explicit pin is kept
+
+
+# ── waited_s: this process's cumulative wait for HL budget ───────────────────
+
+def test_waited_s_counts_acquire_sleeps_in_both_buckets_and_429_backoffs(tmp_path):
+    """The scout's stage-B summary reports `bucket_wait_s` from this meter so an
+    eval can tell slow work from a pass queued behind the engine (2026-10-15:
+    378 s of wall clock for ~100 s of work). Only real waits count: an acquire
+    that finds its tokens adds nothing, a refused acquire never slept."""
+    t0 = rate_limit.waited_s()
+    b = TokenBucket(capacity=10, refill_per_sec=1000.0)
+    assert b.acquire(10, max_wait=0) is True            # tokens were there: no sleep
+    assert rate_limit.waited_s() == t0
+    assert b.acquire(10, max_wait=1.0) is True          # ~10 ms of refill
+    t1 = rate_limit.waited_s()
+    assert t1 - t0 >= 0.005
+    sb = SharedTokenBucket(tmp_path / "b", capacity=10, refill_per_sec=1000.0, priority="engine")
+    assert sb.acquire(10, max_wait=0) is True
+    assert sb.acquire(10, max_wait=1.0) is True
+    t2 = rate_limit.waited_s()
+    assert t2 - t1 >= 0.005
+    assert sb.acquire(10, max_wait=0) is False          # refused up front: nothing slept
+    assert rate_limit.waited_s() == t2
+    rate_limit.note_waited(2.5)                          # hl.http adds its 429 back-off this way
+    assert rate_limit.waited_s() == pytest.approx(t2 + 2.5)
+    rate_limit.note_waited(-1.0)                         # never goes backwards
+    assert rate_limit.waited_s() == pytest.approx(t2 + 2.5)

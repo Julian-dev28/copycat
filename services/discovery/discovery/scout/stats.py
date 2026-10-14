@@ -48,11 +48,15 @@ from contracts.models import PnlWindow
 from contracts.venue import Venue
 
 from .. import config as discovery_config
-from .. import fills_cache
-from .. import funding_cache
+from .. import fills_cache, funding_cache
 from . import config as C
 from . import metrics as M
 from . import store
+
+try:
+    from hl import rate_limit as _hl_rate_limit  # the HL bucket's wait meter (bucket_waited_s)
+except ImportError:  # pragma: no cover - a venue-less checkout; the summary then reports 0 wait
+    _hl_rate_limit = None
 
 logger = logging.getLogger(__name__)
 
@@ -418,10 +422,19 @@ def _percentile(values: Sequence[float], p: float) -> float:
     return s[lo] + (s[hi] - s[lo]) * (k - lo)
 
 
-def summarize_pass(costs: Sequence[WalletCost]) -> Optional[Dict[str, Any]]:
+def bucket_waited_s() -> float:
+    """Seconds this process has spent waiting for HL budget so far (acquire
+    sleeps and 429 back-offs, hl.rate_limit.waited_s). 0 without hl."""
+    return float(_hl_rate_limit.waited_s()) if _hl_rate_limit is not None else 0.0
+
+
+def summarize_pass(costs: Sequence[WalletCost], bucket_wait_s: float = 0.0) -> Optional[Dict[str, Any]]:
     """p50/p95 weight, pages, seconds + the 5 most expensive wallets, for
     the INFO log line and scout_meta["stage_b_summary"]. None for an empty
-    pass (nothing admitted: fully budget-starved or an empty cohort)."""
+    pass (nothing admitted: fully budget-starved or an empty cohort).
+    `bucket_wait_s`: how much of the pass was spent asleep waiting for HL
+    budget, so a reader (stats_budget_check.py check 2) can tell slow work
+    from a pass queued behind the engine on the shared bucket."""
     if not costs:
         return None
     weights = [c.weight for c in costs]
@@ -437,6 +450,7 @@ def summarize_pass(costs: Sequence[WalletCost]) -> Optional[Dict[str, Any]]:
         "pages_p95": round(_percentile(pages, 0.95), 2),
         "seconds_p50": round(_percentile(seconds, 0.50), 3),
         "seconds_p95": round(_percentile(seconds, 0.95), 3),
+        "bucket_wait_s": round(max(0.0, float(bucket_wait_s)), 3),
         "top5": [{"address": c.address, "weight": round(c.weight, 1)} for c in top5],
     }
 
@@ -452,6 +466,7 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         order = order[:limit]
     res = StageResult()
     book_set, req_set, custom_set = set(book), set(requested), set(custom)
+    waited_before = bucket_waited_s()
     for i, a in enumerate(order):
         meta = index.get(a) or {}
         has_stats = bool(meta.get("updated_ms"))
@@ -483,11 +498,11 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
                     a, cv.weight, cv.weight_by, pages, elapsed, cost.due_full)
         if progress:
             progress(i + 1, len(order))
-    summary = summarize_pass(res.costs)
+    summary = summarize_pass(res.costs, bucket_wait_s=bucket_waited_s() - waited_before)
     if summary:
         logger.info("scout stage B summary: n=%d full=%d weight p50=%.0f p95=%.0f pages p50=%.1f p95=%.1f "
-                   "seconds p50=%.2f p95=%.2f top5=%s", summary["n"], summary["full_count"],
+                   "seconds p50=%.2f p95=%.2f bucket wait=%.0fs top5=%s", summary["n"], summary["full_count"],
                    summary["weight_p50"], summary["weight_p95"], summary["pages_p50"], summary["pages_p95"],
-                   summary["seconds_p50"], summary["seconds_p95"], summary["top5"])
+                   summary["seconds_p50"], summary["seconds_p95"], summary["bucket_wait_s"], summary["top5"])
         store.meta_set(conn, {"stage_b_summary": summary})
     return res

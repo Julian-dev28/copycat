@@ -18,6 +18,12 @@ Control plane for the tests (never something copycat calls):
                                positions: {coin: {szi, entryPx?, leverage?, isCross?}}; szi 0 removes it
   POST /__mock/mids            {coin: px}
   POST /__mock/fail            {kind: "order", times: n, error: "..."}: next n orders rejected
+  POST /__mock/trade           {address, coin, is_buy, sz, reduce_only?, time?}: the user trades at the
+                               coin's mid, no signature (a leader "trading" in a test); the fill lands in
+                               userFills and the position in clearinghouseState exactly as a signed
+                               order's would. `time` backdates the fill (a trip that closed an hour ago).
+  POST /__mock/keypair         a fresh throwaway {address, private_key} (eth_account), for a test that
+                               imports an API wallet through the web UI; never a real key
   GET  /__mock/exchange        recorded /exchange requests (decoded), ?since=<seq>
   GET  /__mock/state           the whole state (debug)
 
@@ -39,6 +45,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
+from eth_account import Account
 from hyperliquid.utils.signing import (
     recover_agent_or_user_from_l1_action,
     recover_user_from_user_signed_action,
@@ -76,6 +83,26 @@ USER_SIGNED_TYPES = {
 }
 
 DAY_MS = 86_400_000
+
+# Spot: one pair, HYPE/USDC. hl.meta.spot_prices needs a HYPE price or HlVenue.extras
+# fails the whole read and every board card says "extras unavailable".
+SPOT_TOKENS: List[Dict[str, Any]] = [
+    {"name": "USDC", "szDecimals": 8, "weiDecimals": 8, "index": 0, "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+     "isCanonical": True, "evmContract": None, "fullName": None},
+    {"name": "HYPE", "szDecimals": 2, "weiDecimals": 8, "index": 1, "tokenId": "0x0d01dc56dcaaca66ad901c959b4011ec",
+     "isCanonical": True, "evmContract": None, "fullName": None},
+]
+
+
+def _spot_meta() -> Dict[str, Any]:
+    return {"tokens": SPOT_TOKENS,
+            "universe": [{"name": "HYPE/USDC", "tokens": [1, 0], "index": 0, "isCanonical": True}]}
+
+
+def _spot_ctx() -> Dict[str, Any]:
+    mid = STATE.markets["HYPE"]["mid"]
+    return {"dayNtlVlm": "5000000", "markPx": _fmt(mid), "midPx": _fmt(mid), "prevDayPx": _fmt(mid * 0.99),
+            "circulatingSupply": "0", "coin": "HYPE/USDC", "totalSupply": "0", "dayBaseVlm": "0"}
 
 
 def _now_ms() -> int:
@@ -315,11 +342,9 @@ def info(body: Dict[str, Any]) -> Any:
                 return [{"universe": [], "marginTables": []}, []]
             return [_meta(), [_asset_ctx(m) for m in STATE.markets.values()]]
         if t == "spotMeta":
-            return {"tokens": [{"name": "USDC", "szDecimals": 8, "weiDecimals": 8, "index": 0,
-                                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054", "isCanonical": True,
-                                "evmContract": None, "fullName": None}], "universe": []}
+            return _spot_meta()
         if t == "spotMetaAndAssetCtxs":
-            return [info({"type": "spotMeta"}), []]
+            return [_spot_meta(), [_spot_ctx()]]
         if t == "perpDexs":
             return [None]
         if t == "allMids":
@@ -545,6 +570,24 @@ def control(method: str, path: str, query: Dict[str, List[str]], body: Any) -> T
         if path == "/__mock/fail" and method == "POST":
             STATE.fail_orders.extend([str(body.get("error") or "mock rejected")] * int(body.get("times") or 1))
             return 200, {"pending": len(STATE.fail_orders)}
+        if path == "/__mock/trade" and method == "POST":
+            b = body or {}
+            coin = str(b.get("coin") or "")
+            if coin not in STATE.markets:
+                return 400, {"error": f"unknown coin {coin!r}"}
+            u = STATE.user(str(b["address"]))
+            f, err = STATE.fill(u, coin, bool(b.get("is_buy", True)), float(b["sz"]), STATE.markets[coin]["mid"],
+                                bool(b.get("reduce_only", False)), None)
+            if err:
+                return 400, {"error": err}
+            if b.get("time") is not None:
+                f["time"] = int(b["time"])
+                u["fills"].sort(key=lambda x: x["time"])
+            return 200, f
+        if path == "/__mock/keypair" and method == "POST":
+            acct = Account.create()
+            key = acct.key.hex()
+            return 200, {"address": acct.address.lower(), "private_key": key if key.startswith("0x") else "0x" + key}
         if path == "/__mock/exchange":
             since = int((query.get("since") or ["0"])[0])
             return 200, [r for r in STATE.exchange if r["seq"] > since]

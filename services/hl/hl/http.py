@@ -178,6 +178,7 @@ def http_post(
                 except Exception as drain_exc:
                     logger.warning(f"[hl.http] could not drain limiter after 429: {drain_exc}")
                 time.sleep(sleep_s)
+                rate_limit.note_waited(sleep_s)   # the pass's wait meter (stage B summary, evals)
                 continue
             resp.raise_for_status()
             body = resp.json()

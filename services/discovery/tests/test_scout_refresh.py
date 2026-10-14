@@ -398,3 +398,23 @@ def test_heartbeats_keep_beating_while_one_wallet_is_slow(w, monkeypatch):
     v.block.set()
     th.join(5)
     assert not errs and public.scout_status().state == "idle"
+
+
+def test_stage_b_summary_records_the_bucket_wait(tmp_path, monkeypatch):
+    """`bucket_wait_s`: the seconds this pass spent asleep waiting for HL budget
+    (hl.rate_limit.waited_s: acquire sleeps and 429 back-offs), read once before
+    the first wallet and once after the last. Beside a live engine the 2026-10-15
+    warm eval pass was 378 s of wall clock for ~100 s of work; stats_budget_check
+    check 2 subtracts this so it measures the warm path, not the engine's queue."""
+    from test_scout_world import build_venue
+    v = build_venue()
+    conn = store.connect(tmp_path / "wait.db")
+    addrs = sorted(BOARD)
+    meter = iter([100.0, 103.25])
+    monkeypatch.setattr(stats, "bucket_waited_s", lambda: next(meter))
+    stats.run_stage_b(conn, v, addrs, NOW, stats.Budget(1e9, 60))
+    assert store.meta_get(conn, "stage_b_summary")["bucket_wait_s"] == 3.25
+    # a fake venue never touches the bucket: the real meter reports no wait for the pass
+    monkeypatch.undo()
+    stats.run_stage_b(conn, v, addrs, NOW + 1, stats.Budget(1e9, 60))
+    assert store.meta_get(conn, "stage_b_summary")["bucket_wait_s"] == 0.0

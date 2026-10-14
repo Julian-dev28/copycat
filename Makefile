@@ -23,10 +23,10 @@ ifeq ($(origin WEB_PORT),command line)
 export COPYCAT_WEB_ORIGIN := http://localhost:$(WEB_PORT)
 endif
 
-.PHONY: help install dev test eval openapi up down mcp-install
+.PHONY: help install dev test eval e2e-demo e2e openapi up down mcp-install
 
 help: ## list targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
 install: ## python venv (uv) + web deps (npm ci)
 	@command -v uv >/dev/null || { echo "uv not found: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
@@ -49,6 +49,12 @@ test: ## gate tests: pytest + web lint, typecheck, vitest
 
 eval: ## live evals against real Hyperliquid (read-only, needs network)
 	$(PY) -m pytest -m live
+
+e2e-demo: ## Playwright, web only in demo mode (demo + a11y + visual), on a throwaway stack
+	cd e2e && npm run demo
+
+e2e: ## e2e-demo, then the full stack (api, engine, scout) against the mock Hyperliquid
+	cd e2e && npm run demo && npm run full
 
 openapi: ## regenerate services/api/openapi.json and the web client types
 	$(PY) -m api.openapi_export

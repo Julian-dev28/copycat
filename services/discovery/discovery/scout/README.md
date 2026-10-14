@@ -445,9 +445,14 @@ opens. Exit code = failed checks. Run it after touching `stats.build_wallet`,
 Weight is what HL metered for the pages that came back (`HlVenue.last_read`,
 billed by `stats.CountingVenue`; `tests/invariants/test_hl_weights.py` pins
 it to `hl.rate_limit`'s rule): a warm wallet is portfolio 20 + a one-page
-tail at 20 + 1 per 20 rows, about 41. The wall-clock check only means
-something ALONE: beside the live scout's own pass every call waits on the
-shared bucket.
+tail at 20 + 1 per 20 rows, about 41. The wall-clock check (2) is net of
+bucket wait: `stage_b_summary.bucket_wait_s` is the seconds the pass slept
+waiting for HL budget (`hl.rate_limit.waited_s`: every acquire sleep plus
+every 429 back-off, read before the first wallet and after the last), and
+the check is `wall - bucket_wait_s <= 240`. Beside a live engine every call
+queues on the shared per-IP bucket (378 s of wall clock for about 100 s of
+work on 2026-10-15), and that queue is the engine's, not the warm path's;
+the raw wall clock is still printed next to it.
 Last run 2026-10-15 01:25 to 02:42 on 80cf15f, beside the live scout's hourly
 pass (shared bucket, background priority), universe 40: 5/7. Cold pass 3,090 s,
 23,930 weight (p50 395, pages p50 5.0, 40/40 built, 0 deferred); warm pass
@@ -467,10 +472,11 @@ weight (p50 632, p95 1,530, pages p50 6.0, 20/20 built); warm pass 378 s,
 new fills during the 31 min cold pass); ETA absent below the gate over
 14,091 samples and present after it. Check 3 (warm p50 <= 60) passes at 40
 = portfolio 20 + a tail at 20 + 1 per 20 rows, the number the billing fix
-was for. Check 2 (warm wall clock <= 240 s) failed at 378 s: seconds p50
-5.0 but p95 65 on the 7 full-set wallets, every call queued behind the
-engine on the shared bucket; a warm pass alone on an idle bucket is the
-only run that can pass it, and no such host exists while copycat trades.
+was for. Check 2 (then the raw warm wall clock <= 240 s) failed at 378 s:
+seconds p50 5.0 but p95 65 on the 7 full-set wallets, every call queued
+behind the engine on the shared bucket; no host where copycat trades could
+pass a raw wall-clock check, which is why the check now subtracts the
+measured bucket wait (see the re-run below).
 Live scout, first pass under real billing (d89b1d0, 2026-10-15 04:10 to 05:01,
 `stage_b_summary` in scout_meta): n=91, full set on 87 (the 6 h full-refresh
 window had lapsed for the whole deferred backlog), weight p50 92, p95 310,

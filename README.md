@@ -154,6 +154,8 @@ make install   # .venv via uv + npm ci in services/web
 make dev       # api + engine + scout + web together; Ctrl-C stops all four
 make test      # gate: pytest (no network, <2s) + web lint, typecheck, vitest
 make eval      # live, read-only evals against real Hyperliquid (pytest -m live)
+make e2e-demo  # Playwright, web only in demo mode, on a throwaway stack (e2e/README.md)
+make e2e       # e2e-demo, then the whole product against the mock Hyperliquid: connect, go live, copy, mirror
 make openapi   # regenerate services/api/openapi.json + web client types after a route change
 make up        # docker compose up -d --build
 make down      # docker compose down
