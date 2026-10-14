@@ -51,6 +51,18 @@ test.describe("demo Scout", () => {
     await expect(same.getByRole("button", { name: /Already copying|Copying/ })).toBeVisible();
   });
 
+  test("Copyable preset: the chip carries a count and keeps only wallets the sim could follow", async ({ page }) => {
+    await gotoDemo(page, "/scout");
+    const all = await page.locator("main article").count();
+    const chip = page.getByRole("group", { name: "Presets" }).getByRole("button", { name: /^Copyable/ });
+    await expect(chip).toBeVisible();
+    const count = Number((await chip.innerText()).replace(/\D/g, ""));
+    expect(count).toBeGreaterThan(0);
+    await chip.click();
+    await expect(page).toHaveURL(/preset=copyable/);
+    await expect(page.locator("main article")).toHaveCount(Math.min(count, all));
+  });
+
   test("add a custom wallet from the board: file opens, Custom preset shows it, remove takes it off", async ({ page }) => {
     const errors = trackErrors(page);
     const addr = "0x" + "5a".repeat(20);     // not on the demo board

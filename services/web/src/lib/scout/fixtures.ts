@@ -1,3 +1,4 @@
+import { COPYABLE_MIN_COPIES } from "@/lib/api/types";
 /**
  * Deterministic Scout fixtures: a realistic board, trader files, fills,
  * orders, presets, status and what-if results, all shaped exactly like the
@@ -308,6 +309,7 @@ export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
     departed_30d: 11,
     departed_liquidated_30d: 3,
     custom: rows.filter((r) => r.custom).length,
+    copyable: rows.filter((r) => r.score.sim_copies >= COPYABLE_MIN_COPIES).length,
   };
 }
 

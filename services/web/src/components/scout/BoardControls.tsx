@@ -44,6 +44,13 @@ export function PresetRow({ state, presets, update }: { state: BoardState; prese
       <Chip active={state.preset === "all"} onClick={() => update({ preset: "all" })}>
         All traders
       </Chip>
+      <Chip
+        active={state.preset === "copyable"}
+        onClick={() => update({ preset: "copyable" })}
+        title="The copy-sim opened at least 5 copies of this wallet at the current sim terms: it could actually follow him at that size. The rest nibble under the $10.50 minimum, trade too rarely, or sat idle."
+      >
+        Copyable{presets?.copyable ? <span className="num-sm text-muted">{presets.copyable}</span> : null}
+      </Chip>
       <Chip active={state.preset === "hip3"} onClick={() => update({ preset: "hip3" })} title="Half or more of top-coin volume on HIP-3 (xyz:) markets">
         HIP-3 equities{presets?.hip3 ? <span className="num-sm text-muted">{presets.hip3}</span> : null}
       </Chip>

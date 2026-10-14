@@ -28,7 +28,10 @@ import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
-export const CONTRACT_VERSION = 17;
+export const CONTRACT_VERSION = 18;
+/** v18 preset=copyable: at least this many sim copies at the served terms. Mirrors
+ * discovery.scoring.MIN_TRUSTED_COPIES (tests/invariants/test_web_constants.py checks it). */
+export const COPYABLE_MIN_COPIES = 5;
 export const MAX_LEADERS = 25;
 export const HL_MIN_ORDER_USD = 10.5;
 export const MAX_LEVERAGE_CAP = 50;

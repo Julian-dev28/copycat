@@ -2555,6 +2555,11 @@
             "title": "Coins",
             "type": "array"
           },
+          "copyable": {
+            "default": 0,
+            "title": "Copyable",
+            "type": "integer"
+          },
           "custom": {
             "default": 0,
             "title": "Custom",
@@ -2798,7 +2803,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 17,
+            "default": 18,
             "title": "Contract Version",
             "type": "integer"
           },
@@ -7380,7 +7385,7 @@
             "required": false,
             "schema": {
               "default": "all",
-              "pattern": "^(all|hip3|custom|coin:[A-Za-z0-9_:.\\-]{1,32})$",
+              "pattern": "^(all|hip3|custom|copyable|coin:[A-Za-z0-9_:.\\-]{1,32})$",
               "title": "Preset",
               "type": "string"
             }

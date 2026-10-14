@@ -269,6 +269,8 @@ export interface ScoutPresetsWire {
   departed_liquidated_30d?: number;
   /** v15: hand-added wallets on the served board. */
   custom?: number;
+  /** v18: rows with >= COPYABLE_MIN_COPIES sim copies at the served terms. */
+  copyable?: number;
 }
 
 /** What the preset row renders; lib/scout/query.ts::normalizePresets builds it from the wire shape. */
@@ -279,6 +281,7 @@ export interface ScoutPresets {
   departed: number;
   departedLiquidated: number;
   custom: number;
+  copyable: number;
 }
 
 /** v15: one hand-added wallet (GET/POST /api/scout/custom). */

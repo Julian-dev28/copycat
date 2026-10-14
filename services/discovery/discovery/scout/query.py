@@ -19,7 +19,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from contracts.models import TradingStyle
 
+from .. import scoring
 from . import config as C
+
+# preset=copyable: the copy-sim opened at least this many copies at the served terms, the same
+# bar scoring.py and copy_fit.py use for "enough trades to trust" (too_few_trades below it). The
+# web mirrors it as COPYABLE_MIN_COPIES in lib/api/types.ts (tests/invariants/test_web_constants.py).
+COPYABLE_MIN_COPIES = scoring.MIN_TRUSTED_COPIES
 
 WINDOWS = {"1d", "7d", "30d", "all"}
 SORTS = {
@@ -97,8 +103,8 @@ def parse(d: Optional[Dict[str, Any]]) -> Query:
     if q.window not in WINDOWS:
         raise ScoutQueryError(f"window: {q.window!r} not in {sorted(WINDOWS)}")
     q.preset = str(_val(d.get("preset")) or "all")
-    if not (q.preset in ("all", "hip3", "custom") or (q.preset.startswith("coin:") and len(q.preset) > 5)):
-        raise ScoutQueryError(f"preset: {q.preset!r} (all, hip3, custom, coin:<COIN>)")
+    if not (q.preset in ("all", "hip3", "custom", "copyable") or (q.preset.startswith("coin:") and len(q.preset) > 5)):
+        raise ScoutQueryError(f"preset: {q.preset!r} (all, hip3, custom, copyable, coin:<COIN>)")
     q.coins = _list(d.get("coin"))
     q.styles = _list(d.get("style"))
     bad = [s for s in q.styles if s not in STYLES]
@@ -170,6 +176,9 @@ def where(q: Query, refresh_id: str, now_ms: Optional[int] = None) -> Tuple[str,
         args.append("%:%")
     elif q.preset == "custom":                   # v15: wallets the user added by hand
         clauses.append("address IN (SELECT address FROM scout_custom)")
+    elif q.preset == "copyable":                 # v18: the sim could actually follow him at the served terms
+        clauses.append("sim_copies >= ?")
+        args.append(COPYABLE_MIN_COPIES)
     elif q.preset.startswith("coin:"):
         clauses.append("top_coin = ?")
         args.append(q.preset[5:])

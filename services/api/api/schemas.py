@@ -175,7 +175,7 @@ class ScoutQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     window: PnlWindow = PnlWindow.month
-    preset: str = Field("all", pattern=r"^(all|hip3|custom|coin:[A-Za-z0-9_:.\-]{1,32})$")
+    preset: str = Field("all", pattern=r"^(all|hip3|custom|copyable|coin:[A-Za-z0-9_:.\-]{1,32})$")
     coin: List[str] = Field(default_factory=list, max_length=20)
     min_av: Optional[float] = Field(None, ge=0)
     max_av: Optional[float] = Field(None, ge=0)

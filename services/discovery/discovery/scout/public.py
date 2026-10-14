@@ -149,9 +149,11 @@ def scout_presets() -> ScoutPresets:
     dep = store.departures_summary(conn, R.now_ms() - 30 * C.DAY_MS)
     custom = conn.execute("SELECT COUNT(*) FROM scout_rows WHERE refresh_id = ? "
                           "AND address IN (SELECT address FROM scout_custom)", (rid,)).fetchone()[0]
+    copyable = conn.execute("SELECT COUNT(*) FROM scout_rows WHERE refresh_id = ? AND sim_copies >= ?",
+                            (rid, Q.COPYABLE_MIN_COPIES)).fetchone()[0]
     return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total,
                         departed_30d=dep["departed"], departed_liquidated_30d=dep["departed_liquidated"],
-                        custom=int(custom))
+                        custom=int(custom), copyable=int(copyable))
 
 
 # ── sim terms (v16): the board's own copy-sim terms, apart from live Settings ─

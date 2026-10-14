@@ -104,6 +104,40 @@ def test_in_book_flag_and_presets(w):
     assert pr.coin_counts == {"BTC": 2, "ETH": 2, "xyz:TSLA": 1, "SOL": 1}
 
 
+def test_copyable_preset_is_the_rows_with_enough_sim_copies(w):
+    """v18: the Copyable chip. Measured on the live board 2026-10-15: whatever the sim
+    terms, ~95 to 130 of 297 wallets clear 5 sim copies; the rest are inactive, nibble
+    under the $10.50 minimum or trade too rarely, and sat at Fit 20 looking like a dead
+    leaderboard. The preset and its count must agree exactly."""
+    from discovery import scoring
+    from discovery.scout import query as Q
+    assert Q.COPYABLE_MIN_COPIES == scoring.MIN_TRUSTED_COPIES == 5
+    every = public.scout_page({**q(), "limit": 200}).rows
+    expect = sorted(r.address for r in every if r.score.sim_copies >= 5)
+    page = public.scout_page({**q(), "preset": "copyable", "limit": 200})
+    assert sorted(r.address for r in page.rows) == expect and page.total == len(expect)
+    assert public.scout_presets().copyable == len(expect)
+    assert 0 < len(expect) < len(every), "the world fixture must have both kinds"
+    with pytest.raises(Q.ScoutQueryError):
+        Q.parse({**q(), "preset": "copyab"})
+
+
+def test_sim_copies_column_is_added_to_a_database_that_predates_it(w):
+    """An existing data/discovery.db has scout_rows without sim_copies (v18). connect()
+    adds it; rows published before carry NULL (never copyable until republished),
+    rows published after carry the count."""
+    from discovery.scout import store
+    conn = store.connect(w["db"])
+    conn.execute("ALTER TABLE scout_rows DROP COLUMN sim_copies")
+    conn.commit()
+    assert "sim_copies" not in [r[1] for r in conn.execute("PRAGMA table_info(scout_rows)").fetchall()]
+    conn2 = store.connect(w["db"])
+    cols = [r[1] for r in conn2.execute("PRAGMA table_info(scout_rows)").fetchall()]
+    assert "sim_copies" in cols
+    assert public.scout_presets().copyable == 0                       # old rows: NULL, not copyable
+    assert public.scout_page({**q(), "preset": "copyable"}).total == 0
+
+
 def test_empty_board_before_first_build(tmp_path):
     public.configure(db_path=tmp_path / "empty.db")
     p = public.scout_page(q())

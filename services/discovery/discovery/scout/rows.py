@@ -143,6 +143,7 @@ def sql_row(row: TraderRow, refresh_id: str, settings_hash: str, u: Dict[str, An
         "coins_csv": "," + ",".join(coins) + "," if coins else "",
         "flags_csv": "," + ",".join(row.flags) + "," if row.flags else "",
         "flagged": int(any(f.split(":")[0] in HIDE_FLAGS for f in row.flags)),
+        "sim_copies": int(row.score.sim_copies),      # v18: preset=copyable
         "row_json": row.model_dump_json(),
     }
     for p in row.perf:

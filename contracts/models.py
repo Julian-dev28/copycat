@@ -13,7 +13,12 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 17  # v17: RoundTrip.liquidation (this trip was force-closed, or partially force-
+CONTRACT_VERSION = 18  # v18: ScoutPresets.copyable + preset=copyable (GET /api/scout/traders): rows whose
+#                        copy-sim opened >= scoring.MIN_TRUSTED_COPIES copies at the served sim terms, the
+#                        wallets the sim could actually follow at that size. Measured 2026-10-15 on the
+#                        live 297-wallet board: ~95 to 130 such rows whatever the terms; the rest are
+#                        inactive, nibble under the $10.50 minimum, or trade too rarely (scout README).
+# v17: RoundTrip.liquidation (this trip was force-closed, or partially force-
 #                        reduced, by HL's liquidation engine at least once during the hold -- a
 #                        liquidation is its own event type in the trade history, never an ordinary
 #                        closed loss; user_consensus_2026-10 Trade history correctness checklist)
@@ -593,6 +598,8 @@ class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /
     departed_liquidated_30d: int = 0
     # v15: wallets added by hand that are on the served board (the `preset=custom` tab's total)
     custom: int = 0
+    # v18: rows with >= scoring.MIN_TRUSTED_COPIES sim copies at the served terms (the `preset=copyable` tab's total)
+    copyable: int = 0
 
 
 class ScoutSimTerms(BaseModel):          # v16: GET/PUT /api/scout/sim-terms

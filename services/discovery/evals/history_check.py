@@ -49,7 +49,10 @@ from hl.venue import HlVenue  # noqa: E402
 
 API, TOKEN = sys.argv[1], sys.argv[2]
 WALLETS = [w.lower() for w in sys.argv[3:6]]
-MAX_WAIT_S = float(sys.argv[6]) if len(sys.argv) > 6 else 180.0
+# 900 s, not 180: an on-demand build of a dense wallet shares the per-IP HL budget with the
+# live scout's hourly stats pass (COPYCAT_HL_BUCKET_PATH), and two of three wallets timed out
+# at 180 s on 2026-10-15 while the build was progressing normally.
+MAX_WAIT_S = float(sys.argv[6]) if len(sys.argv) > 6 else 900.0
 fails = 0
 venue = HlVenue()
 

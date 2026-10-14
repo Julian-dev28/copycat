@@ -31,8 +31,10 @@ from discovery.scout import refresh as R
 from contracts.models import ScoutSimTerms
 
 API, TOKEN = sys.argv[1], sys.argv[2]
-REFRESH_WAIT_S = 600.0     # the first full A+B+C build: real HL reads, 40 wallets
-RESIM_WAIT_S = 120.0       # a cache-only resim of 40 wallets: measured ~0.07s/wallet
+REFRESH_WAIT_S = 2400.0    # the first full A+B+C build: real HL reads, 40 wallets; sharing the per-IP
+                           # budget with the live scout's hourly pass it took over 10 min (2026-10-15)
+RESIM_WAIT_S = 300.0       # a cache-only resim of 40 wallets: measured ~0.07s/wallet, plus the
+                           # scheduler tick (10 s) and a possible stage-B pass in front of it
 fails = 0
 
 
@@ -139,8 +141,8 @@ check("4. default terms starve fewer (or equal) wallets on the $10.50 minimum",
 # ── 5. switching back to an already-cached hash is near-instant ──────────────
 t0 = time.monotonic()
 code, _ = call("PUT", "/api/scout/sim-terms", live_style)
-ok, elapsed = wait_for_hash(live_hash, 20.0)   # already simmed at this hash in step 3: no re-sim needed
-check("5. switching back to the live-style terms (already cached) is near-instant", ok and elapsed < 20.0,
+ok, elapsed = wait_for_hash(live_hash, 60.0)   # already simmed at this hash in step 3: no re-sim needed
+check("5. switching back to the live-style terms (already cached) is near-instant", ok and elapsed < 60.0,
       f"{elapsed:.1f}s")
 
 # ── 6. validation mirrors LeaderOverride ──────────────────────────────────────

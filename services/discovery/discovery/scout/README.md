@@ -27,6 +27,7 @@ Nothing heavy runs in the api process.
 | `scout_orders(address)` | `List[dict]` | live, 30 s cache; `ScoutReadError` on a failed read (never "no orders") |
 | `scout_what_if(address, settings, sim_equity_usd, override)` | `WhatIfResult` | `settings.for_leader(address)` patched by `override`; cached fills + candles only; `ScoutBusy` if one is running; `LookupError` if the wallet has no stats |
 | `scout_presets()` | `ScoutPresets` | `hip3_count` uses the same predicate as `preset=hip3` (any `dex:COIN` in top 5), so a tab count equals its total |
+| | | v18: `copyable` = rows with `sim_copies >= query.COPYABLE_MIN_COPIES` (scoring.MIN_TRUSTED_COPIES, 5) at the served terms, the same predicate as `preset=copyable`; stored in the `scout_rows.sim_copies` column (migration adds it; rows published before carry NULL until the next publish) |
 | `scout_status()` | `ScoutStatus` | `refresh_id` = the latest pipeline run; `error` says when `serve` is not running |
 | `scout_refresh()` | `ScoutStatus` | queues A+B+C for `serve` (picked up within 10 s); `ScoutBusy` when running or already queued |
 | `scout_custom_list()` | `List[CustomWallet]` | v15: wallets added by hand, with `on_board` / `queued` |
@@ -88,7 +89,7 @@ from stage B (`stats.build_wallet`, account value and window PnL from its own
 portfolio, refreshed on every rebuild). The cohort is every `lb`, `book` and
 `custom` universe row with stats (`store.BOARD_SOURCES`); `ondemand` rows
 (trader files opened by address) still stay off the board. Rows carry
-`custom=true`, `preset=custom` filters on `scout_custom`, `ScoutPresets.custom`
+`custom=true`, `preset=custom` filters on `scout_custom`, `ScoutPresets.custom`; `preset=copyable` (v18) keeps the rows the copy-sim could actually follow, `ScoutPresets.copyable` counts them
 counts them.
 
 On-demand requests (trader files for untracked wallets, custom wallets just

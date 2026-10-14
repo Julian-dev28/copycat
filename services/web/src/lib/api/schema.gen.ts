@@ -2060,6 +2060,11 @@ export interface components {
             /** Coins */
             coins?: string[];
             /**
+             * Copyable
+             * @default 0
+             */
+            copyable: number;
+            /**
              * Custom
              * @default 0
              */
@@ -2217,7 +2222,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 17
+             * @default 18
              */
             contract_version: number;
             /**

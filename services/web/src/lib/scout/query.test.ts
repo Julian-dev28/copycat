@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fixtureRows } from "./fixtures";
 import {
   activeFilterChips, applyBoardQuery, boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT,
-  normalizePresets, parseAmount, parseBoardState,
+  isPreset, normalizePresets, parseAmount, parseBoardState,
 } from "./query";
 
 const NOW = Date.UTC(2026, 9, 4, 12);
@@ -114,16 +114,17 @@ describe("normalizePresets", () => {
       departed_30d: 12, departed_liquidated_30d: 4,
     })).toEqual({
       coins: [{ coin: "BTC", traders: 40 }, { coin: "xyz:TSLA", traders: 0 }], hip3: 12, total: 280,
-      departed: 12, departedLiquidated: 4, custom: 0,
+      departed: 12, departedLiquidated: 4, custom: 0, copyable: 0,
     });
+    expect(normalizePresets({ coins: [], coin_counts: {}, hip3_count: 0, total: 3, copyable: 97 }).copyable).toBe(97);
     expect(normalizePresets({ coins: [], coin_counts: {}, hip3_count: 0, total: 3, custom: 2 }).custom).toBe(2);
     expect(normalizePresets({ coins: [], coin_counts: {}, hip3_count: 0, total: 3, custom: -1 }).custom).toBe(0);
   });
 
   it("reads the draft shape and degrades on junk", () => {
     expect(normalizePresets({ coins: [{ coin: "ETH", traders: 3 }, { coin: "bad coin!" }], hip3: 2 }).coins).toEqual([{ coin: "ETH", traders: 3 }]);
-    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0 });
-    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0 });
+    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0, copyable: 0 });
+    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0, copyable: 0 });
   });
 });
 
@@ -134,6 +135,14 @@ describe("preset=custom (v15: hand-added wallets)", () => {
     expect(boardStateToSearch(s)).toBe("preset=custom");
     expect(boardStateToApiQuery(s)).toContain("preset=custom");
     expect(parse("preset=mine").preset).toBe("all");
+  });
+
+  it("applyBoardQuery preset=copyable keeps rows with at least COPYABLE_MIN_COPIES sim copies", () => {
+    const rows = fixtureRows(NOW).slice(0, 12).map((r, i) => ({ ...r, score: { ...r.score, sim_copies: i } }));
+    const out = applyBoardQuery(rows, { ...DEFAULT_BOARD, preset: "copyable" }, NOW);
+    expect(out.rows.map((r) => r.score.sim_copies).sort((a, b) => a - b)).toEqual([5, 6, 7, 8, 9, 10, 11]);
+    expect(out.total).toBe(7);
+    expect(isPreset("copyable")).toBe(true);
   });
 
   it("applyBoardQuery keeps only rows with custom=true, in any sort", () => {

@@ -20,6 +20,8 @@ def _const(name: str) -> float:
 
 def test_web_constants_match_the_contracts():
     assert _const("CONTRACT_VERSION") == models.CONTRACT_VERSION
+    from discovery import scoring
+    assert _const("COPYABLE_MIN_COPIES") == scoring.MIN_TRUSTED_COPIES   # v18 preset=copyable, both sides
     assert _const("MAX_LEADERS") == models.MAX_LEADERS
     assert _const("HL_MIN_ORDER_USD") == models.HL_MIN_ORDER_USD
     assert _const("MAX_LEVERAGE_CAP") == models.MAX_LEVERAGE_CAP

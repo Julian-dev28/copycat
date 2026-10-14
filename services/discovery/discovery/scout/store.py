@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS scout_rows (
   sharpe REAL, max_dd REAL, win_rate REAL, trips INTEGER,
   style TEXT, size_tier TEXT, last_fill_ms INTEGER,
   top_coin TEXT, hip3_share REAL, coins_csv TEXT, flags_csv TEXT, flagged INTEGER,
+  sim_copies INTEGER,   -- v18: the Copyable preset (>= scoring.MIN_TRUSTED_COPIES copies at the served terms)
   row_json TEXT,
   PRIMARY KEY (refresh_id, settings_hash, address));
 CREATE INDEX IF NOT EXISTS idx_scout_rows_fit ON scout_rows (refresh_id, settings_hash, fit DESC);
@@ -87,7 +88,7 @@ ROW_COLUMNS = ("refresh_id", "settings_hash", "address", "display_name", "fit", 
                "account_value", "pnl_1d", "pnl_7d", "pnl_30d", "pnl_all",
                "roi_1d", "roi_7d", "roi_30d", "roi_all", "vlm_1d", "vlm_7d", "vlm_30d", "vlm_all",
                "sharpe", "max_dd", "win_rate", "trips", "style", "size_tier", "last_fill_ms",
-               "top_coin", "hip3_share", "coins_csv", "flags_csv", "flagged", "row_json")
+               "top_coin", "hip3_share", "coins_csv", "flags_csv", "flagged", "sim_copies", "row_json")
 
 UNIVERSE_COLUMNS = ("address", "display_name", "account_value", "pnl_1d", "pnl_7d", "pnl_30d", "pnl_all",
                     "roi_1d", "roi_7d", "roi_30d", "roi_all", "vlm_1d", "vlm_7d", "vlm_30d", "vlm_all",
@@ -97,6 +98,7 @@ UNIVERSE_COLUMNS = ("address", "display_name", "account_value", "pnl_1d", "pnl_7
 # database gets them from SCHEMA above already; this is for an existing data/discovery.db.
 _MIGRATIONS = (
     "ALTER TABLE scout_stats ADD COLUMN full_ms INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE scout_rows ADD COLUMN sim_copies INTEGER",   # v18 Copyable preset; NULL until the next publish
 )
 
 _schema_lock = threading.Lock()
