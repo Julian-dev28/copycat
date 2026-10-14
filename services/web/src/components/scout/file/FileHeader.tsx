@@ -36,7 +36,7 @@ export function FileHeader({
   nowMs: number;
   custom?: CustomActions;
 }) {
-  const { row, account } = profile;
+  const { row, account, positions_as_of_ms } = profile;
   const inBook = book.inBook(row.address);
   return (
     <div className="flex flex-col gap-3">
@@ -61,6 +61,9 @@ export function FileHeader({
             </span>
             <span>{biasLabel(account.long_bias_pct)}</span>
             <span>· last active {row.last_fill_ms ? formatAgo(row.last_fill_ms, nowMs) : "unknown"}</span>
+            <span title="Leverage, margin and position snapshot below: refreshed every few hours, not every pass. PnL and trade stats above update every pass.">
+              · account as of {formatAgo(positions_as_of_ms, nowMs)}
+            </span>
           </div>
           {row.flags.length ? (
             <div className="flex flex-wrap gap-1">
