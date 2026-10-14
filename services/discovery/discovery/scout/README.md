@@ -147,3 +147,5 @@ served with real account value and sim fields, that `presets.custom` counts
 it, and that DELETE takes it off at once. 2 to 6 minutes; exit code = failed
 checks. Run it after touching `refresh.service_requests`, `build_one`,
 `republish` or the custom store functions.
+Last run 2026-10-14 on c851d0b: 12/12 PASS, the row showed 9 s after the add
+while the refresh was at stats 0/41 ("built in 4s mid-refresh, board republished").
