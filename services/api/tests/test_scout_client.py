@@ -9,7 +9,7 @@ import types
 
 import pytest
 
-from contracts.models import LeaderOverride, ScoutStatus, Settings, TraderProfile
+from contracts.models import LeaderOverride, ScoutSimTerms, ScoutStatus, Settings, TraderProfile
 from api.scout_client import RealScoutClient, ScoutBusy, ScoutUnavailable
 
 from api_fakes import ADDR_A, make_profile, make_row, make_score
@@ -86,7 +86,12 @@ def test_dicts_and_models_both_accepted(monkeypatch: pytest.MonkeyPatch) -> None
                                       "orderType": "Take Profit Limit", "isTrigger": True,
                                       "triggerPx": "99", "triggerCondition": "Price below 99",
                                       "tif": None}],
-             scout_presets=lambda: {"coins": ["BTC"], "coin_counts": {"BTC": 3}, "hip3_count": 1})
+             scout_presets=lambda: {"coins": ["BTC"], "coin_counts": {"BTC": 3}, "hip3_count": 1},
+             scout_sim_terms_get=lambda: {"use_live_settings": False, "sim_equity_usd": 1000.0,
+                                          "allocation_usd": 100.0, "exposure_mode": "match", "target_leverage": 10,
+                                          "leverage_mode": "match", "leverage": 10, "margin_mode": "isolated",
+                                          "max_worse_entry_pct": 10.0, "small_account_mode": "concentrate"},
+             scout_sim_terms_set=lambda terms: (calls.__setitem__("sim_terms_set", terms) or terms))
     c = RealScoutClient()
     assert c.page({"limit": 5}).rows[0].address == ADDR_A
     assert calls["page"] == {"limit": 5}
@@ -101,6 +106,12 @@ def test_dicts_and_models_both_accepted(monkeypatch: pytest.MonkeyPatch) -> None
     assert o.order_type == "Take Profit Limit" and o.trigger_condition == "Price below 99"
     p = c.presets()
     assert p.coin_counts == {"BTC": 3} and p.hip3_count == 1
+    t = c.sim_terms_get()
+    assert isinstance(t, ScoutSimTerms) and t.allocation_usd == 100.0 and t.use_live_settings is False
+    new_terms = ScoutSimTerms(allocation_usd=250.0, use_live_settings=True)
+    out = c.sim_terms_set(new_terms)
+    assert isinstance(out, ScoutSimTerms) and out.allocation_usd == 250.0 and out.use_live_settings is True
+    assert calls["sim_terms_set"] == new_terms
 
 
 def test_open_order_view_raw_hl_untriggered_and_contract_shape() -> None:

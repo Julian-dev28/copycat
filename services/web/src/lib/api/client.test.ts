@@ -255,7 +255,7 @@ describe("demo write guard", () => {
   });
 
   it("blocks every typed write endpoint in demo", async () => {
-    window.history.replaceState(null, "", "/discover?demo=1");
+    window.history.replaceState(null, "", "/scout?demo=1");
     const writes = [
       () => api.patchSettings({ enabled: true }),
       () => api.putSettings({} as never),
@@ -263,7 +263,6 @@ describe("demo write guard", () => {
       () => api.removeLeader("0xabc"),
       () => api.haltEngine(),
       () => api.closeAllCopies(),
-      () => api.startDiscoveryRun({ sim_equity_usd: 1000, top_n: 25 } as never),
     ];
     for (const w of writes) await expect(w()).rejects.toThrow("demo mode: writes are disabled");
     expect(fetchMock).not.toHaveBeenCalled();

@@ -91,26 +91,61 @@ test.describe("demo Scout", () => {
     expect(errors).toEqual([]);
   });
 
-  test("Discover runs a canned scan with the inputs given", async ({ page }) => {
+  test("Sim terms control updates the page note and re-ranks the board", async ({ page }) => {
     const errors = trackErrors(page);
-    await gotoDemo(page, "/discover");
-    await expect(page.getByRole("heading", { level: 1, name: "Discover" })).toBeVisible();
-    // 1010, not the default 1000: see the KNOWN BUG test below
-    await page.getByRole("spinbutton", { name: /Simulated equity/ }).fill("1010");
-    await page.getByRole("spinbutton", { name: /Wallets to scan/ }).fill("10");
-    await page.getByRole("button", { name: "Start discovery run" }).click();
-    await expect(page.getByRole("heading", { name: /Results \(10\)/ })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Sort by Max DD" }).click();
+    await gotoDemo(page, "/scout");
+    await expect(page.getByRole("heading", { level: 1, name: "Scout" })).toBeVisible();
+    // the default reference terms (contracts/models.py ScoutSimTerms() field defaults:
+    // measured on a real-HL throwaway stack, see scout/README.md "Sim terms")
+    // Chromium's Intl.NumberFormat compact currency drops the decimal for round sub-1000/K
+    // values ("$100", "$1K"); Node's (vitest/jsdom, lib/scout/simTerms.test.ts) does not
+    // ("$100.0", "$1.0K"). Same formatUsd call, two ICU implementations: assert what each
+    // runtime actually renders rather than fight it.
+    await expect(page.getByText(/Ranked by what copying each wallet with \$100 at 3x leverage/)).toBeVisible();
+
+    const cards = page.locator("main article");
+    await expect(cards.first()).toBeVisible();
+    const firstBefore = await cards.first().innerText();
+
+    await page.getByRole("button", { name: "Sim terms" }).click();
+    const drawer = page.getByRole("dialog", { name: "Sim terms" });
+    await expect(drawer).toBeVisible();
+    // the default is already "Fixed" leverage (3x); just change the numbers
+    await expect(drawer.getByRole("radiogroup", { name: "Leverage mode" }).getByRole("radio", { name: "Fixed" }))
+      .toHaveAttribute("aria-checked", "true");
+    await drawer.getByLabel("Account equity").fill("5000");
+    await drawer.getByLabel("Per wallet").fill("500");
+    // The NumberField's accessible name picks up its trailing unit span ("x") too, and
+    // "Leverage" alone also substring-matches the "Leverage mode" radiogroup above, so
+    // target the input by id rather than guess the exact computed name.
+    await drawer.locator("#st-lev").fill("25");
+    await drawer.getByRole("button", { name: "Apply" }).click();
+    await expect(drawer).toBeHidden();
+
+    // the note reflects the NEW terms, not the old ones: $500 allocation, fixed 25x, $5K account
+    await expect(page.getByText(/Ranked by what copying each wallet with \$500 at 25x leverage would have earned a \$5K account/)).toBeVisible();
+    // and the board actually re-ranked (deterministic demo re-sim, lib/scout/fixtures.ts::applySimTerms)
+    await expect.poll(() => cards.first().innerText()).not.toEqual(firstBefore);
     expect(errors).toEqual([]);
   });
 
-  test("the default Discover form is valid and submits", async ({ page }) => {
-    // Regression: DiscoveryForm once had min={10} step={100}, which made the default 1000
-    // invalid (valid: 910, 1010), so Start silently did nothing.
-    await gotoDemo(page, "/discover");
-    const eq = page.getByRole("spinbutton", { name: /Simulated equity/ });
-    expect(await eq.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
-    await page.getByRole("button", { name: "Start discovery run" }).click();
-    await expect(page.getByRole("heading", { name: /Results \(/ })).toBeVisible({ timeout: 20_000 });
+  test("Sim terms: 'Their leverage' choice shows the capped-leverage wording", async ({ page }) => {
+    await gotoDemo(page, "/scout");
+    await page.getByRole("button", { name: "Sim terms" }).click();
+    const drawer = page.getByRole("dialog", { name: "Sim terms" });
+    await drawer.getByRole("radiogroup", { name: "Leverage mode" }).getByRole("radio", { name: "Their leverage" }).click();
+    await drawer.locator("#st-lev").fill("8");
+    await drawer.getByRole("button", { name: "Apply" }).click();
+    await expect(drawer).toBeHidden();
+    await expect(page.getByText(/Ranked by what copying each wallet with \$100 at their leverage \(8x cap\)/)).toBeVisible();
+  });
+
+  test("Sim terms: switching to live settings changes the note to the settings-based wording", async ({ page }) => {
+    await gotoDemo(page, "/scout");
+    await page.getByRole("button", { name: "Sim terms" }).click();
+    const drawer = page.getByRole("dialog", { name: "Sim terms" });
+    await drawer.getByRole("switch", { name: "Use my live trading settings" }).click();
+    await drawer.getByRole("button", { name: "Apply" }).click();
+    await expect(page.getByText("Ranked by what copying each wallet at your own trading settings would have earned you over the last 30 days.")).toBeVisible();
   });
 });

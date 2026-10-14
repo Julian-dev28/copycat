@@ -158,6 +158,8 @@ def test_mcp_token_reaches_its_scope(client, mcp_headers, engine, plans, allow):
     assert client.get("/api/settings", headers=mcp_headers).status_code == 200
     assert client.get("/api/status", headers=mcp_headers).status_code in (200, 503)
     assert client.get("/api/wallets", headers=mcp_headers).status_code == 200
+    assert client.get("/api/scout/sim-terms", headers=mcp_headers).status_code in (200, 503)
+    assert client.put("/api/scout/sim-terms", headers=mcp_headers, json={}).status_code == 403
     r = client.post("/api/mcp/plans", headers=mcp_headers, json={"address": A, "amount_usd": 50})
     assert r.status_code == 200 and r.json()["confirm_code"] is None
     r2 = client.post(f"/api/mcp/plans/{r.json()['plan_id']}/execute", headers=mcp_headers,

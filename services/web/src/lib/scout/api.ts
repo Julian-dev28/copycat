@@ -12,8 +12,10 @@ import { demoFileRow } from "./file/fixtures";
 import {
   fixtureFills, fixtureOrders, fixturePage, fixturePresets, fixtureProfile, fixtureRows, fixtureStatus, fixtureWhatIf,
 } from "./fixtures";
+import { applySimTerms, DEFAULT_SIM_TERMS } from "./fixtures";
 import type {
-  CustomWallet, LeaderFillView, ScoutPresets, ScoutStatus, TraderPage, TraderProfile, TraderRow, WhatIfRequest, WhatIfResult,
+  CustomWallet, LeaderFillView, ScoutPresets, ScoutSimTerms, ScoutStatus, TraderPage, TraderProfile, TraderRow, WhatIfRequest,
+  WhatIfResult,
 } from "./types";
 
 /** A trader file is either ready, or being built on demand (202 + ScoutStatus, spec 7.3). */
@@ -32,6 +34,9 @@ export interface ScoutSource {
   customList(): Promise<CustomWallet[]>;
   customAdd(address: string): Promise<CustomWallet>;
   customRemove(address: string): Promise<void>;
+  /** v16: the board's own copy-sim terms (equity, allocation, leverage, ...), apart from Settings. */
+  simTerms(): Promise<ScoutSimTerms>;
+  putSimTerms(terms: ScoutSimTerms): Promise<ScoutSimTerms>;
 }
 
 const enc = (a: string) => encodeURIComponent(normAddr(a));
@@ -63,6 +68,8 @@ export const liveScout: ScoutSource = {
   customAdd: (address) =>
     apiFetch<CustomWallet>("/api/scout/custom", { method: "POST", body: JSON.stringify({ address: normAddr(address) }) }),
   customRemove: (address) => apiFetch<void>(`/api/scout/custom/${enc(address)}`, { method: "DELETE" }),
+  simTerms: () => apiFetch<ScoutSimTerms>("/api/scout/sim-terms"),
+  putSimTerms: (terms) => apiFetch<ScoutSimTerms>("/api/scout/sim-terms", { method: "PUT", body: JSON.stringify(terms) }),
 };
 
 // ── demo ─────────────────────────────────────────────────────────────────────
@@ -114,15 +121,58 @@ export function resetDemoCustom(): void {
   saveDemoCustom();
 }
 
+/**
+ * Demo sim terms: in memory for the session (sessionStorage so a reload
+ * keeps the choice), like demoCustom() above. Applying terms re-sorts the
+ * fixture board deterministically (lib/scout/fixtures.ts::applySimTerms) so
+ * the e2e demo lane can assert the control actually re-ranks, with no api.
+ */
+const DEMO_SIM_TERMS_KEY = "copycat.demo.simTerms";
+let demoSimTermsCache: ScoutSimTerms | null = null;
+
+function demoSimTerms(): ScoutSimTerms {
+  if (demoSimTermsCache) return demoSimTermsCache;
+  try {
+    const raw = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(DEMO_SIM_TERMS_KEY);
+    demoSimTermsCache = raw ? (JSON.parse(raw) as ScoutSimTerms) : { ...DEFAULT_SIM_TERMS };
+  } catch {
+    demoSimTermsCache = { ...DEFAULT_SIM_TERMS };
+  }
+  return demoSimTermsCache;
+}
+
+function saveDemoSimTerms(terms: ScoutSimTerms): void {
+  demoSimTermsCache = terms;
+  try {
+    sessionStorage.setItem(DEMO_SIM_TERMS_KEY, JSON.stringify(terms));
+  } catch {
+    /* storage blocked: the in-memory copy still works for this page */
+  }
+}
+
+/** Test hook: forget the session's demo sim terms. */
+export function resetDemoSimTerms(): void {
+  demoSimTermsCache = null;
+  try {
+    sessionStorage.removeItem(DEMO_SIM_TERMS_KEY);
+  } catch {
+    /* no storage: nothing to clear */
+  }
+}
+
 function demoRows(): TraderRow[] {
   if (!demoRowsCache) demoRowsCache = fixtureRows(demoNowMs());
+  const base = demoRowsCache;
   const custom = demoCustom();
-  if (!custom.size) return demoRowsCache;
-  const onBoard = new Set(demoRowsCache.map((r) => r.address));
-  return [
-    ...demoRowsCache.map((r) => (custom.has(r.address) ? { ...r, custom: true } : r)),
-    ...[...custom.keys()].filter((a) => !onBoard.has(a)).map((a) => ({ ...demoFileRow(a, demoNowMs()), custom: true })),
-  ];
+  let withCustom = base;
+  if (custom.size) {
+    const onBoard = new Set(base.map((r) => r.address));
+    withCustom = [
+      ...base.map((r) => (custom.has(r.address) ? { ...r, custom: true } : r)),
+      ...[...custom.keys()].filter((a) => !onBoard.has(a)).map((a) => ({ ...demoFileRow(a, demoNowMs()), custom: true })),
+    ];
+  }
+  return applySimTerms(withCustom, demoSimTerms());
 }
 
 function demoCustomView(address: string): CustomWallet {
@@ -163,6 +213,11 @@ export const demoScout: ScoutSource = {
     demoCustom().delete(normAddr(address));
     saveDemoCustom();
     return later(undefined);
+  },
+  simTerms: () => later({ ...demoSimTerms() }),
+  putSimTerms: (terms) => {
+    saveDemoSimTerms(terms);      // demoRows() reads demoSimTerms() fresh every call: re-sorts at once
+    return later({ ...terms });
   },
 };
 

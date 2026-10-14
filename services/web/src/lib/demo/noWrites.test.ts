@@ -1,13 +1,12 @@
 /**
  * Gate (UX audit #1): with ?demo=1 on the URL, no write reaches the network.
- * 1. Every demo source (Settings, Discover, Account, Trade, Scout) is walked:
- *    every method is called and fetch must never see a non-GET request.
+ * 1. Every demo source (Settings, Account, Trade, Scout) is walked: every
+ *    method is called and fetch must never see a non-GET request.
  * 2. Every live source's methods are walked too: in demo the api client's
  *    guard must stop each write before fetch, whatever page calls it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoSettingsSource, liveSettingsSource } from "@/components/copy/settingsSource";
-import { demoDiscovery, liveDiscovery } from "@/components/discover/source";
 import { demoAccounts } from "@/lib/account/demo";
 import { liveAccounts } from "@/lib/account/api";
 import { demoTrade, liveTrade, resetDemoBooks } from "@/lib/trade/source";
@@ -62,17 +61,16 @@ afterEach(() => {
 });
 
 describe("demo sources never write to the api", () => {
-  it("walks Settings, Discover, Account, Trade and Scout demo sources", async () => {
+  it("walks Settings, Account, Trade and Scout demo sources", async () => {
     const trade = demoTrade("default");
     const walked = [
       ...(await walk("settings", demoSettingsSource(trade))),
-      ...(await walk("discover", demoDiscovery())),
       ...(await walk("account", demoAccounts)),
       ...(await walk("trade", trade)),
       ...(await walk("scout", demoScout)),
     ];
     expect(walked).toEqual(expect.arrayContaining([
-      "settings.patch", "settings.addLeader", "settings.removeLeader", "discover.start",
+      "settings.patch", "settings.addLeader", "settings.removeLeader",
       "account.transfer", "account.runAction", "trade.copy", "trade.stop", "trade.patch",
     ]));
     expect(calls).toEqual([]);   // demo sources do not even read the api
@@ -90,25 +88,11 @@ describe("demo sources never write to the api", () => {
     expect((await s.settings()).leaders).not.toContain(ADDR);
     expect(calls).toEqual([]);
   });
-
-  it("demo discovery runs, then lands canned results", async () => {
-    let now = 1_000_000;
-    const d = demoDiscovery(() => now);
-    const { run_id } = await d.start({ sim_equity_usd: 500, top_n: 5 } as never);
-    expect((await d.run(run_id)).status).toBe("running");
-    now += 10_000;
-    const done = await d.run(run_id);
-    expect(done.status).toBe("done");
-    expect(done.results.length).toBe(5);
-    expect(done.sim_equity_usd).toBe(500);
-    expect((await d.latest()).run_id).toBe(run_id);
-  });
 });
 
 describe("live sources in demo mode: the client guard stops every write", () => {
-  it("walks the live Settings, Discover, Account, Trade and Scout sources and the typed api", async () => {
+  it("walks the live Settings, Account, Trade and Scout sources and the typed api", async () => {
     await walk("settings", liveSettingsSource);
-    await walk("discover", liveDiscovery);
     await walk("account", liveAccounts);
     await walk("trade", liveTrade);
     await walk("scout", liveScout);

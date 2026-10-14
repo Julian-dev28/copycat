@@ -46,7 +46,7 @@ export { expect };
 
 /** Every page the app has. Dynamic ones use a demo address. */
 export const DEMO_TRADER = "0x1111111111111111111111111111111111111111";
-export const ROUTES = ["/", "/scout", "/portfolio", "/account", "/settings", "/discover"] as const;
+export const ROUTES = ["/", "/scout", "/portfolio", "/account", "/settings"] as const;
 
 /** Go to a page in demo mode and wait for the client to hydrate. */
 export async function gotoDemo(page: Page, route: string, extra = ""): Promise<void> {

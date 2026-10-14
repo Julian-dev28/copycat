@@ -9,6 +9,9 @@
  */
 import type { LeaderOverride, TraderScore as BaseTraderScore } from "@/lib/api/types";
 
+/** v16: generated from the contract (GET/PUT /api/scout/sim-terms), not hand-mirrored. */
+export type { ExposureMode, ScoutSimTerms, SmallAccountMode } from "@/lib/api/types";
+
 export type PnlWindow = "1d" | "7d" | "30d" | "all";
 export const PNL_WINDOWS: PnlWindow[] = ["1d", "7d", "30d", "all"];
 

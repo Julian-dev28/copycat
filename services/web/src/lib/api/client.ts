@@ -7,14 +7,12 @@
  * state instead of failing silently per-call.
  */
 import type {
-  DiscoveryRun,
   EngineEvent,
   EngineStatus,
   HealthResponse,
   McpPendingPlan,
   Settings,
   SettingsPatch,
-  StartDiscoveryRunBody,
 } from "./types";
 import { getStoredToken } from "./token";
 
@@ -185,17 +183,9 @@ export const api = {
    */
   closeAllCopies: () => apiFetch<CloseAllResult>("/api/engine/close-all", { method: "POST" }),
 
-  startDiscoveryRun: (body: StartDiscoveryRunBody) =>
-    apiFetch<{ run_id: string }>("/api/discovery/runs", { method: "POST", body: json(body) }),
-
-  getLatestDiscoveryRun: () => apiFetch<DiscoveryRun>("/api/discovery/runs/latest"),
-
   /**
    * Live MCP plans with their confirm codes (audit H2: Claude never sees the
    * code; the human reads it here). 404/405: api predates the route.
    */
   getPendingMcpPlans: () => apiFetch<McpPendingPlan[]>("/api/mcp/plans/pending"),
-
-  getDiscoveryRun: (runId: string) =>
-    apiFetch<DiscoveryRun>(`/api/discovery/runs/${encodeURIComponent(runId)}`),
 };

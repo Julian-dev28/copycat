@@ -2,7 +2,7 @@
 
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { clsx } from "clsx";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, Settings2, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Input } from "@/components/ui/Input";
@@ -10,9 +10,11 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { useDebouncedCallback } from "@/hooks/useDebouncedCallback";
 import { useSyncedState } from "@/hooks/useSyncedState";
+import { HL_MIN_ORDER_USD, MAX_LEVERAGE_CAP } from "@/lib/api/types";
 import { coinLabel, STYLE_META } from "@/lib/scout/labels";
 import { activeFilterChips, countActiveFilters, parseAmount, SORT_OPTIONS, type BoardState } from "@/lib/scout/query";
-import { PNL_WINDOWS, TRADING_STYLES, type ScoutPresets } from "@/lib/scout/types";
+import { leverageChoiceOf, leverageN, leveragePatch, type LeverageChoice } from "@/lib/scout/simTerms";
+import { PNL_WINDOWS, TRADING_STYLES, type ScoutPresets, type ScoutSimTerms } from "@/lib/scout/types";
 import { WINDOW_LABEL } from "@/lib/scout/window";
 
 type Update = (patch: Partial<BoardState>) => void;
@@ -91,6 +93,7 @@ export function Toolbar({
   onOpenFilters,
   onClearFilters,
   addWallet,
+  simTerms,
 }: {
   state: BoardState;
   update: Update;
@@ -98,6 +101,8 @@ export function Toolbar({
   onClearFilters: () => void;
   /** The "Add wallet" box (components/scout/custom.tsx), rendered with the search and sort controls. */
   addWallet?: ReactNode;
+  /** The "Sim terms" button + drawer (below), rendered next to Filters. */
+  simTerms?: ReactNode;
 }) {
   const sortValue = `${state.sort}:${state.order}`;
   const known = SORT_OPTIONS.some((o) => `${o.sort}:${o.order}` === sortValue);
@@ -165,6 +170,7 @@ export function Toolbar({
             Filters
             {nFilters ? <span className="num-sm grid h-4 min-w-4 place-items-center rounded-sm bg-fg px-1 text-[10px] text-bg">{nFilters}</span> : null}
           </Button>
+          {simTerms}
         </div>
       </div>
       {chips.length ? (
@@ -188,6 +194,144 @@ export function Toolbar({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * "Sim terms" (contract v16): the equity/allocation/leverage/margin every
+ * wallet on the board is simmed at, changeable on the fly. A button + drawer
+ * next to Filters, so the terms are one click away without crowding the row.
+ */
+export function SimTermsButton({
+  terms,
+  onApply,
+  applying,
+  error,
+}: {
+  terms?: ScoutSimTerms;
+  onApply: (terms: ScoutSimTerms) => void;
+  applying?: boolean;
+  error?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)} aria-haspopup="dialog" className="flex-shrink-0" disabled={!terms}>
+        <Settings2 size={13} aria-hidden="true" />
+        Sim terms
+      </Button>
+      {terms ? (
+        <SimTermsDrawer
+          open={open}
+          onClose={() => setOpen(false)}
+          terms={terms}
+          applying={applying}
+          error={error}
+          onApply={(t) => {
+            onApply(t);
+            setOpen(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function SimTermsDrawer({
+  open,
+  onClose,
+  terms,
+  onApply,
+  applying,
+  error,
+}: {
+  open: boolean;
+  onClose: () => void;
+  terms: ScoutSimTerms;
+  onApply: (terms: ScoutSimTerms) => void;
+  applying?: boolean;
+  error?: string | null;
+}) {
+  const [draft, setDraft] = useSyncedState(terms);
+  const choice = leverageChoiceOf(draft);
+  const lev = leverageN(draft);
+  const patch = (p: Partial<ScoutSimTerms>) => setDraft({ ...draft, ...p });
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Sim terms"
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => onApply(draft)} disabled={applying}>
+            {applying ? "Applying…" : "Apply"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <label htmlFor="st-live" className="flex items-center justify-between gap-3 text-sm">
+          <span>
+            Use my live trading settings
+            <span className="block text-xs text-muted">Sim every wallet at your own Settings tab and sim equity, the pre-v16 board.</span>
+          </span>
+          <Switch id="st-live" checked={draft.use_live_settings} onChange={(v) => patch({ use_live_settings: v })} label="Use my live trading settings" />
+        </label>
+        <Group title="Equity and allocation">
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField
+              id="st-equity"
+              label="Account equity"
+              leading="$"
+              value={draft.sim_equity_usd}
+              onCommit={(v) => patch({ sim_equity_usd: Math.max(1, v ?? draft.sim_equity_usd) })}
+            />
+            <NumberField
+              id="st-alloc"
+              label="Per wallet"
+              leading="$"
+              value={draft.allocation_usd}
+              onCommit={(v) => patch({ allocation_usd: Math.max(HL_MIN_ORDER_USD, v ?? draft.allocation_usd) })}
+            />
+          </div>
+        </Group>
+        <Group title="Leverage">
+          <SegmentedControl<LeverageChoice>
+            aria-label="Leverage mode"
+            options={[
+              { value: "their", label: "Their leverage" },
+              { value: "fixed", label: "Fixed" },
+            ]}
+            value={choice}
+            onChange={(c) => patch(leveragePatch(c, lev))}
+            disabled={draft.use_live_settings}
+          />
+          <NumberField
+            id="st-lev"
+            label={choice === "fixed" ? "Leverage" : "Leverage cap"}
+            trailing="x"
+            value={lev}
+            onCommit={(v) => patch(leveragePatch(choice, Math.max(1, Math.min(MAX_LEVERAGE_CAP, Math.round(v ?? lev)))))}
+          />
+        </Group>
+        <Group title="Margin">
+          <SegmentedControl
+            aria-label="Margin mode"
+            options={[
+              { value: "isolated", label: "Isolated" },
+              { value: "cross", label: "Cross" },
+            ]}
+            value={draft.margin_mode}
+            onChange={(m) => patch({ margin_mode: m })}
+            disabled={draft.use_live_settings}
+          />
+        </Group>
+        {error ? <p className="text-xs text-danger">{error}</p> : null}
+      </div>
+    </Drawer>
   );
 }
 

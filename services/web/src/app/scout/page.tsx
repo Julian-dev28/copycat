@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
@@ -10,7 +9,7 @@ import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
-import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControls";
+import { FilterSheet, PresetRow, SimTermsButton, Toolbar } from "@/components/scout/BoardControls";
 import { BoardTicker } from "@/components/scout/BoardTicker";
 import { AddWalletBox } from "@/components/scout/custom";
 import { TraderCard } from "@/components/scout/TraderCard";
@@ -19,15 +18,16 @@ import { ApiTooOld, DeparturesNote, RefreshBadge, scoutHref } from "@/components
 import { toast } from "@/components/ui/Toast";
 import { useNow } from "@/hooks/useNow";
 import {
-  useAddCustomWallet, useRemoveCustomWallet, useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders,
+  useAddCustomWallet, useRemoveCustomWallet, useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh,
+  useScoutSimTerms, useScoutStatus, useScoutTraders, useSetScoutSimTerms,
 } from "@/hooks/useScout";
-import { formatUsd } from "@/lib/format";
 import { addedText } from "@/lib/scout/addWallet";
 import { isApiTooOld } from "@/lib/scout/api";
 import {
   boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT, PAGE_SIZE, parseBoardState,
   type BoardState,
 } from "@/lib/scout/query";
+import { reRankingNote, simTermsNote } from "@/lib/scout/simTerms";
 
 export default function ScoutPage() {
   return (
@@ -60,6 +60,9 @@ function ScoutBoard() {
   const refresh = useScoutRefresh();
   const addCustom = useAddCustomWallet();
   const removeCustom = useRemoveCustomWallet();
+  const simTerms = useScoutSimTerms();
+  const setSimTerms = useSetScoutSimTerms();
+  const status = useScoutStatus();
   const nowMs = useNow();
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -188,11 +191,7 @@ function ScoutBoard() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Scout</h1>
-          <p className="text-sm text-muted">
-            Traders ranked by what copying them would have earned you, at your settings
-            {page?.sim_equity_usd ? <> and a {formatUsd(page.sim_equity_usd, true)} account</> : null}, not necessarily your own balance.{" "}
-            <Link href="/discover" className="font-medium text-accent hover:underline">Run a custom sim with your own equity and top N</Link>
-          </p>
+          <p className="text-sm text-muted">{simTerms.data ? simTermsNote(simTerms.data) : "Traders ranked by what copying them would have earned you."}</p>
         </div>
         {!tooOld ? <RefreshBadge cohort={page?.cohort_size} asOfMs={page?.as_of_ms} nowMs={nowMs} /> : null}
       </div>
@@ -200,8 +199,14 @@ function ScoutBoard() {
       <BoardTicker rows={page?.rows ?? []} window={state.window} unit={state.unit} demo={demo} />
 
       {page?.stale_settings ? (
-        <Notice tone="info" title="Re-ranking for your new settings">
-          Your settings changed, so the copy sim is re-running. Until it finishes, Copy Fit and &quot;if copied&quot; use your previous settings.
+        <Notice tone="info" title="Re-ranking for your new terms">
+          {status.data?.stage === "sim" ? reRankingNote(status.data.done, status.data.total) : "Your sim terms changed, so the copy sim is re-running. Until it finishes, Copy Fit and scores below are from the previous terms."}
+        </Notice>
+      ) : null}
+
+      {setSimTerms.isError ? (
+        <Notice tone="danger" title="Couldn't apply those sim terms">
+          {setSimTerms.error.message}
         </Notice>
       ) : null}
 
@@ -219,6 +224,14 @@ function ScoutBoard() {
         onOpenFilters={() => setFiltersOpen(true)}
         onClearFilters={() => navigate(clearFilters(state))}
         addWallet={<AddWalletBox onAdd={addWallet} pending={addCustom.isPending} error={addCustom.error?.message} />}
+        simTerms={
+          <SimTermsButton
+            terms={simTerms.data}
+            applying={setSimTerms.isPending}
+            error={setSimTerms.error?.message}
+            onApply={(t) => setSimTerms.mutate(t)}
+          />
+        }
       />
       <FilterSheet
         open={filtersOpen}

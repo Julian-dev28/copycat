@@ -15,6 +15,9 @@ from api_fakes import ADDR_A, ADDR_B, ADDR_BUILDING, FakeScoutClient, Unavailabl
 
 ADDR_UNKNOWN = "0x" + "d" * 40
 WHAT_IF_BODY = {"sim_equity_usd": 1000.0, "override": {"leverage": 3}}
+SIM_TERMS_BODY = {"use_live_settings": False, "sim_equity_usd": 2000.0, "allocation_usd": 250.0,
+                  "exposure_mode": "target", "target_leverage": 8, "leverage_mode": "fixed", "leverage": 8,
+                  "margin_mode": "isolated", "max_worse_entry_pct": 15.0, "small_account_mode": "bump"}
 
 ROUTES = [
     ("GET", "/api/scout/traders", None),
@@ -23,6 +26,8 @@ ROUTES = [
     ("GET", f"/api/scout/traders/{ADDR_A}/orders", None),
     ("POST", f"/api/scout/traders/{ADDR_A}/what-if", WHAT_IF_BODY),
     ("GET", "/api/scout/presets", None),
+    ("GET", "/api/scout/sim-terms", None),
+    ("PUT", "/api/scout/sim-terms", SIM_TERMS_BODY),
     ("GET", "/api/scout/status", None),
     ("POST", "/api/scout/refresh", None),
     ("GET", "/api/scout/custom", None),
@@ -290,6 +295,33 @@ def test_refresh_while_running_409(client: TestClient, auth_headers: dict,
     r = client.post("/api/scout/refresh", headers=auth_headers)
     assert r.status_code == 409
     assert "already running" in r.json()["detail"]
+
+
+# ── sim terms (v16) ──────────────────────────────────────────────────────────
+
+def test_sim_terms_get_default_then_put_round_trips(client: TestClient, auth_headers: dict, app) -> None:
+    fake = FakeScoutClient()
+    app.dependency_overrides[get_scout_client] = lambda: fake
+    r = client.get("/api/scout/sim-terms", headers=auth_headers)
+    assert r.status_code == 200
+    default = r.json()
+    assert default["use_live_settings"] is False and default["allocation_usd"] == 100.0
+    assert default["sim_equity_usd"] == 1000.0 and default["leverage"] == 3
+    assert default["exposure_mode"] == "target" and default["leverage_mode"] == "fixed"
+    r = client.put("/api/scout/sim-terms", json=SIM_TERMS_BODY, headers=auth_headers)
+    assert r.status_code == 200
+    assert r.json() == SIM_TERMS_BODY
+    assert client.get("/api/scout/sim-terms", headers=auth_headers).json() == SIM_TERMS_BODY
+
+
+@pytest.mark.parametrize("bad", [{"allocation_usd": -1}, {"leverage": 0}, {"leverage": 999},
+                                 {"max_worse_entry_pct": 150}, {"sim_equity_usd": 0}, {"exposure_mode": "nope"}])
+def test_sim_terms_put_validates_like_leader_override(client: TestClient, auth_headers: dict, bad: dict) -> None:
+    assert client.put("/api/scout/sim-terms", json=bad, headers=auth_headers).status_code == 422
+
+
+def test_sim_terms_put_requires_auth(client: TestClient) -> None:
+    assert client.put("/api/scout/sim-terms", json={}).status_code == 401
 
 
 # ── custom wallets (v15) ─────────────────────────────────────────────────────

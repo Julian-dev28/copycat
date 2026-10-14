@@ -11,11 +11,10 @@ describe("nav model", () => {
     expect(MOBILE_TABS.map((i) => i.label)).toEqual(["Trade", "Scout", "Portfolio", "Account"]);
   });
 
-  it("marks the active item, including sub-pages and Scout's Custom sim tab", () => {
+  it("marks the active item, including sub-pages", () => {
     expect(isItemActive("/", "/")).toBe(true);
     expect(isItemActive("/", "/scout")).toBe(false);
     expect(isItemActive("/scout", "/scout/0xabc")).toBe(true);
-    expect(isItemActive("/scout", "/discover")).toBe(true);
     expect(isItemActive("/account", "/account")).toBe(true);
     expect(isItemActive("/settings", "/settings")).toBe(true);
     expect(isItemActive("/portfolio", null)).toBe(false);

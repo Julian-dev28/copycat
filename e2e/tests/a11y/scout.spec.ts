@@ -114,6 +114,14 @@ test.describe("Scout a11y (/scout?demo=1)", () => {
     await scan(page);
   });
 
+  test("no violations with the Sim terms drawer open (contract v16)", async ({ page }) => {
+    await gotoDemo(page, "/scout");
+    await page.getByRole("button", { name: "Sim terms" }).click();
+    const drawer = page.getByRole("dialog", { name: "Sim terms" });
+    await expect(drawer).toBeVisible();
+    await scan(page, "dialog");
+  });
+
   test("keyboard: Tab reaches the sort control and a card's primary action", async ({ page }) => {
     await gotoDemo(page, "/scout");
     const sort = page.getByRole("combobox", { name: "Sort" });

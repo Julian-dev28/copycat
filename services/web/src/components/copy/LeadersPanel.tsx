@@ -76,8 +76,8 @@ export function LeadersPanel({ settings, status }: { settings: Settings; status?
       {settings.leaders.length === 0 ? (
         <p className="border-t border-border px-4 py-6 text-center text-sm text-muted sm:px-5">
           No copies yet. Add a trader&apos;s address above, or find one on{" "}
-          <a href={demo ? "/discover?demo=1" : "/discover"} className="text-accent underline-offset-2 hover:underline">
-            Discover
+          <a href={demo ? "/scout?demo=1" : "/scout"} className="text-accent underline-offset-2 hover:underline">
+            Scout
           </a>
           .
         </p>

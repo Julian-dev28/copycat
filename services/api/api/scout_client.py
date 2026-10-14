@@ -44,6 +44,7 @@ from contracts.models import (
     LeaderOverride,
     OpenOrderView,
     ScoutPresets,
+    ScoutSimTerms,
     ScoutStatus,
     Settings,
     TraderPage,
@@ -84,6 +85,11 @@ class ScoutClient(Protocol):
     def custom_add(self, address: str) -> Optional[CustomWallet]: ...
 
     def custom_remove(self, address: str) -> bool: ...
+
+    # v16: the board's own sim terms (equity, allocation, leverage, ...)
+    def sim_terms_get(self) -> ScoutSimTerms: ...
+
+    def sim_terms_set(self, terms: ScoutSimTerms) -> ScoutSimTerms: ...
 
 
 def _plain(v: Any) -> Any:
@@ -180,3 +186,9 @@ class RealScoutClient:
 
     def custom_remove(self, address: str) -> bool:
         return bool(self._call("scout_custom_remove", address))
+
+    def sim_terms_get(self) -> ScoutSimTerms:
+        return ScoutSimTerms.model_validate(_plain(self._call("scout_sim_terms_get")))
+
+    def sim_terms_set(self, terms: ScoutSimTerms) -> ScoutSimTerms:
+        return ScoutSimTerms.model_validate(_plain(self._call("scout_sim_terms_set", terms)))

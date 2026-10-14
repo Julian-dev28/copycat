@@ -16,9 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 CONTRACT_VERSION = 17  # v17: RoundTrip.liquidation (this trip was force-closed, or partially force-
 #                        reduced, by HL's liquidation engine at least once during the hold -- a
 #                        liquidation is its own event type in the trade history, never an ordinary
-#                        closed loss; user_consensus_2026-10 Trade history correctness checklist).
-#                        v16 is reserved for a concurrent qa2 agent's change landing on a separate
-#                        branch; the comment chain above it is reconciled at merge time.
+#                        closed loss; user_consensus_2026-10 Trade history correctness checklist)
+# v16: ScoutSimTerms (GET/PUT /api/scout/sim-terms): the Scout board's copy-sim
+#                        terms (equity, allocation, leverage, margin, entry/small-account rules),
+#                        changeable on the fly and decoupled from the engine's live Settings (never
+#                        written to settings.json). use_live_settings=True reproduces the pre-v16
+#                        board (Settings.for_leader + the env sim equity). TraderScore.score stays in
+#                        the contract as the internal sort key; it must never render raw in the web
+#                        (see services/web/src/lib/scout/noRawScore.test.ts).
 # v15: custom wallets on the Scout board. TraderRow.custom (the viewer added
 #                        this wallet by hand: it is scored and simmed like the top 300 and survives
 #                        refreshes), ScoutPresets.custom (count), CustomWallet/CustomWalletRequest
@@ -308,7 +313,12 @@ class TraderScore(BaseModel):
     sim_copies: int                     # copies the sim actually opened
     sim_skipped_min_order: int
     sim_fees_usd: float
-    score: float                        # the ranking key, higher is better
+    # Internal sort key, not for display: a risk-adjusted ratio with a too-few-trades
+    # band hacked onto the bottom (services/discovery/discovery/scoring.py), so the raw
+    # number means nothing to a user ("-200" is not a grade). Rank with it, never render
+    # it; show copy_fit (0..100) and flags instead. Guarded by
+    # services/web/src/lib/scout/noRawScore.test.ts.
+    score: float
     flags: List[str] = Field(default_factory=list)   # e.g. "hft", "vault", "too_few_trades"
     # v3 (Scout): optional so v2 rows still validate
     sim_copy_capacity_pct: Optional[float] = None
@@ -583,6 +593,76 @@ class ScoutPresets(BaseModel):           # v3.1: preset tabs + coin chips (GET /
     departed_liquidated_30d: int = 0
     # v15: wallets added by hand that are on the served board (the `preset=custom` tab's total)
     custom: int = 0
+
+
+class ScoutSimTerms(BaseModel):          # v16: GET/PUT /api/scout/sim-terms
+    """What every wallet on the Scout board is copy-simmed at: a leaderboard-wide
+    terms sheet, independent of the operator's own trading Settings. Stored in
+    Scout's own meta (scout/store.py, key sim_terms), NEVER in settings.json --
+    the engine must never read these, and they must never leak into a live trade.
+
+    Field constraints mirror LeaderOverride (models.py:100-124: same ranges, same
+    enums). `to_settings()` is the only place that turns terms into a Settings
+    object for the sim; sizing_mode is always `allocation` (the only mode these
+    terms express). `leverage` does double duty on purpose: the per-coin exchange
+    leverage when leverage_mode is fixed, AND the book-wide leverage cap
+    (Settings.max_position_leverage) in every mode. The Trade ticket's per-leader
+    override keeps leverage and its cap as two separate knobs; the Scout board's
+    one toolbar control does not need that second axis.
+
+    Defaults ($1,000 equity, $100/wallet, exposure_mode=target fixed at 3x,
+    isolated, 10% max worse entry): measured on a 40-wallet real-HL throwaway
+    stack (services/discovery/evals/sim_terms_check.sh,
+    services/discovery/discovery/scout/README.md "Sim terms" section has the
+    numbers). The spec's own first candidate was exposure_mode=match
+    (follow-their-leverage) capped at 10x; measured against it, match-mode
+    sizes notional off the LEADER's own gross notional ratio, so a leader who
+    already runs hot on his own book still produces a high-risk copy even
+    though the "10x" cap sounds conservative. exposure_mode=target at a fixed,
+    low leverage controls notional directly and measured far fewer sim
+    liquidations (0 vs 4-10 across every match-mode cap tried) and a much
+    tighter Fit distribution (15/40 wallets at Fit<=20 vs 35-40/40), at the
+    same or better share of wallets clearing >= 5 sim copies. Reopen this
+    choice if the full 300-wallet live run
+    (services/discovery/evals/sim_terms_check.py) doesn't confirm it.
+
+    use_live_settings=True is the pre-v16 board: every wallet simmed at
+    Settings.for_leader(wallet) and the env sim equity (COPYCAT_SCOUT_SIM_EQUITY),
+    the same numbers the engine itself would copy at. Every other field here is
+    then ignored for scoring (still stored, so the toolbar keeps the last custom
+    terms the operator typed when they flip the switch back off).
+    """
+    model_config = ConfigDict(extra="ignore")
+    use_live_settings: bool = False
+    sim_equity_usd: float = Field(1_000.0, gt=0)
+    allocation_usd: float = Field(100.0, ge=HL_MIN_ORDER_USD)
+    exposure_mode: ExposureMode = ExposureMode.target
+    target_leverage: int = Field(3, ge=1, le=MAX_LEVERAGE_CAP)
+    leverage_mode: LeverageMode = LeverageMode.fixed
+    leverage: int = Field(3, ge=1, le=MAX_LEVERAGE_CAP)
+    margin_mode: MarginMode = MarginMode.isolated
+    max_worse_entry_pct: float = Field(10.0, ge=0, le=100)
+    small_account_mode: SmallAccountMode = SmallAccountMode.concentrate
+
+    def to_settings(self) -> "Settings":
+        """The effective Settings for the copy-sim at these terms. Every field the
+        sim reads (sim.py, engine.sizing) is set from the terms; everything else
+        (poll coalescing, max_open_copies, coin filters, trade_direction, ...)
+        is the plain Settings() default -- the same defaults for every wallet, on
+        purpose, so the board ranks wallets, never reflects an operator's own
+        book-wide quirks."""
+        return Settings(
+            sizing_mode=SizingMode.allocation,
+            allocation_usd=self.allocation_usd,
+            exposure_mode=self.exposure_mode,
+            target_leverage=self.target_leverage,
+            leverage_mode=self.leverage_mode,
+            leverage=self.leverage,
+            max_position_leverage=self.leverage,
+            margin_mode=self.margin_mode,
+            max_worse_entry_pct=self.max_worse_entry_pct,
+            small_account_mode=self.small_account_mode,
+        )
 
 
 class CustomWalletRequest(BaseModel):    # v15: POST /api/scout/custom

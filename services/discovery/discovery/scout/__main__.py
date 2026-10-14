@@ -84,7 +84,8 @@ def main(argv=None) -> int:
         t0 = time.time()
         rep = R.run_refresh(public._default_venue(), settings_reader()(), _equity(),
                             R.RefreshOptions(stages=tuple(a.stages.upper()), limit_b=a.limit_b, limit_c=a.limit_c,
-                                             allow_partial=a.partial, kind="cli"))
+                                             allow_partial=a.partial, kind="cli"),
+                            terms=public.scout_sim_terms_get())
         print(json.dumps(rep.__dict__, indent=2))
         print(f"scout refresh: {time.time() - t0:.1f}s")
         return 0

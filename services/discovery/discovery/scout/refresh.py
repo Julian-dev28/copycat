@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from contracts.models import Settings
+from contracts.models import ScoutSimTerms, Settings
 from contracts.venue import Venue
 
 from . import config as C
@@ -48,10 +48,46 @@ class ScoutBusy(RuntimeError):
 def settings_hash(settings: Settings, sim_equity: float) -> str:
     """Everything that changes a sim result: Settings minus the fields the
     sim never reads (enabled, dry_run, leaders, contract_version), plus the
-    simulated copier's equity."""
+    simulated copier's equity. Used only for terms.use_live_settings=True
+    (the pre-v16 board): unchanged so that mode's cache is untouched by
+    ScoutSimTerms shipping."""
     d = settings.model_dump(mode="json", exclude={"enabled", "dry_run", "leaders", "contract_version"})
     d["sim_equity_usd"] = round(float(sim_equity), 6)
     return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def terms_hash(terms: ScoutSimTerms) -> str:
+    """Hash of the sim terms a board was built at, when NOT using live settings.
+    use_live_settings is excluded: it never reaches the sim (effective_hash below
+    picks settings_hash or terms_hash entirely, it does not mix the two), so two
+    terms that differ only in that flag must not collide by accident of a stray
+    field, nor matter here since the flag already decided which hash function ran."""
+    d = terms.model_dump(mode="json", exclude={"use_live_settings"})
+    return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def effective_hash(terms: ScoutSimTerms, settings: Settings, live_sim_equity: float) -> str:
+    """The board's wanted hash: the pre-v16 Settings-based hash when the operator
+    chose to sim at their own live settings, else the sim-terms hash. These are
+    deliberately different hash spaces (a terms hash never equals a settings hash
+    by construction) so switching use_live_settings never serves stale rows under
+    the wrong terms."""
+    return settings_hash(settings, live_sim_equity) if terms.use_live_settings else terms_hash(terms)
+
+
+def effective_sim_equity(terms: ScoutSimTerms, live_sim_equity: float) -> float:
+    return live_sim_equity if terms.use_live_settings else terms.sim_equity_usd
+
+
+def effective_settings_for_leader(terms: ScoutSimTerms, settings: Settings) -> Callable[[str], Settings]:
+    """Per-wallet effective Settings for the copy-sim: Settings.for_leader(wallet)
+    under use_live_settings, else the SAME terms-derived Settings for every
+    wallet (ScoutSimTerms has no per-leader overrides -- it is one sheet for the
+    whole board)."""
+    if terms.use_live_settings:
+        return settings.for_leader
+    eff = terms.to_settings()
+    return lambda _address: eff
 
 
 def now_ms() -> int:
@@ -175,9 +211,14 @@ class RefreshReport:
 
 
 def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optional[RefreshOptions] = None,
-                sizing: Any = None, db_path: Optional[Path] = None) -> RefreshReport:
-    """Synchronous. Raises ScoutBusy when another refresh holds the slot."""
+                sizing: Any = None, db_path: Optional[Path] = None,
+                terms: Optional[ScoutSimTerms] = None) -> RefreshReport:
+    """Synchronous. Raises ScoutBusy when another refresh holds the slot.
+    `terms`: the Scout board's sim terms; None (every pre-v16 caller) keeps the
+    old behavior, simming at Settings.for_leader + `sim_equity` as if
+    use_live_settings were set."""
     opts = opts or RefreshOptions()
+    terms = terms if terms is not None else ScoutSimTerms(use_live_settings=True)
     conn = store.connect(db_path)
     rid = uuid.uuid4().hex
     blocking = store.try_begin_refresh(conn, rid, now_ms(), opts.kind)
@@ -186,7 +227,7 @@ def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optio
     rep = RefreshReport(refresh_id=rid)
     prog = Progress(conn, rid, on_beat=opts.on_beat)
     try:
-        _run(conn, venue, settings, sim_equity, opts, sizing, rep, prog)
+        _run(conn, venue, settings, sim_equity, opts, sizing, rep, prog, terms)
         store.update_refresh(conn, rid, state="done", finished_ms=now_ms(), heartbeat_ms=now_ms())
         prog.log(f"done: universe={rep.universe} stats={rep.stats_done} (failed {rep.stats_failed}, "
                  f"deferred {rep.stats_deferred}) sims={rep.sims_done} published={rep.published} "
@@ -199,10 +240,10 @@ def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optio
 
 
 def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: RefreshOptions, sizing: Any,
-         rep: RefreshReport, prog: Progress) -> None:
+         rep: RefreshReport, prog: Progress, terms: ScoutSimTerms) -> None:
     book = list(settings.leaders)
     custom = store.custom_addresses(conn)
-    want = settings_hash(settings, sim_equity)
+    want = effective_hash(terms, settings, sim_equity)
     store.meta_set(conn, {"wanted_hash": want})
 
     if "A" in opts.stages:
@@ -247,25 +288,27 @@ def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: R
 
     publish_hash = store.meta_get(conn, "sim_hash")
     publish_eq = store.meta_get(conn, "sim_equity", sim_equity)
+    eff_equity = effective_sim_equity(terms, sim_equity)
     if "C" in opts.stages:
         t = time.monotonic()
         budget = stats.Budget(opts.max_weight_c, opts.max_s_c)
         prog.begin("sim", len(addrs) if opts.limit_c is None else min(len(addrs), opts.limit_c))
-        res_c = simstage.run_stage_c(conn, venue, addrs, settings, sim_equity, want, budget,
-                                     sizing or simstage.default_sizing(), limit=opts.limit_c, progress=prog.step)
+        res_c = simstage.run_stage_c(conn, venue, addrs, effective_settings_for_leader(terms, settings), eff_equity,
+                                     want, budget, sizing or simstage.default_sizing(), limit=opts.limit_c,
+                                     progress=prog.step, allow_cache_only=not terms.use_live_settings)
         prog.errors += len(res_c.failed)
         rep.sims_done, rep.sims_failed, rep.weight_c = len(res_c.done), len(res_c.failed), res_c.weight
         complete = not res_c.deferred and not res_c.failed
         if opts.only is None and (complete or publish_hash is None or opts.allow_partial):
-            publish_hash, publish_eq = want, sim_equity
-            store.meta_set(conn, {"sim_hash": want, "sim_equity": sim_equity})
+            publish_hash, publish_eq = want, eff_equity
+            store.meta_set(conn, {"sim_hash": want, "sim_equity": eff_equity})
         rep.timings_s["C"] = round(time.monotonic() - t, 2)
 
     if opts.only is None:
         t = time.monotonic()
         prog.begin("sim", 1)
         if publish_hash is None:          # B ran, C never has: publish unsimulated rows at the wanted hash
-            publish_hash, publish_eq = want, sim_equity
+            publish_hash, publish_eq = want, eff_equity
         rep.cohort = rows.build(conn, rep.refresh_id, publish_hash, float(publish_eq), now_ms())
         rep.published = True
         prog.step(1, 1)
@@ -315,20 +358,25 @@ def _stats_error(conn: Any, address: str) -> Optional[str]:
 
 
 def build_one(conn: Any, venue: Venue, settings: Settings, sim_equity: float, sizing: Any,
-              address: str, book: Sequence[str], custom: Sequence[str]) -> Optional[str]:
+              address: str, book: Sequence[str], custom: Sequence[str],
+              terms: Optional[ScoutSimTerms] = None) -> Optional[str]:
     """Stage B then C for one wallet without claiming the refresh slot or writing a
     progress row: the nested path a running refresh uses to serve an on-demand request
     between two of its own wallets. Returns the stats error, None when built."""
+    terms = terms if terms is not None else ScoutSimTerms(use_live_settings=True)
     stats.run_stage_b(conn, venue, [address], now_ms(), stats.Budget(C.STAGE_B_MAX_WEIGHT, C.STAGE_B_MAX_S),
                       book=book, requested=[address], custom=custom)
     err = _stats_error(conn, address)
     if err is None:
-        simstage.run_stage_c(conn, venue, [address], settings, sim_equity, settings_hash(settings, sim_equity),
-                             stats.Budget(C.STAGE_C_MAX_WEIGHT, C.STAGE_C_MAX_S), sizing or simstage.default_sizing())
+        eq = effective_sim_equity(terms, sim_equity)
+        simstage.run_stage_c(conn, venue, [address], effective_settings_for_leader(terms, settings), eq,
+                             effective_hash(terms, settings, sim_equity),
+                             stats.Budget(C.STAGE_C_MAX_WEIGHT, C.STAGE_C_MAX_S), sizing or simstage.default_sizing(),
+                             allow_cache_only=not terms.use_live_settings)
     return err
 
 
-def republish(conn: Any, settings: Settings, sim_equity: float) -> int:
+def republish(conn: Any, settings: Settings, sim_equity: float, terms: Optional[ScoutSimTerms] = None) -> int:
     """Rebuild the served board from what is stored (no HL call) so a wallet built just now
     shows up at once instead of at the end of the next full refresh. Uses the served
     build's settings hash and equity so rows stay comparable; before the first build
@@ -338,7 +386,8 @@ def republish(conn: Any, settings: Settings, sim_equity: float) -> int:
     was built but had no board to appear on for the refresh's whole run."""
     ptr = store.pointer(conn)
     if ptr is None:
-        h, eq = settings_hash(settings, sim_equity), sim_equity
+        terms = terms if terms is not None else ScoutSimTerms(use_live_settings=True)
+        h, eq = effective_hash(terms, settings, sim_equity), effective_sim_equity(terms, sim_equity)
     else:
         h, eq = ptr["settings_hash"], float(ptr.get("sim_equity") or sim_equity)
     return rows.build(conn, uuid.uuid4().hex, h, eq, now_ms())
@@ -346,7 +395,7 @@ def republish(conn: Any, settings: Settings, sim_equity: float) -> int:
 
 def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: float, sizing: Any,
                      db_path: Optional[Path], on_beat: Optional[Callable[[], None]] = None,
-                     nested: bool = False) -> None:
+                     nested: bool = False, terms: Optional[ScoutSimTerms] = None) -> None:
     """Build every queued on-demand wallet (trader files opened for wallets Scout does not
     track, and custom wallets just added). `nested` = called from inside a running
     refresh's progress beat: build without the slot. A custom wallet gets the board
@@ -359,16 +408,16 @@ def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: fl
         t0 = time.monotonic()
         try:
             if nested:
-                err = build_one(conn, venue, settings, sim_equity, sizing, a, book, custom)
+                err = build_one(conn, venue, settings, sim_equity, sizing, a, book, custom, terms)
             else:
                 run_refresh(venue, settings, sim_equity,
                             RefreshOptions(stages=("B", "C"), only=[a], kind="ondemand", on_beat=on_beat),
-                            sizing, db_path)
+                            sizing, db_path, terms)
                 err = _stats_error(conn, a)
             store.finish_request(conn, a, err)
             published = None
             if err is None and a in custom:
-                published = republish(conn, settings, sim_equity)
+                published = republish(conn, settings, sim_equity, terms)
             logger.info("scout on-demand: %s %s in %.0fs%s%s", a, "failed" if err else "built",
                         time.monotonic() - t0, " mid-refresh" if nested else "",
                         f", board republished ({published} rows)" if published is not None else "")
@@ -380,11 +429,16 @@ def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: fl
 
 
 def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None,
-         db_path: Optional[Path] = None) -> Optional[RefreshReport]:
-    """One scheduler step: heartbeat, on-demand requests, then the due stages."""
+         db_path: Optional[Path] = None, terms: Optional[ScoutSimTerms] = None) -> Optional[RefreshReport]:
+    """One scheduler step: heartbeat, on-demand requests, then the due stages.
+    `terms` is read fresh every tick (like `settings`), so a PUT /api/scout/sim-terms
+    from the api is picked up within one tick: `wanted_hash` changes at once (the
+    board flips to stale_settings immediately) and `plan()` schedules a stage-C
+    re-sim on this same tick or the next."""
+    terms = terms if terms is not None else ScoutSimTerms(use_live_settings=True)
     conn = store.connect(db_path)
     t = now_ms()
-    want = settings_hash(settings, sim_equity)
+    want = effective_hash(terms, settings, sim_equity)
     store.meta_set(conn, {"scheduler_heartbeat_ms": t, "wanted_hash": want})
     draining = {"on": False}
 
@@ -402,7 +456,7 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
             return
         draining["on"] = True
         try:
-            service_requests(conn, venue, settings, sim_equity, sizing, db_path, nested=True)
+            service_requests(conn, venue, settings, sim_equity, sizing, db_path, nested=True, terms=terms)
         finally:
             draining["on"] = False
 
@@ -411,7 +465,7 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
     # was built twice: "built in 3s mid-refresh" then "built in 6s", live 2026-10-14).
     draining["on"] = True
     try:
-        service_requests(conn, venue, settings, sim_equity, sizing, db_path, on_beat=beat)
+        service_requests(conn, venue, settings, sim_equity, sizing, db_path, on_beat=beat, terms=terms)
     finally:
         draining["on"] = False
     p = plan(conn, want, t)
@@ -422,7 +476,7 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
             if p.reason == "requested":
                 store.meta_set(conn, {"refresh_requested": None})
             rep = run_refresh(venue, settings, sim_equity,
-                              RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat), sizing, db_path)
+                              RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat), sizing, db_path, terms)
         except ScoutBusy as exc:
             logger.debug("scout scheduler: %s due but %s", "".join(p.stages), exc)
         except Exception:
@@ -446,9 +500,12 @@ def on_scheduler_start(conn: Any) -> int:
 def run_scheduler(settings_provider: Callable[[], Settings], venue: Optional[Venue] = None,
                   sim_equity_provider: Optional[Callable[[], float]] = None,
                   stop: Optional[threading.Event] = None, sizing: Any = None,
-                  tick_s: float = C.SCHEDULER_TICK_S, db_path: Optional[Path] = None) -> None:
+                  tick_s: float = C.SCHEDULER_TICK_S, db_path: Optional[Path] = None,
+                  terms_provider: Optional[Callable[[], ScoutSimTerms]] = None) -> None:
     """Blocking loop. settings_provider() is read every tick, so a settings
-    save (book change, sizing change) is picked up within one tick."""
+    save (book change, sizing change) is picked up within one tick.
+    terms_provider() is read every tick the same way: a PUT /api/scout/sim-terms
+    is picked up within one SCHEDULER_TICK_S (10s), no restart."""
     stop = stop or threading.Event()
     if venue is None:
         from .public import _default_venue
@@ -457,7 +514,8 @@ def run_scheduler(settings_provider: Callable[[], Settings], venue: Optional[Ven
     while not stop.is_set():
         try:
             eq = float(sim_equity_provider()) if sim_equity_provider else C.DEFAULT_SIM_EQUITY_USD
-            tick(venue, settings_provider(), eq, sizing, db_path)
+            terms = terms_provider() if terms_provider else None
+            tick(venue, settings_provider(), eq, sizing, db_path, terms)
         except Exception:
             logger.exception("scout scheduler: tick failed")
         stop.wait(tick_s)

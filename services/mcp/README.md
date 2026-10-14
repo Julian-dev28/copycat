@@ -39,6 +39,7 @@ the server never holds the trading key.
 | tool | api call | money? |
 |---|---|---|
 | `scout_list` | GET /api/scout/traders | read |
+| `scout_sim_terms` | GET /api/scout/sim-terms | read (the board's own copy-sim terms, v16; no writer) |
 | `scout_add_wallet` | POST /api/scout/custom | adds a wallet to the Scout board (no orders, no settings) |
 | `trader_profile` | GET /api/scout/traders/{a} | read |
 | `trader_fingerprint` | GET /api/scout/traders/{a}/fingerprint | read |

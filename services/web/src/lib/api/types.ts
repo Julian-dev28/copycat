@@ -39,6 +39,10 @@ export type MarginMode = Schemas["MarginMode"];
 export type Side = "long" | "short";
 
 export type LeaderOverride = Schemas["LeaderOverride"];
+export type ExposureMode = Schemas["ExposureMode"];
+export type SmallAccountMode = Schemas["SmallAccountMode"];
+/** v16: the Scout board's own copy-sim terms (GET/PUT /api/scout/sim-terms), apart from Settings. */
+export type ScoutSimTerms = Schemas["ScoutSimTerms"];
 
 /** v4/v5 fields (Trade allocation, small accounts, liquidity caps): optional so a v3 api still type-checks. */
 type V5SettingsKeys =

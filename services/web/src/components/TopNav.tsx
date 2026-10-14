@@ -16,7 +16,6 @@ import { NAV_ICONS } from "@/components/shell/navIcons";
 import { ScrollProgress } from "@/components/shell/ScrollProgress";
 import { TokenDot } from "@/components/shell/TokenDot";
 import { useDemoQuery, useMounted } from "@/components/shell/useDemoQuery";
-import { SCOUT_TABS, scoutTabFor } from "@/components/scoutNav";
 import { LABELS } from "@/lib/labels";
 import { containerClass } from "@/lib/shell/container";
 import { isItemActive, NAV_ITEMS } from "@/lib/shell/nav";
@@ -109,38 +108,11 @@ export function TopNav() {
           <AccountMenu />
         </div>
       </div>
-      <ScoutTabs pathname={pathname} demo={demo} />
       <Suspense fallback={null}>
         <DemoStrip />
         <StaleBuildStrip />
       </Suspense>
       <ScrollProgress />
     </header>
-  );
-}
-
-/** Second row on /scout and /discover so the custom sim is one click from the leaderboard, and back. */
-function ScoutTabs({ pathname, demo }: { pathname: string | null; demo: string }) {
-  const activeTab = scoutTabFor(pathname);
-  if (!activeTab) return null;
-  return (
-    <nav aria-label="Scout" className={clsx(containerClass(pathname), "flex items-center gap-1 pb-2")}>
-      {SCOUT_TABS.map(({ href, label }) => {
-        const active = href === activeTab;
-        return (
-          <Link
-            key={href}
-            href={`${href}${demo}`}
-            aria-current={active ? "page" : undefined}
-            className={clsx(
-              "rounded-sm px-3 py-1 font-mono text-[11px] font-medium tracking-[0.12em] uppercase transition-colors duration-[var(--dur-fast)]",
-              active ? "bg-surface-3 text-fg" : "text-muted hover:bg-surface-2 hover:text-fg",
-            )}
-          >
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
   );
 }
