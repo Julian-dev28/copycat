@@ -2003,6 +2003,11 @@ export interface components {
             gross_pnl_usd: number;
             /** Hold H */
             hold_h: number;
+            /**
+             * Liquidation
+             * @default false
+             */
+            liquidation: boolean;
             /** Max Notional Usd */
             max_notional_usd: number;
             /** Net Pnl Usd */
@@ -2105,7 +2110,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 15
+             * @default 17
              */
             contract_version: number;
             /**

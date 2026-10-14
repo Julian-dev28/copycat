@@ -142,6 +142,67 @@ scout_requests` (`store.py`). Fills are read only through
 `discovery.db.get_cached_fills` (the fills table is that module's to rename,
 and it did: `fills` -> `fills_v2`). Last 3 board builds kept.
 
+## Trade history (contract v17, `user_consensus_2026-10.md` Trade history checklist)
+
+Invariants `round_trips`/`build_trips` (`metrics.py`, `thesis/trips.py`) and the
+trader-file web tabs hold to, each with a test:
+
+- A flip (long to short with no flat in between, one HL fill crossing zero)
+  is a close and a separate open, never one trip (`positions.reconstruct`
+  splits it; `test_history_properties.py`'s law test and the real
+  `fixtures/history/flip.json` fixture).
+- Partial fills, adds and scale-outs aggregate into one trip
+  (`fixtures/history/scale_out.json`, a real 95-fill single trip).
+- Realized PnL nets fees AND funding accrued during the hold: `net_pnl_usd =
+  gross_pnl_usd - fee_usd + funding_usd`. HL's `userFunding.usdc` sign:
+  positive = credited (received), negative = debited (paid) -- same
+  convention `positions.funding_by_trip` nets with (`fixtures/history/funding_heavy.json`,
+  a real 170h hold where funding is ~17% of gross).
+- Unrealized PnL on still-open positions is shown separately
+  (`TraderPositionView`, the "Positions" tab / "Open now, not in win rate"
+  heading on Round trips) and never enters `recent_trips` or win-rate stats:
+  `round_trips`/`build_trips` only ever append a trip on a "close" event.
+- All times UTC, labeled ("Opened (UTC)", "Time (UTC)", "Placed (UTC)"
+  column headers; cells render in UTC, not the viewer's local timezone).
+- Deposits/withdrawals stay out of the PnL curve, stay in the account-value
+  curve, and the two chart series are never shown with the same label
+  (`lib/scout/window.ts` chartData).
+- Truncation (`fills_truncated`, HL serves only the newest ~10k fills) is a
+  one-line notice at the top of the Round trips and Fills tabs with the
+  exact visible count (`TraderScore.fills_30d`), not folded silently into a
+  smaller-looking number (`fixtures/history/truncated.json`: a real wallet
+  with a documented 21,402-fill/30d population and an 11-day gap).
+- A liquidation (`RoundTrip.liquidation`, `LeaderFillView.liquidation`) is
+  its own event type -- a visible badge with hover text ("Liquidated by
+  Hyperliquid, not closed by the trader"), never an ordinary closed loss.
+  Classified from the fill's own `dir` string ("Liquidated ..."), never HL's
+  raw per-fill `liquidation` bool: that bool also fires on the COUNTERPARTY
+  absorbing someone else's liquidation (an ordinary open), which the
+  `history_check` eval caught as 16 false "Liquidated" fills on a wallet
+  with exactly 1 real one (fixed in `rows.py fill_view`, see its docstring).
+  `fixtures/history/liquidation.json` is the one genuine own-liquidation in
+  this whole cached universe, and also carries a real fills-cache duplicate-
+  row artifact that `round_trips`/`build_trips` must not fabricate a second
+  trip from or lose the real fees to (regression test in the same file).
+
+Gate: `test_positions.py`, `test_scout_metrics.py`, `test_thesis_metrics.py`,
+`test_history_properties.py` (hypothesis laws), `test_history_fixtures.py`
+(the 5 real fixtures above), `test_scout_profile.py`, `services/api/tests/test_account_history.py`.
+Web: `lib/scout/labels.test.ts` (`truncationNotice`), `lib/scout/file/shaping.test.ts`
+(demo flip/liquidation scenarios), `lib/account/history.test.ts`, e2e
+`tests/demo/trader_file_history.spec.ts` + 2 a11y scans in `tests/a11y/scout.spec.ts`.
+
+Live eval: `services/discovery/evals/history_check.sh [wallet1 wallet2 wallet3]`
+-- throwaway stack, real Hyperliquid, defaults to the 3 fixture wallets above
+(one with a real liquidation). Per trip: HL closedPnl ties out within 0.5%;
+no served trip spans a flip (replays its own fills independently); the
+fills-endpoint liquidation count ties out to a direct HL read; funding per
+trip ties out to real `userFunding` rows. See `history_check.sh`'s own header
+for the current run status: a partial real run (2026-10-14) already caught
+and the branch already fixes the `fill_view` bug above; a clean full run is
+PENDING, serial, by the operator after the qa2 branches merge (every
+throwaway stack shares Hyperliquid's per-IP rate limit with the live engine).
+
 ## Metric definitions (deterministic, `metrics.py`, `copy_fit.py`)
 
 Spec section 2 formulas, with these documented choices:
@@ -154,7 +215,8 @@ Spec section 2 formulas, with these documented choices:
 - Sharpe and sortino are null below 7 returns (sortino also with no negative day).
 - Round trips: raw perp fills (not poll-coalesced: they describe the leader),
   `positions.reconstruct`, flip = close + open, a trip open before the first
-  fill or still open is dropped; net = closed_pnl - fees.
+  fill or still open is dropped; net = gross (closed_pnl) - fees + funding
+  (see "Trade history" above for the full checklist).
 - Style from 30d: algo > 100 opens/day, else median hold < 15 min / 24 h /
   7 d; null below 3 trips.
 - Account value on the board = leaderboard `accountValue` (all rows from one

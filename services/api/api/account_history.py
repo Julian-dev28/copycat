@@ -1,7 +1,7 @@
 """Row shapes for GET /api/accounts/{id}/history?kind=fills|orders|transfers|balances.
 
   fills      LeaderFillView fields: time_ms, coin, side B|A, dir, px, sz, notional_usd,
-             closed_pnl_usd, fee_usd (last 30 days, newest first)
+             closed_pnl_usd, fee_usd, liquidation (last 30 days, newest first)
   orders     HL historicalOrders flattened: the order's own fields (coin, side, limitPx,
              sz, origSz, oid, cloid, orderType, reduceOnly, timestamp, ...) + status,
              status_ms (newest first, at most 2000)
@@ -24,9 +24,15 @@ def _f(v: Any) -> float:
 
 
 def fills(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # Liquidation by `dir` prefix, same check as discovery.scout.metrics.real_liquidations:
+    # HL's own `liquidation` bool on a fill marks a fill the liquidation engine touched at
+    # all, which also fires on the COUNTERPARTY absorbing someone else's liquidation (an
+    # ordinary "Open Long" with liquidation=true) -- `dir` is the one that says THIS account
+    # was the one force-closed/force-reduced.
     out = [{"time_ms": int(r["time_ms"]), "coin": r["coin"], "side": r["side"], "dir": r.get("dir") or "",
             "px": _f(r["px"]), "sz": _f(r["sz"]), "notional_usd": round(_f(r["px"]) * _f(r["sz"]), 2),
-            "closed_pnl_usd": _f(r.get("closed_pnl")), "fee_usd": _f(r.get("fee"))}
+            "closed_pnl_usd": _f(r.get("closed_pnl")), "fee_usd": _f(r.get("fee")),
+            "liquidation": str(r.get("dir") or "").startswith("Liquidated")}
            for r in rows if r.get("side") in ("B", "A")]
     return sorted(out, key=lambda r: -r["time_ms"])
 

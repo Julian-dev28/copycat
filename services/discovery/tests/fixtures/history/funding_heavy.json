@@ -1,0 +1,180 @@
+{
+  "scenario": "a funding-heavy multi-day hold, net funding a meaningful share of PnL",
+  "wallet": "0x0682f4ee106d167ca46ed015918e83f6f4e5b571",
+  "coin": "HYPE",
+  "start_ms": 1790783181381,
+  "end_ms": 1791395375743,
+  "query": "SELECT ... FROM fills_v2 WHERE wallet='0x0682...b571' AND coin='HYPE' AND time_ms BETWEEN 1790783181381 AND 1791395375743 ORDER BY time_ms",
+  "fills": [
+    {
+      "time_ms": 1790783181381,
+      "coin": "HYPE",
+      "px": 86.495014478,
+      "sz": 5000.0,
+      "side": "B",
+      "dir": "Open Long",
+      "start_position": 0.0,
+      "closed_pnl": 0.0,
+      "fee": 194.613714,
+      "liquidation": false
+    },
+    {
+      "time_ms": 1791395375743,
+      "coin": "HYPE",
+      "px": 87.370339486,
+      "sz": 5000.0,
+      "side": "A",
+      "dir": "Close Long",
+      "start_position": 5000.0,
+      "closed_pnl": 4376.69743,
+      "fee": 196.583232,
+      "liquidation": false
+    }
+  ],
+  "funding": [
+    {
+      "time_ms": 1790812800000,
+      "coin": "HYPE",
+      "usdc": -94.683585,
+      "funding_rate": 8.8537e-06
+    },
+    {
+      "time_ms": 1790899200000,
+      "coin": "HYPE",
+      "usdc": -95.647351,
+      "funding_rate": 8.9338e-06
+    },
+    {
+      "time_ms": 1790985600000,
+      "coin": "HYPE",
+      "usdc": -131.718369,
+      "funding_rate": 1.23843e-05
+    },
+    {
+      "time_ms": 1791072000000,
+      "coin": "HYPE",
+      "usdc": -135.117008,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791158400000,
+      "coin": "HYPE",
+      "usdc": -126.235174,
+      "funding_rate": 1.13268e-05
+    },
+    {
+      "time_ms": 1791244800000,
+      "coin": "HYPE",
+      "usdc": -75.366379,
+      "funding_rate": 6.6862e-06
+    },
+    {
+      "time_ms": 1791331200024,
+      "coin": "HYPE",
+      "usdc": -4.174015,
+      "funding_rate": 9.0772e-06
+    },
+    {
+      "time_ms": 1791334800007,
+      "coin": "HYPE",
+      "usdc": -1.49762,
+      "funding_rate": 3.253e-06
+    },
+    {
+      "time_ms": 1791338400083,
+      "coin": "HYPE",
+      "usdc": 0.456382,
+      "funding_rate": -1.0096e-06
+    },
+    {
+      "time_ms": 1791342000034,
+      "coin": "HYPE",
+      "usdc": -5.672031,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791345600013,
+      "coin": "HYPE",
+      "usdc": -5.672875,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791349200001,
+      "coin": "HYPE",
+      "usdc": -5.634906,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791352800005,
+      "coin": "HYPE",
+      "usdc": -5.691156,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791356400090,
+      "coin": "HYPE",
+      "usdc": -5.69525,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791360000039,
+      "coin": "HYPE",
+      "usdc": -5.676125,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791363600063,
+      "coin": "HYPE",
+      "usdc": -5.661343,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791367200063,
+      "coin": "HYPE",
+      "usdc": -2.555948,
+      "funding_rate": 5.7001e-06
+    },
+    {
+      "time_ms": 1791370800057,
+      "coin": "HYPE",
+      "usdc": -5.589843,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791374400081,
+      "coin": "HYPE",
+      "usdc": -5.566968,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791378000058,
+      "coin": "HYPE",
+      "usdc": -5.566124,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791381600050,
+      "coin": "HYPE",
+      "usdc": -5.558093,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791385200062,
+      "coin": "HYPE",
+      "usdc": -5.522937,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791388800026,
+      "coin": "HYPE",
+      "usdc": -5.535137,
+      "funding_rate": 1.25e-05
+    },
+    {
+      "time_ms": 1791392400024,
+      "coin": "HYPE",
+      "usdc": 3.642979,
+      "funding_rate": -8.2912e-06
+    }
+  ]
+}

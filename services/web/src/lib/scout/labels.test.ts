@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
 import {
   biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, flagTone, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders,
-  refreshCountLabel, refreshEtaLabel, STYLE_META, visibleFlags,
+  refreshCountLabel, refreshEtaLabel, STYLE_META, truncationNotice, visibleFlags,
 } from "./labels";
 import { TRADING_STYLES } from "./types";
 
@@ -190,5 +190,17 @@ describe("RefreshBadge progress (indexing tightening: a count, not a bare percen
     expect(refreshEtaLabel(NaN)).toBeNull();
     expect(refreshEtaLabel(-5)).toBeNull();
     expect(refreshEtaLabel(Infinity)).toBeNull();
+  });
+});
+
+describe("truncationNotice (Trade history checklist: truncation disclosed with the count that is visible)", () => {
+  it("null without the flag", () => {
+    expect(truncationNotice([], 500)).toBeNull();
+    expect(truncationNotice(["hft"], 500)).toBeNull();
+  });
+  it("names the exact visible count when the flag is set", () => {
+    const t = truncationNotice(["fills_truncated"], 9_412);
+    expect(t).toContain("9,412");
+    expect(t).toMatch(/10,000/);
   });
 });

@@ -156,6 +156,21 @@ export function visibleFlags(flags: string[]): string[] {
   return out;
 }
 
+/**
+ * One-line notice for the top of the Round trips / Fills tabs when this
+ * wallet's `fills_truncated` flag is set: HL serves only the newest 10,000
+ * fills per account, so a high-frequency wallet's older history inside the
+ * 30d window can already be missing, not just paginated away. Names the
+ * actual visible count (`TraderScore.fills_30d`) instead of a vague warning
+ * (user_consensus Trade history checklist: truncation disclosed with the
+ * count that is visible). null when the flag isn't set.
+ */
+export function truncationNotice(flags: string[], fills30d: number): string | null {
+  if (!flags.some((f) => f.split(":")[0] === "fills_truncated")) return null;
+  return `Showing the newest ${fills30d.toLocaleString("en-US")} fills Hyperliquid has in the last 30 days. ` +
+    "Hyperliquid serves only the newest 10,000 fills per account, so older fills in this window may be missing.";
+}
+
 /** Tooltip for a HIP-3 coin's dex chip (UX audit: unexplained "XYZ"). */
 export function dexHint(dex: string): string {
   return `HIP-3 market (${dex} deployer)`;

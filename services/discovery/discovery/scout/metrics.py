@@ -255,7 +255,13 @@ def round_trips(fills: Sequence[Dict[str, Any]], funding: Optional[Sequence[Dict
     and closed_pnl belong to the closing trip); funding = net HL `userFunding`
     settled for the coin while this trip's position was open
     (`positions.funding_by_trip`), 0 when `funding` is None (not fetched).
-    net = gross - fee + funding."""
+    net = gross - fee + funding. `liquidation` is set when ANY fill inside the
+    trip's hold (an add, a reduce, or the close) was a forced HL liquidation
+    (`PositionEvent.liquidation`): a partial liquidation mid-hold still marks
+    the trip, even when the trader's own later fills close it normally --
+    measured 2026-10-14 on a real whale wallet (one partial-liquidation
+    "Liquidated Isolated Long" reduce mid-way through an otherwise ordinary
+    managed unwind of a 53 BTC position)."""
     perp, _ = positions.split_perp(list(fills))
     funding_idx = positions.index_funding_by_coin(funding)
     trips: List[RoundTrip] = []
@@ -263,14 +269,25 @@ def round_trips(fills: Sequence[Dict[str, Any]], funding: Optional[Sequence[Dict
         cur: Optional[Dict[str, Any]] = None
         for e in events:
             if e.kind == "open":
+                if cur is not None:
+                    # A second "open" while a trip is already in progress is never a real
+                    # position event (you cannot open what is already open) -- it is a data
+                    # artifact (measured 2026-10-14: an overlapping incremental fills-cache
+                    # sync left one real batch of partial fills AND a duplicate consolidated
+                    # row of the same batch, both starting from start_position=0 at the same
+                    # ms). The old code unconditionally overwrote `cur` here, silently
+                    # discarding every fee/pnl accumulated so far in the real trip. Drop the
+                    # duplicate instead: never fabricate, never discard real data either.
+                    continue
                 cur = {"side": e.side, "opened": e.time_ms, "in_sz": e.delta_sz, "in_ntl": e.delta_sz * e.px,
                        "out_sz": 0.0, "out_ntl": 0.0, "pnl": e.closed_pnl, "fee": e.fee,
-                       "max_ntl": abs(e.end_position) * e.px}
+                       "max_ntl": abs(e.end_position) * e.px, "liq": e.liquidation}
                 continue
             if cur is None:
                 continue                     # trip began before our first fill
             cur["pnl"] += e.closed_pnl
             cur["fee"] += e.fee
+            cur["liq"] = cur["liq"] or e.liquidation
             if e.kind == "add":
                 cur["in_sz"] += e.delta_sz
                 cur["in_ntl"] += e.delta_sz * e.px
@@ -288,7 +305,7 @@ def round_trips(fills: Sequence[Dict[str, Any]], funding: Optional[Sequence[Dict
                     exit_px=cur["out_ntl"] / cur["out_sz"] if cur["out_sz"] else e.px,
                     max_notional_usd=round(cur["max_ntl"], 2), gross_pnl_usd=round(cur["pnl"], 6),
                     fee_usd=round(cur["fee"], 6), funding_usd=round(fund, 6),
-                    net_pnl_usd=round(net, 6), win=net > 0))
+                    net_pnl_usd=round(net, 6), win=net > 0, liquidation=cur["liq"]))
                 cur = None
     trips.sort(key=lambda t: (t.closed_ms, t.coin))
     return trips

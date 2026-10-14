@@ -16,6 +16,7 @@ function trip(partial: Partial<RoundTrip> & { net_pnl_usd: number }): RoundTrip 
     fee_usd: 0,
     funding_usd: 0,
     win: partial.net_pnl_usd > 0,
+    liquidation: false,
     ...partial,
   };
 }

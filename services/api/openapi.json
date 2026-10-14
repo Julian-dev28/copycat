@@ -2494,6 +2494,11 @@
             "title": "Hold H",
             "type": "number"
           },
+          "liquidation": {
+            "default": false,
+            "title": "Liquidation",
+            "type": "boolean"
+          },
           "max_notional_usd": {
             "title": "Max Notional Usd",
             "type": "number"
@@ -2732,7 +2737,7 @@
             "type": "array"
           },
           "contract_version": {
-            "default": 15,
+            "default": 17,
             "title": "Contract Version",
             "type": "integer"
           },

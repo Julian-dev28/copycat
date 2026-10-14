@@ -28,6 +28,13 @@ async function openSecondTraderFile(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Performance" })).toBeVisible();
 }
 
+// Fixed demo addresses for the two Trade history checklist edge cases (see
+// e2e/tests/demo/trader_file_history.spec.ts for how these were derived):
+// SPECIAL[3] fills_truncated (the warn-soft notice banner) and SPECIAL[27]
+// wallet_liquidated (the danger-tinted liquidated row + badge).
+const FILLS_TRUNCATED_ADDR = "0xd46a2102c4b6b8643edbbbb6220f7c2677ca0b49";
+const WALLET_LIQUIDATED_ADDR = "0x597ab8dd5dfa43047e3830750d075044f55cff50";
+
 test.describe("Scout a11y (/scout?demo=1)", () => {
   test("no automatic accessibility violations on the board", async ({ page }) => {
     await gotoDemo(page, "/scout");
@@ -85,6 +92,26 @@ test.describe("Scout a11y (/scout?demo=1)", () => {
       clientWidth: document.documentElement.clientWidth,
     }));
     expect(scrollWidth, "wide tables scroll inside their region, not the page").toBeLessThanOrEqual(clientWidth + 1);
+  });
+
+  test("no violations on the truncated-history notice banner (Round trips and Fills)", async ({ page }) => {
+    await gotoDemo(page, `/scout/${FILLS_TRUNCATED_ADDR}`);
+    await expect(page.getByRole("heading", { name: "Performance" })).toBeVisible();
+    const sections = page.getByRole("tablist", { name: "Trader file sections" });
+    await sections.getByRole("tab", { name: "Round trips" }).click();
+    await expect(page.getByText(/Hyperliquid serves only the newest 10,000 fills/)).toBeVisible();
+    await scan(page);
+    await sections.getByRole("tab", { name: "Fills" }).click();
+    await expect(page.getByText(/Hyperliquid serves only the newest 10,000 fills/)).toBeVisible();
+    await scan(page);
+  });
+
+  test("no violations on a liquidated round trip (danger-tinted row + badge)", async ({ page }) => {
+    await gotoDemo(page, `/scout/${WALLET_LIQUIDATED_ADDR}`);
+    await expect(page.getByRole("heading", { name: "Performance" })).toBeVisible();
+    await page.getByRole("tablist", { name: "Trader file sections" }).getByRole("tab", { name: "Round trips" }).click();
+    await expect(page.getByText("Liquidated", { exact: true }).first()).toBeVisible();
+    await scan(page);
   });
 
   test("keyboard: Tab reaches the sort control and a card's primary action", async ({ page }) => {

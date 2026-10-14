@@ -385,13 +385,21 @@ export function fixtureProfile(row: TraderRow, nowMs: number): TraderProfile {
   const recent_trips: RoundTrip[] = [];
   let tc = nowMs - HOUR;
   const holdBase = row.trades_30d.median_hold_h ?? 10;
+  const walletLiquidated = row.flags.includes("wallet_liquidated");
   for (let k = 0; k < Math.min(60, row.trades_30d.trips); k++) {
-    const coin = pick(r, row.top_coins.length ? row.top_coins.map((c) => c.coin) : ["BTC"]);
+    // Flip demo (user_consensus Trade history checklist): every wallet's 6th trip, when there
+    // is a prior one to flip out of, closes a long/short into the opposite side on the SAME
+    // coin at the EXACT instant the prior trip opened -- the real shape `positions.reconstruct`
+    // produces for one HL fill that crosses zero (close then open, same ms). Deterministic, not
+    // a rare roll, so any demo wallet with >= 7 trips shows it.
+    const prev = recent_trips[recent_trips.length - 1];
+    const isFlip = k === 5 && prev !== undefined;
+    const coin = isFlip ? prev.coin : pick(r, row.top_coins.length ? row.top_coins.map((c) => c.coin) : ["BTC"]);
     const hold = round(holdBase * between(r, 0.3, 2.2), 2);
-    const closed = Math.round(tc);
+    const closed = isFlip ? prev.opened_ms : Math.round(tc);
     const opened = Math.round(closed - hold * HOUR);
     tc = opened - between(r, 0.1, 1) * hold * HOUR;
-    const side = r() < 0.6 ? "long" : "short";
+    const side = isFlip ? (prev.side === "long" ? "short" : "long") : r() < 0.6 ? "long" : "short";
     const mark = MARK[coin] ?? 10;
     const entry = round(mark * between(r, 0.93, 1.05), mark < 1 ? 6 : 2);
     const win = r() < (row.trades_30d.win_rate_pct ?? 50) / 100;
@@ -403,7 +411,15 @@ export function fixtureProfile(row: TraderRow, nowMs: number): TraderProfile {
     // order of magnitude as the live `funding_since_open_usd` fixture a few lines up.
     const funding = round(maxN * between(r, -0.0006, 0.0006) * (hold / 24), 2);
     const net = round(gross - fee + funding, 2);
-    recent_trips.push({ coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry, exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, gross_pnl_usd: gross, fee_usd: fee, funding_usd: funding, net_pnl_usd: net, win: net > 0 });
+    // Liquidation demo: the one board row flagged `wallet_liquidated` (a real HL liquidation in
+    // its own 30d history, TraderScore.liquidations_30d) shows that same liquidation as its own
+    // event type on its 3rd trip, never as an ordinary closed loss.
+    const liquidation = walletLiquidated && k === 2;
+    recent_trips.push({
+      coin, side, opened_ms: opened, closed_ms: closed, hold_h: hold, entry_px: entry,
+      exit_px: round(entry * (1 + move), mark < 1 ? 6 : 2), max_notional_usd: maxN, gross_pnl_usd: gross,
+      fee_usd: fee, funding_usd: funding, net_pnl_usd: net, win: net > 0, liquidation,
+    });
   }
   const coins: CoinStat[] = [...row.top_coins];
   for (const c of COINS) {

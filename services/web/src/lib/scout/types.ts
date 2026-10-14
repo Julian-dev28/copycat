@@ -144,6 +144,9 @@ export interface RoundTrip {
   /** gross_pnl_usd - fee_usd + funding_usd. */
   net_pnl_usd: number;
   win: boolean;
+  /** A forced HL liquidation touched this trip (a full close or a partial reduce) at least
+   * once during the hold. Its own event type, never an ordinary closed loss. */
+  liquidation: boolean;
 }
 
 export interface AccountRisk {

@@ -37,6 +37,7 @@ class Trip:
     net_pnl_usd: float        # gross_pnl_usd - fee_usd + funding_usd
     adds: int                 # entry actions after the open
     exits: int                # exit actions, the close included (>= 1)
+    liquidation: bool = False  # any fill in the hold (add, reduce or the close) was a forced HL liquidation
 
     @property
     def hold_h(self) -> float:
@@ -56,7 +57,8 @@ class Trip:
                          max_notional_usd=round(self.max_notional_usd, 2),
                          gross_pnl_usd=round(self.gross_pnl_usd, 6), fee_usd=round(self.fee_usd, 6),
                          funding_usd=round(self.funding_usd, 6),
-                         net_pnl_usd=round(self.net_pnl_usd, 6), win=self.net_pnl_usd > 0)
+                         net_pnl_usd=round(self.net_pnl_usd, 6), win=self.net_pnl_usd > 0,
+                         liquidation=self.liquidation)
 
 
 def build_trips(fills: Sequence[Dict[str, Any]],
@@ -78,15 +80,18 @@ def build_trips(fills: Sequence[Dict[str, Any]],
         cur: Optional[Dict[str, Any]] = None
         for e in events:
             if e.kind == "open":
+                if cur is not None:
+                    continue    # duplicate open mid-trip (data artifact): drop it, keep the real trip
                 cur = {"side": e.side, "opened": e.time_ms, "open_px": e.px,
                        "in_sz": e.delta_sz, "in_ntl": e.delta_sz * e.px, "out_sz": 0.0, "out_ntl": 0.0,
                        "pnl": e.closed_pnl, "fee": e.fee, "max_ntl": abs(e.end_position) * e.px,
-                       "adds": 0, "exits": 0, "last_in": e.time_ms, "last_out": None}
+                       "adds": 0, "exits": 0, "last_in": e.time_ms, "last_out": None, "liq": e.liquidation}
                 continue
             if cur is None:
                 continue                      # trip began before our first fill
             cur["pnl"] += e.closed_pnl
             cur["fee"] += e.fee
+            cur["liq"] = cur["liq"] or e.liquidation
             if e.kind == "add":
                 cur["in_sz"] += e.delta_sz
                 cur["in_ntl"] += e.delta_sz * e.px
@@ -109,7 +114,7 @@ def build_trips(fills: Sequence[Dict[str, Any]],
                     exit_px=cur["out_ntl"] / cur["out_sz"] if cur["out_sz"] else e.px,
                     max_notional_usd=cur["max_ntl"], gross_pnl_usd=cur["pnl"], fee_usd=cur["fee"],
                     funding_usd=fund, net_pnl_usd=cur["pnl"] - cur["fee"] + fund,
-                    adds=cur["adds"], exits=cur["exits"]))
+                    adds=cur["adds"], exits=cur["exits"], liquidation=cur["liq"]))
                 cur = None
         if cur is not None:
             still_open += 1

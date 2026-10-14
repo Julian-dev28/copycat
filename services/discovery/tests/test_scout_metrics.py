@@ -140,6 +140,28 @@ def test_round_trips_closes_despite_hl_aggregation_float_residue():
     assert t.net_pnl_usd == pytest.approx(10_000.0 - 110.0)
 
 
+def test_round_trips_liquidation_is_its_own_event_type_not_an_ordinary_closed_loss():
+    """user_consensus Trade history checklist. A partial liquidation mid-hold
+    (HL can force-reduce without fully closing) still marks the whole trip:
+    measured 2026-10-14 on a real whale wallet (53 BTC long unwound mostly by
+    the trader's own ordinary reduces, but one partial-liquidation reduce
+    landed in the middle of it)."""
+    fills = [
+        fill(_t(0), "BTC", 100.0, 5.0, "B", 0.0),                                    # open long 5
+        dict(fill(_t(1), "BTC", 95.0, 2.0, "A", 5.0, pnl=-10.0), dir="Liquidated Isolated Long"),  # partial liq
+        fill(_t(2), "BTC", 98.0, 3.0, "A", 3.0, pnl=-6.0),                           # trader's own close
+    ]
+    tr = M.round_trips(fills)
+    assert len(tr) == 1
+    assert tr[0].liquidation is True
+    assert tr[0].net_pnl_usd == pytest.approx(-16.0)   # still just gross - fee + funding; the flag is separate
+
+
+def test_round_trips_liquidation_false_for_an_ordinary_close():
+    fills = [fill(_t(0), "BTC", 100.0, 1.0, "B", 0.0), dict(fill(_t(1), "BTC", 105.0, 1.0, "A", 1.0, pnl=5.0), dir="Close Long")]
+    assert M.round_trips(fills)[0].liquidation is False
+
+
 @pytest.mark.parametrize("opd,hold,trips,want", [
     (100.1, None, 0, TradingStyle.algo), (100.0, 0.1, 5, TradingStyle.scalp),
     (1, 0.25, 3, TradingStyle.intraday), (1, 23.99, 3, TradingStyle.intraday),
