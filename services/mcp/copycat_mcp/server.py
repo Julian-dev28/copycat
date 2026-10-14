@@ -269,6 +269,16 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
             params["hide_flagged"] = "true"
         return await call("GET", "/api/scout/traders", params=params)
 
+    @mcp.tool(annotations=READ)
+    async def scout_sim_terms() -> Dict[str, Any]:
+        """What every wallet on the Scout board is copy-simmed at right now: sim equity,
+        allocation per wallet, leverage (follow-theirs or a fixed multiple, capped), margin
+        mode, max worse-entry slippage, small-account handling, and whether the board is
+        using the user's own live trading settings instead (use_live_settings). This is the
+        board-wide terms sheet behind `sim_return`/`fit` in scout_list, read-only here; the
+        user changes it in the copycat web UI (Scout board toolbar)."""
+        return await call("GET", "/api/scout/sim-terms")
+
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
                                           idempotent_hint=True, open_world_hint=False))
     async def scout_add_wallet(address: Address) -> Dict[str, Any]:

@@ -30,7 +30,8 @@ from fastapi import HTTPException, Request, status
 # engine preview (computes only), and the plan create/execute pair. NOT here,
 # on purpose: GET /api/mcp/plans/pending (the confirm codes: human only),
 # /api/leaders, PUT/PATCH /api/settings, /api/wallets/{a}/copy|stop|pause|...,
-# /api/engine/*, /api/accounts/*, /api/discovery POSTs, /api/scout/refresh, what-if.
+# /api/engine/*, /api/accounts/*, /api/discovery POSTs, /api/scout/refresh, what-if,
+# PUT /api/scout/sim-terms (board-wide, not a per-call MCP decision).
 MCP_SCOPE: FrozenSet[Tuple[str, str]] = frozenset({
     ("GET", "/api/scout/traders"),
     ("GET", "/api/scout/traders/{address}"),
@@ -41,6 +42,7 @@ MCP_SCOPE: FrozenSet[Tuple[str, str]] = frozenset({
     ("GET", "/api/scout/traders/{address}/thesis"),
     ("PUT", "/api/scout/traders/{address}/thesis"),
     ("GET", "/api/scout/presets"),
+    ("GET", "/api/scout/sim-terms"),           # v16: read-only, no writer (the terms sheet, not money)
     ("GET", "/api/scout/status"),
     ("POST", "/api/scout/custom"),             # v15: a wallet on the Scout board (research scope, no money)
     ("GET", "/api/market/candles"),

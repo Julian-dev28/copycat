@@ -28,6 +28,7 @@ from contracts.models import (
     PnlWindow,
     RiskStats,
     ScoutPresets,
+    ScoutSimTerms,
     ScoutStatus,
     Settings,
     SizeTier,
@@ -215,6 +216,7 @@ class FakeScoutClient:
         self.what_if_missing: set = set()      # addresses with no cached Scout stats (LookupError)
         self.refresh_id = "r1"
         self._status = ScoutStatus(refresh_id="r1", state="idle", last_ok_ms=1)
+        self._terms = ScoutSimTerms()
 
     def page(self, query: Dict[str, Any]) -> TraderPage:
         self.queries.append(query)
@@ -260,6 +262,14 @@ class FakeScoutClient:
             raise ScoutBusy("a Scout refresh is already running")
         self._status = ScoutStatus(refresh_id="r1", state="running", stage="leaderboard")
         return self._status
+
+    # v16 sim terms: in-memory, defaults to the ScoutSimTerms() reference
+    def sim_terms_get(self) -> ScoutSimTerms:
+        return self._terms
+
+    def sim_terms_set(self, terms: ScoutSimTerms) -> ScoutSimTerms:
+        self._terms = terms
+        return self._terms
 
     # v15 custom wallets: an in-memory set; A and B count as "on the board"
     def custom_list(self) -> List[CustomWallet]:

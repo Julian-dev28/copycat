@@ -78,6 +78,9 @@ CREATE INDEX IF NOT EXISTS idx_scout_departures_ms ON scout_departures (departed
 CREATE TABLE IF NOT EXISTS scout_custom (       -- v15: wallets the user added to the board by hand
   address TEXT PRIMARY KEY, added_ms INTEGER NOT NULL);
 """
+# v16 (ScoutSimTerms) added no table: it lives in scout_meta under key "sim_terms", one
+# JSON blob, read/written through sim_terms()/set_sim_terms() below like every other
+# scout_meta value (wanted_hash, sim_hash, ...). No sentinel/migration needed for it.
 
 ROW_COLUMNS = ("refresh_id", "settings_hash", "address", "display_name", "fit", "sim_return", "sim_dd",
                "account_value", "pnl_1d", "pnl_7d", "pnl_30d", "pnl_all",
@@ -125,6 +128,16 @@ def meta_set(conn: sqlite3.Connection, items: Dict[str, Any], commit: bool = Tru
                      [(k, json.dumps(v)) for k, v in items.items()])
     if commit:
         conn.commit()
+
+
+def sim_terms(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
+    """The stored ScoutSimTerms (plain dict, validated by the caller), or None
+    before anyone has ever called PUT /api/scout/sim-terms."""
+    return meta_get(conn, "sim_terms")
+
+
+def set_sim_terms(conn: sqlite3.Connection, terms: Dict[str, Any]) -> None:
+    meta_set(conn, {"sim_terms": terms})
 
 
 def pointer(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
@@ -309,6 +322,21 @@ def sim_index(conn: sqlite3.Connection, settings_hash: str, sim_equity: float) -
     rows = conn.execute("SELECT address, stats_ms FROM scout_sim WHERE settings_hash = ? AND sim_equity = ?",
                         (settings_hash, sim_equity)).fetchall()
     return {r["address"]: int(r["stats_ms"] or 0) for r in rows}
+
+
+def simmed_addresses(conn: sqlite3.Connection, addresses: Sequence[str]) -> set:
+    """Which of `addresses` already have a sim row at ANY settings_hash/sim_equity.
+    Their trip-span candles are already in the candle cache (prepare_wallet needs
+    nothing new from the venue), so a re-sim of one of these at a NEW hash (a sim
+    terms change) can run on CacheOnlyVenue: zero HL calls. A wallet with no prior
+    sim at all (first build, or a brand new custom wallet) is never in this set,
+    so it always gets a real venue the first time."""
+    addrs = list(addresses)
+    if not addrs:
+        return set()
+    rows = conn.execute(f"SELECT DISTINCT address FROM scout_sim WHERE address IN ({','.join('?' * len(addrs))})",
+                        tuple(addrs)).fetchall()
+    return {r["address"] for r in rows}
 
 
 def save_sim(conn: sqlite3.Connection, address: str, settings_hash: str, sim_equity: float, now_ms: int,

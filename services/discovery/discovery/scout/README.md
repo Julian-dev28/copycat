@@ -32,7 +32,9 @@ Nothing heavy runs in the api process.
 | `scout_custom_list()` | `List[CustomWallet]` | v15: wallets added by hand, with `on_board` / `queued` |
 | `scout_custom_add(address)` | `CustomWallet` / `None` | v15: adds to `scout_custom` and queues the build (`None` = not an address). Served even mid-refresh, then the board is republished at once |
 | `scout_custom_remove(address)` | `bool` | v15: drops the custom row, a universe row that existed only for it, and its served board row (or just the `custom` mark when it is on the leaderboard anyway) |
-| `run_scheduler(settings_provider, ...)`, `serve(...)` | blocking | settings re-read every tick |
+| `scout_sim_terms_get()` | `ScoutSimTerms` | v16: the stored terms, or the field defaults before any PUT |
+| `scout_sim_terms_set(terms)` | `ScoutSimTerms` | v16: stores it (`scout_meta` key `sim_terms`); `serve`'s scheduler re-sims from cache on its next tick |
+| `run_scheduler(settings_provider, ...)`, `serve(...)` | blocking | settings and sim terms re-read every tick |
 
 ## Pipeline (spec 7.2)
 
@@ -40,7 +42,7 @@ Nothing heavy runs in the api process.
 |---|---|---|---|
 | A universe | 15 min | stats-data leaderboard via `hl.leaderboard.parse_rows`; AV >= $10k, 30d vlm >= $50k, allTime or 30d PnL > 0, no vaults (`COPYCAT_SCOUT_INCLUDE_VAULTS=1` to keep); top 300 by 30d PnL; book wallets always kept | 0 |
 | B stats | 60 min, budgeted | per wallet: `portfolio` + `account_state` + `extras` + incremental fills sync (discovery's fills cache). All-or-nothing per wallet; 2 failures in a row -> sits out a cycle, row flagged `stale`. Order: book, on-demand, stalest, then universe rank | ~170 warm, ~340 cold (measured) |
-| C sim | after B; on settings change | `sim.simulate_wallet` on cached fills, candles via the shared cache; Copy Fit over the cohort | candles only |
+| C sim | after B; on a settings OR sim-terms change | `sim.simulate_wallet` on cached fills, candles via the shared cache; Copy Fit over the cohort. A sim-terms-only resim (not `use_live_settings`) runs every wallet it has already simmed before on `CacheOnlyVenue` (zero HL calls; `store.simmed_addresses`) | candles only, 0 on a terms resim |
 | publish | after every run | rows -> `scout_rows` under a new `refresh_id`, pointer switched in one transaction | 0 |
 
 Custom wallets (contract v15): `scout_custom` holds every address the user
@@ -69,10 +71,107 @@ what each wallet actually called (`stats.CountingVenue`). Wallets past the
 budget go first next pass. A cold 300-wallet universe needs ~4 passes; warm
 passes cover ~170 wallets.
 
-Settings: the board is scored at `settings_hash(settings, sim_equity)`
-(Settings minus enabled/dry_run/leaders/contract_version, plus sim equity,
-default `COPYCAT_SCOUT_SIM_EQUITY=1000`). On a change the old board keeps
-serving with `stale_settings=true` until C has re-simulated every wallet.
+## Sim terms (contract v16)
+
+The board used to score every wallet at the operator's own live trading
+`Settings` (the engine's config) plus `COPYCAT_SCOUT_SIM_EQUITY`. For a
+small-account operator that meant the whole leaderboard was simmed at their
+size and leverage: $15.20/wallet, exposure target 50x capped to 15x on the
+live deployment the night this shipped. 182 of 200 board rows showed Copy Fit
+20-29; 104 were capped by a sim liquidation at 15x; 93 had 0 sim copies
+because $15 split across a wallet's positions never cleared the $10.50
+minimum, landing in `scoring.py`'s `too_few_trades` band (score in
+[-201, -199], printed on Discover as "Score -200.00" -- a sort key, not a
+grade; see `contracts/models.py` `TraderScore.score`'s docstring). Only 9 rows
+were uncapped.
+
+`ScoutSimTerms` (GET/PUT `/api/scout/sim-terms`, `services/api/api/routes/scout.py`)
+decouples the board's copy-sim from that config entirely: its own equity,
+allocation, leverage (follow-theirs capped, or a fixed Nx -- `leverage` is
+both the cap and the fixed value, `to_settings()`'s docstring says why),
+margin mode, max worse-entry slippage and small-account handling. Stored in
+`scout_meta` (`store.sim_terms`/`set_sim_terms`), **never** `settings.json`:
+the engine must never read these, and `use_live_settings=true` is the only
+way back to the pre-v16 behavior (every wallet at `Settings.for_leader` +
+the env sim equity, unchanged).
+
+**Default terms** (no PUT ever called): $1,000 equity, $100/wallet, exposure
+mode `target` fixed at **3x**, isolated, 10% max worse entry (`ScoutSimTerms()`
+field defaults). This is NOT the spec's first candidate: the original
+proposal was exposure_mode `match` ("follow their leverage") capped at 10x.
+Measured instead, offline, against a 40-wallet real-HL discovery.db this
+branch had already cached before the real-HL moratorium below started
+(`compare_terms.py`/`sweep_terms.py`, scratchpad, zero new HL calls --
+`simstage.run_stage_c(allow_cache_only=True)` against addresses already in
+`scout_sim`, guarded by a venue stub that raises if anything reaches the
+network):
+
+| terms | Fit<=20 / 40 | >=5 sim copies | sim liquidations |
+|---|---|---|---|
+| match, capped 10x (spec's first candidate) | 40 | 3 | 4 |
+| match, capped 5x | 38 | 3 | 1 |
+| match, capped 10x, $250/wallet | 39 | 4 | 5 |
+| target, fixed 10x | 38 | 8 | 10 |
+| target, fixed 5x | 35 | 8 | 4 |
+| **target, fixed 3x (the default)** | **15** | **7** | **0** |
+| live deployment's own terms ($15.20, target 50x capped 15x) | 38 | 7 | 10 |
+
+`exposure_mode=match` sizes notional off the LEADER's own gross-notional
+ratio, so a leader who already runs hot on his own book still produces a
+high-risk copy even at a "low" cap number; `exposure_mode=target` controls
+notional directly, independent of the leader's own leverage. Lower fixed
+leverage monotonically helped here. >= 5 sim copies tops out around 7-8/40
+for EVERY terms tried (this specific 40-wallet draw structurally has many
+`too_few_trades` wallets -- few enough real round trips in 30d that no
+allocation or leverage choice changes it; that is a wallet-population
+property of this small sample, not a terms-tuning lever). `min_order_starved`
+was 0 for every row in this table: this 40-wallet sample never reproduced the
+live deployment's SPECIFIC failure (93/200 starved on the $10.50 minimum at
+$15.20) -- a different, smaller, differently-composed sample than the live
+300-wallet board. The full-universe live run below is what actually confirms
+or revises this; reopen the choice if it does not.
+
+**Real-HL moratorium (as of this writing):** the operator stopped every
+throwaway stack's real Hyperliquid reads mid-build (multiple qa2/* sessions'
+stacks were running at once, each its own rate bucket on the same IP, and the
+live trading engine started seeing 429s -- HL's 1200/min limit is per IP, not
+per process). `evals/sim_terms_check.sh`'s end-to-end HTTP run (the GET/PUT
+shape checks, the live-deployment-terms vs default comparison over the FULL
+build, the "switching back is instant" check) did not finish; the operator
+will run it serially after merge. The offline comparison above (reusing an
+already-cached real-HL db, zero new calls) is what stands in until then.
+
+**Hash and re-sim.** The board's wanted hash is `refresh.effective_hash`:
+`settings_hash(settings, sim_equity)` (unchanged) when `use_live_settings`,
+else `refresh.terms_hash(terms)` -- two hash spaces that never collide by
+construction, so flipping the switch can never serve a board built under the
+wrong terms. `tick()` writes the wanted hash BEFORE running any stage, so a
+PUT shows up as `stale_settings=true` within one scheduler tick (<= 10 s),
+same as a `Settings` change always did. `scout_sim` rows are kept forever
+(never pruned, only `scout_rows`/the pointer history is, `KEEP_REFRESHES=3`),
+so switching back to a terms sheet the board has already simmed under is a
+republish with zero new sims -- confirmed by
+`test_switch_back_to_earlier_terms_is_instant` (0 sims, 0 candle reads) and,
+offline, by `compare_terms.py` re-hitting an already-built hash in 0.006-0.033s
+for 40 wallets (vs 0.070s/wallet on a hash hit for the first time). The
+end-to-end HTTP version of this check is in `evals/sim_terms_check.sh` step 5,
+pending the operator's post-merge run (see the moratorium note above).
+
+A terms-only resim (not a `Settings` change) runs every ALREADY-simmed wallet
+on `simstage.CacheOnlyVenue` (`store.simmed_addresses`: has a sim at ANY
+hash, so its trip-span candles are on disk already -- the sim's position
+reconstruction depends on `poll_interval_s`, not on anything in
+`ScoutSimTerms`). Measured on the throwaway stack (40-wallet universe, real
+HL for the first build, `evals/sim_terms_check.py` / scratch measurement):
+**0.070 s/wallet** cached resim, extrapolated **~21 s for 300 wallets** --
+nowhere near the ~2-minute budget that would have forced an incremental
+"n of 301 simmed" publish; a terms change always re-ranks the FULL board in
+one pass. A wallet with no prior sim (a first-ever build, or a brand new
+custom wallet) always gets the real venue regardless of `allow_cache_only`,
+so a genuine `Settings` change (not a terms change) is completely unaffected:
+`allow_cache_only` is only ever true inside the scheduler's own terms-change
+re-sim path (`refresh.tick`/`run_refresh`), never for a `Settings`-hash
+change.
 
 Progress: `scout_refresh` row (stage, done/total, eta, heartbeat) and
 `tail -f /tmp/scout-refresh/progress.log`. The scheduler heartbeat
@@ -127,12 +226,17 @@ python -m discovery.scout top [--n 20] [--sort fit] [--window 30d]
 
 ## Tests
 
-Gate (offline, ~1.6 s for all 59): `services/discovery/tests/test_scout_*.py`:
+Gate (offline, a few seconds): `services/discovery/tests/test_scout_*.py`:
 metrics on hand-computed fixtures, Copy Fit weights/caps/gates, filters and
 sorts in the api query shape, switchover (old rows serve while a refresh runs,
 unswitched rows invisible, retention 3), single refresh slot, stage-B weight
 and wall-clock budget, settings change + `stale_settings`, scheduler tick,
-on-demand queue, what-if with zero HL calls.
+on-demand queue, what-if with zero HL calls. `test_scout_sim_terms.py` (v16):
+the model (defaults, validation, `to_settings()`), the store
+(`sim_terms`/`set_sim_terms`/`simmed_addresses`), the pure hash/dispatch
+functions, and the live pipeline (stale then cache-only resim, instant switch
+back, `use_live_settings` never goes cache-only even for already-simmed
+wallets, a never-simmed wallet always gets the real venue).
 
 Live eval: `.venv/bin/python -m pytest services/discovery/tests/test_scout_live.py -m live -s`
 (stage A + stats for 10 + sim for 5; every metric populated or flagged;
@@ -149,3 +253,23 @@ checks. Run it after touching `refresh.service_requests`, `build_one`,
 `republish` or the custom store functions.
 Last run 2026-10-14 on c851d0b: 12/12 PASS, the row showed 9 s after the add
 while the refresh was at stats 0/41 ("built in 4s mid-refresh, board republished").
+
+Sim terms, live: `services/discovery/evals/sim_terms_check.sh` starts the same
+kind of throwaway stack (universe 40, real HL), waits for the first build,
+PUTs the live deployment's own terms ($15.20/wallet, exposure target 50x
+capped 15x), checks the board re-ranks and the Fit distribution is worse than
+the default terms (more rows at Fit <= 20, fewer with >= 5 sim copies, more
+starved on the $10.50 minimum), PUTs the default terms back, checks switching
+to an already-simmed hash is near-instant, and checks PUT validates like
+LeaderOverride (422 on a bad value). 2 to 6 minutes solo; exit code = failed
+checks. Run it after touching `ScoutSimTerms`, `refresh.effective_hash`/
+`terms_hash`, `simstage.run_stage_c`'s cache-only path, or the sim-terms
+store/api functions.
+Last run: PENDING -- stopped mid-build by the operator (real-HL moratorium,
+see "Sim terms" above: concurrent qa2/* throwaway stacks were pushing the
+shared-IP HL rate limit into 429s for the live trading engine). The script is
+correct and in the branch; the operator runs it serially after merge. Until
+then, the "Default terms" table above (offline, zero new HL calls, reusing a
+discovery.db this branch had already built) is the evidence for the default
+choice, and `test_scout_sim_terms.py` covers the hash/dispatch/cache-only
+logic this eval would otherwise be the only check on.

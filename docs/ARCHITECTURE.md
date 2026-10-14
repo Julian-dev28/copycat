@@ -71,6 +71,8 @@ and reuses it on restart. Host header must be `localhost`, `127.0.0.1` or in `CO
 | GET | /api/scout/traders/{address}/fills?before_ms=&limit= | `LeaderFillView[]` from the fills cache, `limit` 1..500 (default 100) |
 | GET | /api/scout/traders/{address}/orders | `OpenOrderView[]` (raw HL open-order rows are mapped by the api) |
 | POST | /api/scout/traders/{address}/what-if | `WhatIfRequest` -> `WhatIfResult`, sim at the current `data/settings.json` + `override`. One at a time per api process, 409 while one runs |
+| GET | /api/scout/sim-terms | `ScoutSimTerms` (v16): what every wallet on the Scout board is copy-simmed at (equity, allocation, leverage, margin, ...), apart from `data/settings.json`. The field defaults before any PUT ($1,000 equity, $100/wallet, a fixed 3x target leverage, isolated, 10% max worse entry -- measured, see scout/README.md) |
+| PUT | /api/scout/sim-terms | `ScoutSimTerms` -> `ScoutSimTerms` (v16), validated like `LeaderOverride`. Stored in Scout's own meta, never `settings.json`; `scout serve` re-sims from cache on its next tick (<= 10 s). `use_live_settings=true` reproduces the pre-v16 board (`Settings.for_leader` + the env sim equity) |
 | GET | /api/scout/presets | `ScoutPresets` (coin chips, counts, hip3 count) |
 | GET | /api/scout/status | `ScoutStatus` |
 | POST | /api/scout/refresh | `ScoutStatus`; 409 if a refresh is running |

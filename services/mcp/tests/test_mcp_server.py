@@ -30,9 +30,9 @@ PLAN = {"plan_id": PLAN_ID, "confirm_code": "ABC234", "created_ms": 0, "expires_
         "trading_live": False, "executable": True, "warnings": ["Trading is not live"],
         "book_fingerprint": "f" * 64, "book_summary": ["BTC long $50,000"]}
 
-EXPECTED_TOOLS = {"scout_list", "scout_add_wallet", "trader_profile", "trader_fingerprint", "trader_trades",
-                  "trader_fills", "market_candles", "list_theses", "save_thesis", "copycat_settings",
-                  "engine_status", "my_wallets", "preview_copy", "copy_plan"}
+EXPECTED_TOOLS = {"scout_list", "scout_sim_terms", "scout_add_wallet", "trader_profile", "trader_fingerprint",
+                  "trader_trades", "trader_fills", "market_candles", "list_theses", "save_thesis",
+                  "copycat_settings", "engine_status", "my_wallets", "preview_copy", "copy_plan"}
 # The two writes that need no flag: a thesis (text) and a wallet on the Scout board (research
 # scope: no order, no setting, no leader; the user removes it in the web app, there is no
 # remove tool, see FORBIDDEN_TOOL_WORDS).
@@ -142,6 +142,17 @@ def test_scout_add_wallet_posts_the_normalized_address_and_hints_while_building(
     assert "trader_profile" in (out.get("hint") or "")
     fake.routes[("POST", "/api/scout/custom")] = {"address": ADDR, "added_ms": 1, "on_board": True, "queued": False}
     assert "hint" not in sc(call(make_server(fake), "scout_add_wallet", {"address": ADDR}))
+
+
+def test_scout_sim_terms_reads_the_board_terms():
+    terms = {"use_live_settings": False, "sim_equity_usd": 1000.0, "allocation_usd": 100.0,
+             "exposure_mode": "match", "target_leverage": 10, "leverage_mode": "match", "leverage": 10,
+             "margin_mode": "isolated", "max_worse_entry_pct": 10.0, "small_account_mode": "concentrate"}
+    fake = FakeApi(routes={("GET", "/api/scout/sim-terms"): terms})
+    r = call(make_server(fake), "scout_sim_terms")
+    assert not r.is_error, text(r)
+    assert [(req.method, req.url.path) for req in fake.requests] == [("GET", "/api/scout/sim-terms")]
+    assert sc(r) == terms
 
 
 def test_scout_list_maps_query_and_sends_bearer():

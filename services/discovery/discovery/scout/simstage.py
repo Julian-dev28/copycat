@@ -26,7 +26,7 @@ import logging
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from contracts.models import CurvePoint, Settings
 from contracts.venue import Venue
@@ -175,12 +175,27 @@ class StageCResult:
     weight: float = 0.0
 
 
-def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str], settings: Settings,
+def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str],
+                get_settings: Union[Settings, Callable[[str], Settings]],
                 sim_equity: float, settings_hash: str, budget: Any, sizing: Any, limit: Optional[int] = None,
-                progress: Optional[Callable[[int, int], None]] = None) -> StageCResult:
+                progress: Optional[Callable[[int, int], None]] = None,
+                allow_cache_only: bool = False) -> StageCResult:
     """Sim every wallet whose stats are newer than its sim at (settings_hash,
     sim_equity). Candles are fetched through the shared cache (background
-    priority); max leverage per coin is remembered in scout_meta for what-if."""
+    priority); max leverage per coin is remembered in scout_meta for what-if.
+
+    `get_settings`: a Settings (old callers, kept for a plain Settings
+    argument) or a per-wallet callable (refresh.effective_settings_for_leader):
+    Settings.for_leader(wallet) under live settings, or the same ScoutSimTerms-
+    derived Settings for every wallet otherwise.
+
+    `allow_cache_only`: True for a ScoutSimTerms (not live-settings) run. A
+    wallet that already has a sim at ANY hash (store.simmed_addresses) has its
+    trip-span candles cached already -- a terms change never needs a new HL
+    call for it, so it sims on CacheOnlyVenue (zero HL weight). A wallet with
+    no prior sim (first board build, or a brand new custom wallet) always gets
+    the real venue, whatever allow_cache_only says."""
+    settings_for = get_settings if callable(get_settings) else get_settings.for_leader
     res = StageCResult()
     have = store.sim_index(conn, settings_hash, sim_equity)
     stats_ix = store.stats_index(conn)
@@ -191,6 +206,7 @@ def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         res.deferred = todo[limit:]
         todo = todo[:limit]
     known = store.meta_get(conn, "coin_max_lev", {}) or {}
+    cache_ok = store.simmed_addresses(conn, todo) if allow_cache_only else set()
     for i, a in enumerate(todo):
         if not budget.allows(C.W_CANDLES):
             res.deferred = todo[i:] + res.deferred
@@ -198,10 +214,11 @@ def run_stage_c(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         inp = wallet_inputs(conn, a)
         if inp is None:
             continue
-        cv = CountingVenue(venue)
+        cache_only = a in cache_ok
+        cv = CountingVenue(CacheOnlyVenue() if cache_only else venue)
         try:
-            out = simulate(conn, cv, inp["fills"], settings.for_leader(a), sim_equity, inp["leader_equity"],
-                           inp["lev_by_coin"], inp["now_ms"], sizing, coin_max_lev=known)
+            out = simulate(conn, cv, inp["fills"], settings_for(a), sim_equity, inp["leader_equity"],
+                           inp["lev_by_coin"], inp["now_ms"], sizing, coin_max_lev=known, cache_only=cache_only)
             store.save_sim(conn, a, settings_hash, sim_equity, int(time.time() * 1000), inp["stats_ms"],
                            out.fields, [p.model_dump(mode="json") for p in out.curve])
             if out.coin_max_lev:

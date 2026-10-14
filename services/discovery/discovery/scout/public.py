@@ -31,6 +31,7 @@ from contracts.models import (
     LeaderOverride,
     norm_addr,
     ScoutPresets,
+    ScoutSimTerms,
     ScoutStatus,
     Settings,
     TraderPage,
@@ -49,8 +50,8 @@ from .query import ScoutQueryError
 from .refresh import ScoutBusy, run_scheduler, settings_hash
 
 __all__ = ["scout_page", "scout_profile", "scout_fills", "scout_orders", "scout_what_if", "scout_presets",
-           "scout_status", "scout_refresh", "run_scheduler", "serve", "ScoutBusy", "ScoutQueryError",
-           "ScoutReadError", "settings_hash", "configure", "scout_build"]
+           "scout_status", "scout_refresh", "scout_sim_terms_get", "scout_sim_terms_set", "run_scheduler",
+           "serve", "ScoutBusy", "ScoutQueryError", "ScoutReadError", "settings_hash", "configure", "scout_build"]
 
 _ADDR = re.compile(r"^0x[0-9a-f]{40}$")
 
@@ -151,6 +152,27 @@ def scout_presets() -> ScoutPresets:
     return ScoutPresets(refresh_id=rid, coins=order[:6], coin_counts=counts, hip3_count=hip3, total=total,
                         departed_30d=dep["departed"], departed_liquidated_30d=dep["departed_liquidated"],
                         custom=int(custom))
+
+
+# ── sim terms (v16): the board's own copy-sim terms, apart from live Settings ─
+
+def scout_sim_terms_get() -> ScoutSimTerms:
+    """The stored terms, or the built-in reference default before anyone has
+    ever called PUT (ScoutSimTerms() field defaults: $1,000 equity, $100 per
+    wallet, a fixed 3x target leverage, isolated, 10% max worse entry --
+    see scout/README.md "Sim terms" for the measured why)."""
+    return ScoutSimTerms.model_validate(store.sim_terms(_conn()) or {})
+
+
+def scout_sim_terms_set(terms: ScoutSimTerms) -> ScoutSimTerms:
+    """Store new terms (already validated by the ScoutSimTerms model at the api
+    boundary). `scout serve`'s scheduler re-reads them on its next tick (<= 10s):
+    `wanted_hash` changes at once, so the board shows stale_settings right away,
+    and a stage-C re-sim from cache follows. Never written to settings.json; the
+    engine never sees this."""
+    conn = _conn()
+    store.set_sim_terms(conn, terms.model_dump(mode="json"))
+    return terms
 
 
 # ── custom wallets (v15): any address, scored and simmed like the top 300 ─────
@@ -368,7 +390,8 @@ def serve(settings_provider: Callable[[], Settings], sim_equity_provider: Option
     from contracts import build
     store.meta_set(_conn(), {"scheduler_build": build.record("scout")})
     run_scheduler(settings_provider, venue=_default_venue(), sim_equity_provider=sim_equity_provider,
-                  stop=stop, sizing=_cfg["sizing"], tick_s=tick_s, db_path=_cfg["db_path"])
+                  stop=stop, sizing=_cfg["sizing"], tick_s=tick_s, db_path=_cfg["db_path"],
+                  terms_provider=scout_sim_terms_get)
 
 
 def scout_build() -> Optional[Dict[str, Any]]:

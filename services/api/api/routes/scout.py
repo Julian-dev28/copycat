@@ -18,6 +18,7 @@ from contracts.models import (
     LeaderFillView,
     OpenOrderView,
     ScoutPresets,
+    ScoutSimTerms,
     ScoutStatus,
     TraderPage,
     TraderProfile,
@@ -165,6 +166,31 @@ def get_presets(scout: ScoutClient = Depends(get_scout_client)) -> ScoutPresets:
     """Coin chips + hip3 count from the current `scout_rows`."""
     try:
         return scout.presets()
+    except ScoutUnavailable as e:
+        raise _unavailable(e) from e
+
+
+# ── sim terms (v16): the board's own copy-sim terms, decoupled from Settings ──
+
+@router.get("/sim-terms", response_model=ScoutSimTerms, responses=_UNAVAILABLE)
+def get_sim_terms(scout: ScoutClient = Depends(get_scout_client)) -> ScoutSimTerms:
+    """What every wallet on the Scout board is simmed at right now. The
+    built-in reference (ScoutSimTerms field defaults) before anyone has ever
+    called PUT."""
+    try:
+        return scout.sim_terms_get()
+    except ScoutUnavailable as e:
+        raise _unavailable(e) from e
+
+
+@router.put("/sim-terms", response_model=ScoutSimTerms, responses=_UNAVAILABLE)
+def put_sim_terms(body: ScoutSimTerms, scout: ScoutClient = Depends(get_scout_client)) -> ScoutSimTerms:
+    """Replace the board's sim terms. Validated by the ScoutSimTerms model
+    (same field ranges as a LeaderOverride) before it ever reaches storage;
+    `scout serve` re-sims from cache on its next tick (<= 10s), not here --
+    this call only stores the terms and returns at once."""
+    try:
+        return scout.sim_terms_set(body)
     except ScoutUnavailable as e:
         raise _unavailable(e) from e
 
