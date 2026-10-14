@@ -99,6 +99,30 @@ test.describe("demo Trade", () => {
     expect(await backtestText(page)).toEqual(one);
   });
 
+  test("leverage cap message offers a way to raise it, not just the bad news (QA audit)", async ({ page }) => {
+    // Default demo settings: max_position_leverage 50 == MAX_LEVERAGE_CAP, so
+    // the ticket's own max (50x, Home/End on the slider) never caps on its
+    // own; lower the Settings cap first so sliding to End trips it for sure.
+    await gotoDemo(page, "/settings");
+    const maxLev = page.getByRole("slider", { name: "Maximum position leverage" });
+    await maxLev.focus();
+    await maxLev.press("Home"); // 1x
+    await page.waitForTimeout(600); // the patch is debounced 350ms and cancelled on unmount
+    await page.getByRole("link", { name: "Trade" }).click();
+    await page.locator("main").waitFor();
+    await invest(page).fill("250");
+    const slider = await setLeverage(page, "End");
+    await expect(slider).toHaveValue("50");
+    const capped = page.getByTestId("ticket-leverage-capped");
+    await expect(capped).toBeVisible();
+    // Regression: this used to state the cap with no way out of it.
+    const raise = capped.getByRole("link", { name: "Raise the cap" });
+    await expect(raise).toHaveAttribute("href", /\/settings\?demo=1.*#max_position_leverage/);
+    await raise.click();
+    await expect(page).toHaveURL(/\/settings\?demo=1.*#max_position_leverage/);
+    await expect(maxLev).toBeInViewport(); // the browser scrolls the #max_position_leverage target into view
+  });
+
   test("coin filters are editable", async ({ page }) => {
     await gotoDemo(page, "/");
     const only = page.getByRole("combobox", { name: "Only these coins" });

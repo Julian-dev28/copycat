@@ -1,19 +1,29 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { ApiError, getApiBase } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 
-/** Placeholder blocks shaped like the page's panels, so the layout doesn't jump when data lands. */
+/**
+ * Placeholder blocks shaped like the page's panels, so the layout doesn't
+ * jump when data lands. `label` used to be sr-only: a screen reader heard
+ * "Loading account", a sighted user on a slow connection just saw three
+ * empty pulsing boxes for as long as the route's JS chunk took to arrive
+ * (QA audit: "a bare skeleton for more than 2s, then the page"). It is now
+ * plain visible text; `role="status"` still announces it, so the sr-only
+ * duplicate is gone too.
+ */
 export function PageSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
   return (
-    <div className="flex flex-col gap-6" role="status" aria-label={label}>
+    <div className="flex flex-col gap-6" role="status">
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <Loader2 size={14} className="animate-spin" aria-hidden="true" /> {label}…
+      </p>
       <div className="h-12 w-64 animate-pulse rounded-lg bg-surface-2" />
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="h-40 animate-pulse rounded-xl border border-border bg-surface" />
       ))}
-      <span className="sr-only">{label}</span>
     </div>
   );
 }

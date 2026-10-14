@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
 import {
-  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders,
+  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, flagTone, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders,
   refreshCountLabel, refreshEtaLabel, STYLE_META, visibleFlags,
 } from "./labels";
 import { TRADING_STYLES } from "./types";
@@ -117,6 +117,19 @@ describe("flagText (UX audit: raw enum keys never render)", () => {
   });
   it("dexHint explains the HIP-3 prefix", () => {
     expect(dexHint("xyz")).toBe("HIP-3 market (xyz deployer)");
+  });
+  it("flagTone: a scope disclaimer is neutral, not a shouty warning pill (FileHeader regression)", () => {
+    expect(flagTone("non_perp_ignored")).toBe("neutral");
+    expect(flagTone("candles_partial:SOL")).toBe("neutral");
+    expect(flagTone("stale")).toBe("neutral");
+  });
+  it("flagTone: anything that bears on trusting or copying the trader stays a warning", () => {
+    for (const f of ["liquidated", "liquidated:BTC", "wallet_liquidated", "hft", "hft_not_simulated", "vault", "coattail", "too_few_trades", "inactive", "max_leverage_unknown:ETH", "error:sim:ValueError"]) {
+      expect(flagTone(f), f).toBe("warning");
+    }
+  });
+  it("flagTone: an unknown flag defaults to warning, not silently neutral", () => {
+    expect(flagTone("brand_new_flag")).toBe("warning");
   });
   it("flag texts use they/their, not he/his", () => {
     for (const t of Object.values(FLAG_TEXT)) expect(t).not.toMatch(/\b(he|his|him)\b/i);

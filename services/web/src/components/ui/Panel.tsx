@@ -71,6 +71,7 @@ export function SettingRow({
   children,
   className,
   inline,
+  valueClassName,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -79,6 +80,11 @@ export function SettingRow({
   className?: string;
   /** Keep the control beside the label on phones too (switches). */
   inline?: boolean;
+  /** Replaces the value column's default `sm:w-80`: a 3-option SegmentedControl with a longer
+   * label (e.g. "Fixed notional") truncates at 320px even on a wide screen (QA audit: "Fixed
+   * notio…", "Match trad…"). Pass a wider width for those; every other row keeps the default so
+   * the page's controls still line up in one column. */
+  valueClassName?: string;
 }) {
   return (
     <div
@@ -93,7 +99,7 @@ export function SettingRow({
         {title}
         {description ? <span className="mt-0.5 block text-xs font-normal text-muted">{description}</span> : null}
       </label>
-      <div className={clsx(inline ? "flex-shrink-0" : "w-full", "sm:w-80 sm:flex-shrink-0")}>{children}</div>
+      <div className={clsx(inline ? "flex-shrink-0" : "w-full", valueClassName ?? "sm:w-80", "sm:flex-shrink-0")}>{children}</div>
     </div>
   );
 }

@@ -228,7 +228,11 @@ export function Ticket({
             aria-label="Settings for this trader"
             options={[
               { value: "global", label: "Use global" },
-              { value: "custom", label: "Custom for this trader" },
+              // Just "Custom": the radiogroup's own aria-label ("Settings for this
+              // trader") already carries the "for this trader" part. The fuller
+              // label used to truncate to "Custom for this tra…" in the ticket's
+              // narrow column at both 1440 and 390px (QA audit).
+              { value: "custom", label: "Custom" },
             ]}
             value={d.source}
             onChange={(source) => t.setDraft({ source })}
@@ -263,6 +267,7 @@ export function Ticket({
               marginSet={d.marginMode !== null}
               hisLeverage={t.preview?.hisLeverage ?? null}
               cap={t.lev}
+              settingsHref={settingsHref}
               onMode={(mode) => t.setDraft({ mode })}
               onLeverage={(leverage) => t.setDraft({ leverage })}
               onMarginMode={(marginMode) => t.setDraft({ marginMode })}

@@ -106,7 +106,7 @@ export function EngineControlsPanel({
         </div>
       </SettingRow>
 
-      <SettingRow title="Sizing mode" description="How a new copy's size is decided." htmlFor="sizing_mode">
+      <SettingRow title="Sizing mode" description="How a new copy's size is decided." htmlFor="sizing_mode" valueClassName="sm:w-96">
         <SegmentedControl
           aria-label="Sizing mode"
           options={SIZING_OPTIONS}
@@ -190,7 +190,7 @@ export function EngineControlsPanel({
         </>
       ) : null}
 
-      <SettingRow title="Leverage mode" description="How the leverage for a new copy is resolved." htmlFor="leverage_mode">
+      <SettingRow title="Leverage mode" description="How the leverage for a new copy is resolved." htmlFor="leverage_mode" valueClassName="sm:w-96">
         <SegmentedControl
           aria-label="Leverage mode"
           options={LEVERAGE_MODE_OPTIONS}

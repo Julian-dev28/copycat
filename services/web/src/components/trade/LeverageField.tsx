@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Slider } from "@/components/ui/Slider";
 import { leverageVibe } from "@/lib/copyRecipe";
@@ -26,6 +27,7 @@ export function LeverageField({
   hisLeverage,
   marginSet,
   cap,
+  settingsHref,
   onMode,
   onLeverage,
   onMarginMode,
@@ -39,6 +41,8 @@ export function LeverageField({
   marginSet: boolean;
   /** Set leverage after the Settings tab's Maximum position leverage. */
   cap: TargetLeverageCap;
+  /** Where the cap message's "Settings" link goes (demo query carried over). */
+  settingsHref: string;
   onMode: (m: ExposureMode) => void;
   onLeverage: (l: number) => void;
   onMarginMode: (m: MarginMode) => void;
@@ -70,7 +74,11 @@ export function LeverageField({
             {cap.capped ? (
               <p data-testid="ticket-leverage-capped" className="mt-1 text-xs text-warn">
                 <span className="num font-medium">{effectiveLeverageText(cap.set, cap.cap)}</span>: Maximum position leverage in Settings caps it, so copies open at{" "}
-                <span className="num">{cap.effective}x</span>.
+                <span className="num">{cap.effective}x</span>.{" "}
+                <Link href={`${settingsHref}#max_position_leverage`} className="font-medium text-accent hover:underline">
+                  Raise the cap
+                </Link>
+                .
               </p>
             ) : null}
             <p className="num-sm mt-1 text-muted">{formatLiquidationHint(cap.effective, marginMode)}</p>

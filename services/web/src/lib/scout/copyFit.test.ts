@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { blendedFit, CAP_RULES, capLines, fitGrade, fitPartsLine, fitSegments, fitTier, PART_META, PART_ORDER, topParts } from "./copyFit";
+import { blendedFit, CAP_RULES, capLines, fitGrade, fitPartsLine, fitSegments, fitTier, ifCopiedText, PART_META, PART_ORDER, topParts } from "./copyFit";
 import { FIT_WEIGHTS } from "./fixtures";
-import type { CopyFit } from "./types";
+import type { CopyFit, TraderScore } from "./types";
 
 function fit(parts: Record<string, number>, caps: string[] = [], value?: number): CopyFit {
   const f = { value: 0, parts, weights: FIT_WEIGHTS, caps, cohort_size: 280 } as unknown as CopyFit;
@@ -113,5 +113,42 @@ describe("copy text uses they/their, not he/his", () => {
   it("part hints and cap texts", () => {
     const texts = [...Object.values(PART_META).map((m) => `${m.label} ${m.hint}`), ...CAP_RULES.map((c) => c.text)];
     for (const t of texts) expect(t).not.toMatch(/\b(he|his|him)\b/i);
+  });
+});
+
+/** Base shape for ifCopiedText's Pick<TraderScore, ...>; each test overrides only what it exercises. */
+const SCORE: Pick<TraderScore, "sim_copies" | "sim_return_pct" | "sim_max_drawdown_pct" | "sim_copy_capacity_pct" | "sim_capacity_note"> = {
+  sim_copies: 10, sim_return_pct: -0.4, sim_max_drawdown_pct: -17.1, sim_copy_capacity_pct: 78, sim_capacity_note: null,
+};
+
+describe("ifCopiedText (UX audit: 'IF YOU COPIED 30D -0.4% · max dip 0.0% · capacity 4% · 100% of skipped opens: ...' read like a stats dump)", () => {
+  it("says so, in one sentence, when nothing was simulated", () => {
+    const t = ifCopiedText({ ...SCORE, sim_copies: 0 });
+    expect(t).toEqual({ headline: "No copy opened in the 30d sim", capacity: null });
+  });
+
+  it("headline reads as a sentence: return and dip, one line", () => {
+    const t = ifCopiedText(SCORE);
+    expect(t.headline).toBe("Your copy, 30d: -0.4%, worst dip 17.1%.");
+  });
+
+  it("the starved case: capacity sentence names the share and folds in the sim's own reason, dropping its 'N% of skipped opens:' prefix", () => {
+    const t = ifCopiedText({ ...SCORE, sim_copy_capacity_pct: 4, sim_capacity_note: "100% of skipped opens: under the $10.50 minimum order at your size" });
+    expect(t.capacity).toBe("Only 4% of their opens fit your size; the rest were under the $10.50 minimum order at your size.");
+  });
+
+  it("the good case: still a sentence, not a bare percent, when nothing needs explaining", () => {
+    const t = ifCopiedText({ ...SCORE, sim_copy_capacity_pct: 100, sim_capacity_note: null });
+    expect(t.capacity).toBe("100% of their opens fit your size.");
+  });
+
+  it("no capacity sentence when capacity itself was never computed (not simulated)", () => {
+    const t = ifCopiedText({ ...SCORE, sim_copy_capacity_pct: null, sim_capacity_note: null });
+    expect(t.capacity).toBeNull();
+  });
+
+  it("uses they/their, never he/his", () => {
+    const starved = ifCopiedText({ ...SCORE, sim_copy_capacity_pct: 4, sim_capacity_note: "100% of skipped opens: under the $10.50 minimum order at your size" });
+    expect(`${starved.headline} ${starved.capacity}`).not.toMatch(/\b(he|his|him)\b/i);
   });
 });

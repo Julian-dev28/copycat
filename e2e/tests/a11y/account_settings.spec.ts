@@ -34,6 +34,29 @@ for (const route of PAGES) {
   });
 }
 
+test("Settings: no SegmentedControl option text is clipped (QA audit: 'Fixed notio…', 'Match trad…')", async ({ page }) => {
+  // SegmentedControl (ui/SegmentedControl.tsx) truncates each option
+  // (`truncate whitespace-nowrap`) rather than wrapping, so a long label in
+  // a narrow value column reads as an ellipsis with no way to see the rest.
+  // Sizing mode and Leverage mode hit this at the *default* 320px value
+  // column width (Panel.tsx SettingRow `sm:w-80`) even on a 1440px screen;
+  // both now pass a wider `valueClassName`. Scan every radiogroup on the
+  // page generically so a label change anywhere doesn't quietly reintroduce
+  // this: scrollWidth > clientWidth on a `truncate` node means ellipsis.
+  await gotoDemo(page, "/settings");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const radios = page.getByRole("radio");
+  await expect(radios.first()).toBeVisible();
+  const count = await radios.count();
+  expect(count, "expected at least one SegmentedControl option on Settings").toBeGreaterThan(0);
+  for (let i = 0; i < count; i++) {
+    const radio = radios.nth(i);
+    const name = await radio.evaluate((el) => el.textContent?.trim());
+    const clipped = await radio.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(clipped, `"${name}" is clipped (scrollWidth > clientWidth)`).toBe(false);
+  }
+});
+
 test("Settings: every control is reachable and operable by keyboard alone", async ({ page }) => {
   await gotoDemo(page, "/settings");
   await page.locator("main").waitFor();

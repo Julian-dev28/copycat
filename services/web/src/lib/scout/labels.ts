@@ -1,5 +1,6 @@
 /** Plain-words labels and thresholds for Scout. Thresholds mirror spec section 2. Pure. */
 import { formatAgo } from "@/lib/format";
+import type { BadgeTone } from "@/components/ui/Badge";
 import type { OpenOrderWire, PnlTier, RawOpenOrder, SizeTier, TraderScore, TradingStyle } from "./types";
 
 export const STYLE_META: Record<TradingStyle, { label: string; hint: string }> = {
@@ -89,6 +90,25 @@ export const FLAG_TEXT: Record<string, string> = {
   candles_partial: "some price history missing",
   error: "the sim hit a data error",
 };
+
+/**
+ * Badge tone per flag (UX audit: FileHeader rendered every flag as an
+ * uppercase amber "warning" pill, so a plain scope disclaimer like
+ * "spot / HIP-3 holdings ignored by the sim" read as an alarm). Only a flag
+ * that bears on whether to trust or copy this trader is a warning; a note
+ * about what the sim could or couldn't see is neutral. Unlisted flags
+ * default to warning (new flags should get a loud color until someone
+ * decides otherwise, not go silently neutral).
+ */
+export const FLAG_TONE: Record<string, BadgeTone> = {
+  non_perp_ignored: "neutral",
+  candles_partial: "neutral",
+  stale: "neutral",
+};
+
+export function flagTone(flag: string): BadgeTone {
+  return FLAG_TONE[flag.split(":")[0]] ?? "warning";
+}
 
 /**
  * Plain-language real-liquidation line for a board row (user_consensus P0
