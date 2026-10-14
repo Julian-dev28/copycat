@@ -399,7 +399,14 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
         finally:
             draining["on"] = False
 
-    service_requests(conn, venue, settings, sim_equity, sizing, db_path, on_beat=beat)
+    # The top-level service IS the drain: its own mini refresh beats too, and without
+    # the guard that beat re-served the request it was serving (every on-demand wallet
+    # was built twice: "built in 3s mid-refresh" then "built in 6s", live 2026-10-14).
+    draining["on"] = True
+    try:
+        service_requests(conn, venue, settings, sim_equity, sizing, db_path, on_beat=beat)
+    finally:
+        draining["on"] = False
     p = plan(conn, want, t)
     rep = None
     if p is not None:
@@ -409,13 +416,24 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
                 store.meta_set(conn, {"refresh_requested": None})
             rep = run_refresh(venue, settings, sim_equity,
                               RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat), sizing, db_path)
-        except ScoutBusy:
-            pass
+        except ScoutBusy as exc:
+            logger.debug("scout scheduler: %s due but %s", "".join(p.stages), exc)
         except Exception:
             logger.exception("scout scheduler: refresh failed")
             store.meta_set(conn, {"last_b_ms": t} if "B" in p.stages else {"last_a_ms": t})  # no hot retry loop
     store.meta_set(conn, {"next_due_ms": next_due_ms(conn), "scheduler_heartbeat_ms": now_ms()})
     return rep
+
+
+def on_scheduler_start(conn: Any) -> int:
+    """`scout serve` is the only process that runs refreshes, so a `running` row at
+    its start belongs to the process that was killed (a restart mid-refresh). Until
+    this, that row held the slot for REFRESH_STALE_S (15 min): every tick logged
+    "running ABC (stats due)" and did nothing (live 2026-10-14 22:14 to 22:27)."""
+    n = store.fail_running_refreshes(conn, now_ms(), "scout restarted")
+    if n:
+        logger.info("scout scheduler: %d refresh(es) left running by the previous process marked failed", n)
+    return n
 
 
 def run_scheduler(settings_provider: Callable[[], Settings], venue: Optional[Venue] = None,
@@ -428,6 +446,7 @@ def run_scheduler(settings_provider: Callable[[], Settings], venue: Optional[Ven
     if venue is None:
         from .public import _default_venue
         venue = _default_venue()
+    on_scheduler_start(store.connect(db_path))
     while not stop.is_set():
         try:
             eq = float(sim_equity_provider()) if sim_equity_provider else C.DEFAULT_SIM_EQUITY_USD

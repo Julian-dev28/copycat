@@ -149,6 +149,46 @@ def test_profile_unknown_wallet_is_queued_then_built_by_serve(w):
     assert x not in {r.address for r in public.scout_page(q()).rows}     # on-demand files stay off the board
 
 
+def test_an_on_demand_request_is_built_exactly_once(w, monkeypatch):
+    """The top-level request service runs a mini refresh per wallet; that refresh beats,
+    and the beat used to drain the queue again while the same wallet was still in it,
+    building every on-demand wallet twice (live: "built in 3s mid-refresh", "built in 6s")."""
+    v, db = w["venue"], w["db"]
+    x = addr(44)
+    v.set_portfolio(x, portfolio([0, 10, 20, 30] * 3))
+    v.set_fills(x, trips("BTC", 4, NOW - 9 * DAY))
+    v.set_account_state(x, {"equity_perp_usd": 3000.0, "spot_usdc": 0.0, "positions": {}, "raw_positions": {}})
+    assert isinstance(public.scout_profile(x), ScoutStatus)       # queued
+    built = []
+    orig = v.portfolio
+
+    def counting(user):
+        if user == x:
+            built.append(user)
+        return orig(user)
+
+    monkeypatch.setattr(v, "portfolio", counting)
+    R.tick(v, settings(), EQUITY, db_path=db)
+    assert built == [x], built
+    assert store.request_row(store.connect(db), x) is None
+    assert isinstance(public.scout_profile(x), TraderProfile)
+
+
+def test_scheduler_start_frees_the_slot_a_killed_process_left_running(w):
+    """A scout restart mid-refresh left a `running` row with a fresh heartbeat; the slot
+    stayed taken for REFRESH_STALE_S and every tick did nothing for 15 minutes."""
+    conn = store.connect(w["db"])
+    assert store.try_begin_refresh(conn, "dead-process", R.now_ms(), "scheduled") is None
+    assert R.on_scheduler_start(conn) == 1
+    row = store.latest_refresh(conn)
+    assert row["state"] == "failed" and row["error"] == "scout restarted"
+    assert R.on_scheduler_start(conn) == 0                           # idempotent
+    store.meta_set(conn, {"last_a_ms": 0, "last_b_ms": 0})
+    before = public.scout_page(q()).refresh_id
+    R.tick(w["venue"], settings(), EQUITY, db_path=w["db"])          # the slot is free: a refresh runs now
+    assert public.scout_page(q()).refresh_id != before
+
+
 def test_profile_request_that_keeps_failing_becomes_404(w):
     x = addr(43)                                            # the venue has no data for it
     assert isinstance(public.scout_profile(x), ScoutStatus)

@@ -61,7 +61,13 @@ progress beat (`refresh.build_one`: stage B then C for that one wallet, no
 slot, no progress row), so a request made 2 minutes into a 45-minute refresh
 is built in about a minute instead of waiting for the refresh to end. A
 custom wallet's build ends with `refresh.republish` (the board rebuilt from
-stored stats and sims, no HL call) so its row shows at once.
+stored stats and sims, no HL call) so its row shows at once. The top-level
+service holds the drain guard while it runs, so its own mini refresh's beat
+cannot serve the same wallet a second time (it did: every on-demand wallet
+was built twice, live 2026-10-14). At start, `scout serve` marks any refresh
+row still `running` as failed ("scout restarted"): it is the only process that
+runs refreshes, so that row belongs to the process that was killed, and until
+this it held the slot for `REFRESH_STALE_S` (15 min) after every restart.
 
 Budget per B pass: `COPYCAT_SCOUT_B_MAX_WEIGHT` (default 28,800 = 40 min at
 the ~720/min background share) and `COPYCAT_SCOUT_B_MAX_S` (50 min), charged by

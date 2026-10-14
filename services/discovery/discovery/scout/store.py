@@ -386,6 +386,15 @@ def update_refresh(conn: sqlite3.Connection, refresh_id: str, **fields: Any) -> 
                      (*fields.values(), refresh_id))
 
 
+def fail_running_refreshes(conn: sqlite3.Connection, now_ms: int, error: str) -> int:
+    """Mark every `running` refresh failed (the scheduler process restarted). Returns
+    how many. The slot is free at once instead of after REFRESH_STALE_S."""
+    with conn:
+        cur = conn.execute("UPDATE scout_refresh SET state = 'failed', finished_ms = ?, error = ? WHERE state = 'running'",
+                           (now_ms, error))
+        return int(cur.rowcount or 0)
+
+
 def latest_refresh(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     r = conn.execute("SELECT * FROM scout_refresh ORDER BY started_ms DESC LIMIT 1").fetchone()
     return dict(r) if r else None
