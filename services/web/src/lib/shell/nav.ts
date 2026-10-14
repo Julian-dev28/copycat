@@ -29,7 +29,7 @@ export const MOBILE_TABS = NAV_ITEMS.filter((i) => i.mobile);
 export function isItemActive(href: NavHref, pathname: string | null): boolean {
   if (!pathname) return false;
   if (href === "/account") return pathname === href || pathname.startsWith(`${href}/`);
-  if (href === "/scout") return isScoutSection(pathname); // /discover is Scout's "Custom sim" tab
+  if (href === "/scout") return isScoutSection(pathname);
   return isNavActive(href, pathname);
 }
 

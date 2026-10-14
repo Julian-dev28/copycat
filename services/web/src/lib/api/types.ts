@@ -28,7 +28,7 @@ import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
-export const CONTRACT_VERSION = 15;
+export const CONTRACT_VERSION = 16;
 export const MAX_LEADERS = 25;
 export const HL_MIN_ORDER_USD = 10.5;
 export const MAX_LEVERAGE_CAP = 50;
@@ -39,6 +39,10 @@ export type MarginMode = Schemas["MarginMode"];
 export type Side = "long" | "short";
 
 export type LeaderOverride = Schemas["LeaderOverride"];
+export type ExposureMode = Schemas["ExposureMode"];
+export type SmallAccountMode = Schemas["SmallAccountMode"];
+/** v16: the Scout board's own copy-sim terms (GET/PUT /api/scout/sim-terms), apart from Settings. */
+export type ScoutSimTerms = Schemas["ScoutSimTerms"];
 
 /** v4/v5 fields (Trade allocation, small accounts, liquidity caps): optional so a v3 api still type-checks. */
 type V5SettingsKeys =

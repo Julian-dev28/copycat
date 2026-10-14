@@ -43,6 +43,7 @@ export const LEGACY_ROUTES: Record<string, string> = {
   "/copy": "/settings",
   "/positions": "/portfolio",
   "/trade": "/",
+  "/discover": "/scout",
 };
 
 type SearchParamsLike = Record<string, string | string[] | undefined>;

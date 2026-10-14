@@ -1,8 +1,8 @@
 /**
  * Axe scan of this agent's two pages (Trade, Portfolio), per the QA brief's
- * "axe a11y clean on / and /portfolio". Scout/Settings/Account/Discover are
- * owned by other sessions; add their own files here rather than extend this
- * one, so two sessions never edit the same spec.
+ * "axe a11y clean on / and /portfolio". Scout/Settings/Account are owned by
+ * other sessions; add their own files here rather than extend this one, so
+ * two sessions never edit the same spec.
  *
  * Demo mode, so no api/engine is needed and no real data drifts the result.
  * wcag2a/wcag2aa/wcag21aa/best-practice mirror axe's own default ruleset

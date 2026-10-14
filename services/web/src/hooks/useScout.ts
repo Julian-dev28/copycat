@@ -10,7 +10,7 @@ import { MAX_LEADERS, type LeaderOverride, type Settings, type SettingsPatch } f
 import { applySettingsPatch } from "@/lib/settings";
 import { demoNowMs, demoScout, isApiTooOld, liveScout, type ScoutSource } from "@/lib/scout/api";
 import { fixtureSettings } from "@/lib/scout/fixtures";
-import type { WhatIfRequest } from "@/lib/scout/types";
+import type { ScoutSimTerms, WhatIfRequest } from "@/lib/scout/types";
 
 /** `?demo=1` swaps the api for fixtures. Must render under a <Suspense> (useSearchParams). */
 export function useScoutMode(): { demo: boolean; source: ScoutSource; enabled: boolean } {
@@ -140,6 +140,34 @@ export function useRemoveCustomWallet() {
   const { source } = useScoutMode();
   const invalidate = useInvalidateCustom();
   return useMutation({ mutationFn: (address: string) => source.customRemove(address), onSuccess: () => invalidate() });
+}
+
+// ── sim terms (v16) ──────────────────────────────────────────────────────────
+
+export function useScoutSimTerms() {
+  const { demo, source, enabled } = useScoutMode();
+  return useQuery({
+    queryKey: ["scout", "sim-terms", demo],
+    queryFn: () => source.simTerms(),
+    enabled,
+    staleTime: 30_000,
+    retry: noRetryOnTooOld,
+  });
+}
+
+/** Changing terms re-ranks the whole board: everything the toolbar/page show from it. */
+const SIM_TERMS_DEPENDENTS = [["scout", "traders"], ["scout", "presets"], ["scout", "status"]];
+
+export function useSetScoutSimTerms() {
+  const { source } = useScoutMode();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (terms: ScoutSimTerms) => source.putSimTerms(terms),
+    onSuccess: (terms) => {
+      qc.setQueriesData({ queryKey: ["scout", "sim-terms"] }, terms);
+      for (const queryKey of SIM_TERMS_DEPENDENTS) qc.invalidateQueries({ queryKey });
+    },
+  });
 }
 
 const DEMO_SETTINGS_KEY = ["scout", "demo-settings"] as const;

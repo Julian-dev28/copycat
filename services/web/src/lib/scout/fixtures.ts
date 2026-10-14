@@ -11,7 +11,7 @@
 import type { LeaderOverride, Settings } from "@/lib/api/types";
 import type {
   AccountRisk, CoinStat, CopyFit, CurvePoint, LeaderFillView, OpenOrderWire, PnlTier, RoundTrip, ScoutPresetsWire,
-  ScoutStatus, SizeTier, TradeStats, TraderPage, TraderPositionView, TraderProfile, TraderRow, TraderScore,
+  ScoutSimTerms, ScoutStatus, SizeTier, TradeStats, TraderPage, TraderPositionView, TraderProfile, TraderRow, TraderScore,
   TradingStyle, WhatIfRequest, WhatIfResult,
 } from "./types";
 import { hip3Share } from "./query";
@@ -99,6 +99,20 @@ function walk(r: () => number, n: number, startMs: number, stopMs: number, end: 
   return steps.map((v, i) => ({ t_ms: Math.round(startMs + ((stopMs - startMs) * i) / (n - 1)), value: round(v + drift * i) }));
 }
 
+/** Caps Copy Fit applies after the weighted sum (spec section 3), shared with applySimTerms below
+ * so a terms-driven recompute caps exactly the way the original fixture did. */
+function applyFitCaps(rawValue: number, flags: string[]): { value: number; caps: string[] } {
+  let value = rawValue;
+  const caps: string[] = [];
+  if (flags.includes("inactive")) { value = 0; caps.push("inactive"); }
+  if (flags.includes("liquidated")) { value = Math.min(value, 20); caps.push("liquidated"); }
+  if (flags.includes("too_few_trades")) { value = Math.min(value, 40); caps.push("too_few_trades"); }
+  if (flags.includes("hft")) { value = Math.min(value, 50); caps.push("hft"); }
+  if (flags.includes("vault")) { value = Math.min(value, 50); caps.push("vault"); }
+  if (flags.includes("fills_truncated")) caps.push("fills_truncated");
+  return { value, caps };
+}
+
 function copyFit(r: () => number, flags: string[], trips: number, lastFillAgoH: number, cohort: number, quality: number): CopyFit {
   const q = (spread: number) => Math.min(1, Math.max(0, quality + (r() - 0.5) * spread));
   const parts: Record<string, number> = {
@@ -111,15 +125,60 @@ function copyFit(r: () => number, flags: string[], trips: number, lastFillAgoH: 
     capacity: round(between(r, 0.55, 1), 3),
     recency: round(lastFillAgoH <= 24 ? 1 : Math.max(0, 1 - (lastFillAgoH - 24) / (6 * 24)), 3),
   };
-  let value = 100 * Object.entries(FIT_WEIGHTS).reduce((a, [k, w]) => a + w * parts[k], 0);
-  const caps: string[] = [];
-  if (flags.includes("inactive")) { value = 0; caps.push("inactive"); }
-  if (flags.includes("liquidated")) { value = Math.min(value, 20); caps.push("liquidated"); }
-  if (flags.includes("too_few_trades")) { value = Math.min(value, 40); caps.push("too_few_trades"); }
-  if (flags.includes("hft")) { value = Math.min(value, 50); caps.push("hft"); }
-  if (flags.includes("vault")) { value = Math.min(value, 50); caps.push("vault"); }
-  if (flags.includes("fills_truncated")) caps.push("fills_truncated");
+  const raw = 100 * Object.entries(FIT_WEIGHTS).reduce((a, [k, w]) => a + w * parts[k], 0);
+  const { value, caps } = applyFitCaps(raw, flags);
   return { value: round(value, 1), parts, weights: { ...FIT_WEIGHTS }, caps, cohort_size: cohort };
+}
+
+/** The reference terms a fixture board (and a fresh install) starts at: contracts/models.py
+ * ScoutSimTerms() field defaults, hand-mirrored (no codegen fixture generator exists). */
+export const DEFAULT_SIM_TERMS: ScoutSimTerms = {
+  use_live_settings: false,
+  sim_equity_usd: 1_000,
+  allocation_usd: 100,
+  exposure_mode: "target",
+  target_leverage: 3,
+  leverage_mode: "fixed",
+  leverage: 3,
+  margin_mode: "isolated",
+  max_worse_entry_pct: 10,
+  small_account_mode: "concentrate",
+};
+
+/**
+ * Demo stand-in for a Scout board re-sim at new terms (not a real sim; the real one
+ * re-runs services/discovery/discovery/sim.py). Scales each row's sim return/drawdown/
+ * fees/skips by a leverage+allocation+equity factor shaped like fixtureWhatIf's `k`
+ * below, recomputes only the "sim" slice of Copy Fit from the new return, re-applies
+ * the same caps, and re-sorts -- enough for the e2e demo lane to see the terms control
+ * actually change the note AND the order, deterministically.
+ */
+export function applySimTerms(rows: TraderRow[], terms: ScoutSimTerms): TraderRow[] {
+  const lev = terms.exposure_mode === "target" ? terms.target_leverage : terms.leverage;
+  const k = Math.max(0.2, Math.min(4, (lev / 10) * (terms.allocation_usd / 100) ** 0.4 * (1_000 / terms.sim_equity_usd) ** 0.2));
+  const allocFactor = Math.max(0.3, Math.min(3, 100 / terms.allocation_usd));   // smaller allocation: more min-order skips
+  const next = rows.map((row) => {
+    const s = row.score;
+    const simRet = round(s.sim_return_pct * k, 2);
+    const simDd = round(s.sim_max_drawdown_pct * Math.max(1, Math.abs(k) * 0.8), 2);
+    const skipped = Math.max(0, Math.round(s.sim_skipped_min_order * allocFactor));
+    const copies = Math.max(0, s.sim_copies + s.sim_skipped_min_order - skipped);
+    const capacity = round((copies / Math.max(1, copies + skipped)) * 100, 1);
+    const fit = s.copy_fit;
+    let score: TraderScore = {
+      ...s, sim_return_pct: simRet, sim_max_drawdown_pct: simDd, sim_copies: copies,
+      sim_skipped_min_order: skipped, sim_copy_capacity_pct: capacity,
+    };
+    if (fit) {
+      const simPart = round(Math.max(0, Math.min(1, 0.5 + simRet / 120)), 3);
+      const parts: Record<string, number> = { ...fit.parts, sim: simPart };
+      const raw = 100 * Object.entries(FIT_WEIGHTS).reduce((a, [key, w]) => a + w * parts[key], 0);
+      const { value, caps } = applyFitCaps(raw, row.flags);
+      score = { ...score, copy_fit: { ...fit, value: round(value, 1), parts, caps } };
+    }
+    return { ...row, score };
+  });
+  return next.sort((a, b) => (b.score.copy_fit?.value ?? 0) - (a.score.copy_fit?.value ?? 0) || a.address.localeCompare(b.address));
 }
 
 export const FIXTURE_COHORT = 280;

@@ -640,6 +640,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scout/sim-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sim Terms
+         * @description What every wallet on the Scout board is simmed at right now. The
+         *     built-in reference (ScoutSimTerms field defaults) before anyone has ever
+         *     called PUT.
+         */
+        get: operations["get_sim_terms_api_scout_sim_terms_get"];
+        /**
+         * Put Sim Terms
+         * @description Replace the board's sim terms. Validated by the ScoutSimTerms model
+         *     (same field ranges as a LeaderOverride) before it ever reaches storage;
+         *     `scout serve` re-sims from cache on its next tick (<= 10s), not here --
+         *     this call only stores the terms and returns at once.
+         */
+        put: operations["put_sim_terms_api_scout_sim_terms_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scout/status": {
         parameters: {
             query?: never;
@@ -2054,6 +2083,84 @@ export interface components {
             total: number;
         };
         /**
+         * ScoutSimTerms
+         * @description What every wallet on the Scout board is copy-simmed at: a leaderboard-wide
+         *     terms sheet, independent of the operator's own trading Settings. Stored in
+         *     Scout's own meta (scout/store.py, key sim_terms), NEVER in settings.json --
+         *     the engine must never read these, and they must never leak into a live trade.
+         *
+         *     Field constraints mirror LeaderOverride (models.py:100-124: same ranges, same
+         *     enums). `to_settings()` is the only place that turns terms into a Settings
+         *     object for the sim; sizing_mode is always `allocation` (the only mode these
+         *     terms express). `leverage` does double duty on purpose: the per-coin exchange
+         *     leverage when leverage_mode is fixed, AND the book-wide leverage cap
+         *     (Settings.max_position_leverage) in every mode. The Trade ticket's per-leader
+         *     override keeps leverage and its cap as two separate knobs; the Scout board's
+         *     one toolbar control does not need that second axis.
+         *
+         *     Defaults ($1,000 equity, $100/wallet, exposure_mode=target fixed at 3x,
+         *     isolated, 10% max worse entry): measured on a 40-wallet real-HL throwaway
+         *     stack (services/discovery/evals/sim_terms_check.sh,
+         *     services/discovery/discovery/scout/README.md "Sim terms" section has the
+         *     numbers). The spec's own first candidate was exposure_mode=match
+         *     (follow-their-leverage) capped at 10x; measured against it, match-mode
+         *     sizes notional off the LEADER's own gross notional ratio, so a leader who
+         *     already runs hot on his own book still produces a high-risk copy even
+         *     though the "10x" cap sounds conservative. exposure_mode=target at a fixed,
+         *     low leverage controls notional directly and measured far fewer sim
+         *     liquidations (0 vs 4-10 across every match-mode cap tried) and a much
+         *     tighter Fit distribution (15/40 wallets at Fit<=20 vs 35-40/40), at the
+         *     same or better share of wallets clearing >= 5 sim copies. Reopen this
+         *     choice if the full 300-wallet live run
+         *     (services/discovery/evals/sim_terms_check.py) doesn't confirm it.
+         *
+         *     use_live_settings=True is the pre-v16 board: every wallet simmed at
+         *     Settings.for_leader(wallet) and the env sim equity (COPYCAT_SCOUT_SIM_EQUITY),
+         *     the same numbers the engine itself would copy at. Every other field here is
+         *     then ignored for scoring (still stored, so the toolbar keeps the last custom
+         *     terms the operator typed when they flip the switch back off).
+         */
+        ScoutSimTerms: {
+            /**
+             * Allocation Usd
+             * @default 100
+             */
+            allocation_usd: number;
+            /** @default target */
+            exposure_mode: components["schemas"]["ExposureMode"];
+            /**
+             * Leverage
+             * @default 3
+             */
+            leverage: number;
+            /** @default fixed */
+            leverage_mode: components["schemas"]["LeverageMode"];
+            /** @default isolated */
+            margin_mode: components["schemas"]["MarginMode"];
+            /**
+             * Max Worse Entry Pct
+             * @default 10
+             */
+            max_worse_entry_pct: number;
+            /**
+             * Sim Equity Usd
+             * @default 1000
+             */
+            sim_equity_usd: number;
+            /** @default concentrate */
+            small_account_mode: components["schemas"]["SmallAccountMode"];
+            /**
+             * Target Leverage
+             * @default 3
+             */
+            target_leverage: number;
+            /**
+             * Use Live Settings
+             * @default false
+             */
+            use_live_settings: boolean;
+        };
+        /**
          * ScoutSort
          * @enum {string}
          */
@@ -2105,7 +2212,7 @@ export interface components {
             coin_blocklist?: string[];
             /**
              * Contract Version
-             * @default 15
+             * @default 16
              */
             contract_version: number;
             /**
@@ -4317,6 +4424,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sim_terms_api_scout_sim_terms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutSimTerms"];
+                };
+            };
+            /** @description discovery.scout isn't importable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_sim_terms_api_scout_sim_terms_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScoutSimTerms"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoutSimTerms"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description discovery.scout isn't importable */
             503: {

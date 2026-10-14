@@ -1,4 +1,4 @@
-/** Primary nav: Trade is home ("/"). /discover stays reachable from Scout, off the nav. */
+/** Primary nav: Trade is home ("/"). */
 export const NAV_LINKS = [
   { href: "/", label: "Trade" },
   { href: "/scout", label: "Scout" },

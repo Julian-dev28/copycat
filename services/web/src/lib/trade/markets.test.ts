@@ -77,6 +77,7 @@ describe("api problems and routes", () => {
     expect(legacyRedirect("/copy")).toBe("/settings");
     expect(legacyRedirect("/positions", { demo: "1" })).toBe("/portfolio?demo=1");
     expect(legacyRedirect("/trade", { w: "0xabc", demo: "1" })).toBe("/?w=0xabc&demo=1");
+    expect(legacyRedirect("/discover", { demo: "1" })).toBe("/scout?demo=1");
   });
 });
 

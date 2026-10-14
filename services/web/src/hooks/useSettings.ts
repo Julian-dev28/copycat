@@ -14,8 +14,8 @@ export function useSettings() {
     queryKey: SETTINGS_KEY,
     queryFn: api.getSettings,
     enabled: hasToken,
-    // Settings change from other tabs, the Halt route and the Discover page:
-    // poll and refetch on focus so /copy never shows a stale "trading on".
+    // Settings change from other tabs and the Halt route: poll and refetch on
+    // focus so Settings never shows a stale "trading on".
     // Safe with in-progress edits: useSyncedState only resets a draft when the
     // server value actually changes, and usePatchSettings cancels in-flight fetches.
     refetchInterval: 10_000,
