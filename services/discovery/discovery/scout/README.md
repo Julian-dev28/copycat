@@ -458,6 +458,19 @@ page billed at the 2000-row cap (120) for a tail of a dozen rows; the billing
 fix above landed right after this run. Check 2 (warm wall clock <= 240 s) was
 bucket wait, not work: 28.8 s per wallet at two calls. Re-run alone after the
 fix: see the line below once it lands.
+Re-run 2026-10-15 05:08 to 05:45 on 6cbc954 (billing fix in), universe 20
+(the top 20 by account value: the heaviest wallets, pages p95 24.6), shared
+bucket, background priority, the live scout idle between its stats passes
+(the live engine still draws its share): 6/7. Cold pass 1,875 s, 13,983
+weight (p50 632, p95 1,530, pages p50 6.0, 20/20 built); warm pass 378 s,
+2,564 weight (p50 40, p95 467, pages p50 1.0, full set on 7/20: those had
+new fills during the 31 min cold pass); ETA absent below the gate over
+14,091 samples and present after it. Check 3 (warm p50 <= 60) passes at 40
+= portfolio 20 + a tail at 20 + 1 per 20 rows, the number the billing fix
+was for. Check 2 (warm wall clock <= 240 s) failed at 378 s: seconds p50
+5.0 but p95 65 on the 7 full-set wallets, every call queued behind the
+engine on the shared bucket; a warm pass alone on an idle bucket is the
+only run that can pass it, and no such host exists while copycat trades.
 Live scout, first pass under real billing (d89b1d0, 2026-10-15 04:10 to 05:01,
 `stage_b_summary` in scout_meta): n=91, full set on 87 (the 6 h full-refresh
 window had lapsed for the whole deferred backlog), weight p50 92, p95 310,
