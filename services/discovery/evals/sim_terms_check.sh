@@ -8,6 +8,20 @@
 # Takes 2 to 6 minutes solo (longer if another throwaway stack is sharing the HL
 # background-priority budget at the same time: stage B is the bottleneck, not this
 # eval's own checks). Exit code = failed checks.
+#
+# Beside a live copycat (shared per-IP HL budget, COPYCAT_HL_BUCKET_PATH set) a COLD
+# first build cannot finish in time: 20 wallets measured 32 min of stage B and a stage C
+# starved of candles (30 s waits) on 2026-10-15. Seed the throwaway from the live
+# scout's database instead; what this eval proves (on-the-fly re-sim from cache, the
+# default terms against the live-style ones, validation) is a warm-board property:
+#
+#   COPYCAT_SIM_TERMS_SEED_DB=~/Documents/code/copycat/data/discovery.db \
+#   COPYCAT_HL_BUCKET_PATH=~/Documents/code/copycat/data/hl_rate.bucket \
+#     services/discovery/evals/sim_terms_check.sh
+#
+# The seed is a read-only sqlite backup (the live file is never written); the operator's
+# own stored terms and any queued refresh request are dropped from the copy, so the
+# throwaway starts on the documented default. stats_budget_check.sh covers the cold path.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # A worktree has no .venv of its own (it lives in the main checkout only); fall back to
@@ -18,6 +32,22 @@ PORT="${COPYCAT_SIM_TERMS_EVAL_PORT:-18976}"
 T="$(mktemp -d)"
 TOK="$(openssl rand -hex 32)"
 "$PY" -c "import json; json.dump({'enabled': False, 'dry_run': True}, open('$T/settings.json','w'))"
+if [ -n "${COPYCAT_SIM_TERMS_SEED_DB:-}" ]; then
+  "$PY" - "${COPYCAT_SIM_TERMS_SEED_DB/#\~/$HOME}" "$T/discovery.db" <<'EOF'
+import sqlite3, sys
+src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+dst = sqlite3.connect(sys.argv[2])
+src.backup(dst)
+src.close()
+# the copy keeps the fills, funding and candle caches, the stats and sims and the
+# last board; the operator's terms and a queued request must not leak into the throwaway
+dst.execute("DELETE FROM scout_meta WHERE k IN ('sim_terms', 'refresh_requested')")
+dst.commit()
+n = dst.execute("SELECT COUNT(*) FROM scout_stats").fetchone()[0]
+dst.close()
+print(f"seeded {sys.argv[2]} from {sys.argv[1]}: {n} wallets with stats (the first build is a warm pass)")
+EOF
+fi
 # Absolute paths (not relative "."): sim_terms_check.py itself imports contracts/
 # discovery.scout, and must resolve them whatever directory this script is run from.
 export PYTHONPATH="$ROOT:$ROOT/services/hl:$ROOT/services/engine:$ROOT/services/discovery:$ROOT/services/api:$ROOT/services/vault"

@@ -39,6 +39,12 @@ STAGE_B_EVERY_S = _f("COPYCAT_SCOUT_B_EVERY_S", 60 * 60)
 SCHEDULER_TICK_S = 10.0
 SCHEDULER_ALIVE_S = 90.0          # a scheduler heartbeat older than this = no scheduler
 REFRESH_STALE_S = 15 * 60         # a `running` refresh with no heartbeat for this long is dead
+# A running refresh beats both heartbeats from its own thread this often (refresh.Heartbeat),
+# so liveness is a property of the process, not of per-wallet progress: one slow wallet
+# (stage B p95 215 s live; a stage C wallet starved of candles sat 15 min) used to flip
+# health to `alive: False` after SCHEDULER_ALIVE_S and the status to "failed (process died)"
+# after REFRESH_STALE_S while the scout was alive and working.
+REFRESH_HEARTBEAT_S = 20.0
 
 # ── stage B budget: HL weight units per pass, and wall clock ─────────────
 # HL gives 1200/min per IP; background callers keep 40% in reserve -> ~720/min.

@@ -105,7 +105,11 @@ st = status()
 while st.get("state") == "running" and time.monotonic() - t0 < REFRESH_WAIT_S:
     time.sleep(5)
     st = status()
-check("2. first build finished", st.get("state") != "running", f"state={st.get('state')} after {time.monotonic() - t0:.0f}s")
+# "idle", not merely "not running": the 2026-10-15 03:37 run passed this on state=failed
+# ("refresh stopped heartbeating (process died)") while the scout was alive, one stage C
+# wallet 15 min into starved candle reads; every later check then ran on an empty board.
+check("2. first build finished", st.get("state") == "idle",
+      f"state={st.get('state')} error={st.get('error')} after {time.monotonic() - t0:.0f}s")
 
 # ── 3. PUT the live-style terms (tonight's actual board: $15.20, target 50x capped 15x) ──
 live_style = {"use_live_settings": False, "sim_equity_usd": 1_000.0, "allocation_usd": 15.20,

@@ -6,6 +6,7 @@ import threading
 import time
 
 import pytest
+from discovery.scout import config as C
 from discovery.scout import public, stats, store
 from discovery.scout import refresh as R
 from test_scout_helpers import addr, portfolio, trips
@@ -336,3 +337,64 @@ def test_stage_b_summary_is_logged_and_stored(tmp_path):
     assert summary["weight_p50"] > 0 and summary["weight_p95"] >= summary["weight_p50"]
     assert 0 < len(summary["top5"]) <= 5
     assert summary["top5"][0]["weight"] >= summary["top5"][-1]["weight"]   # sorted, most expensive first
+
+
+# ── heartbeats beat on time, not on wallets ─────────────────────────────────
+
+def test_heartbeats_keep_beating_while_one_wallet_is_slow(w, monkeypatch):
+    """Both heartbeats were written only at progress steps (one per wallet), so a
+    single slow wallet flipped health to `alive: False` after SCHEDULER_ALIVE_S
+    and the status to "failed: refresh stopped heartbeating (process died)"
+    after REFRESH_STALE_S while the scout was alive and working (throwaway stack
+    2026-10-15 04:33: stage C wallet 12/20 sat 15 min on starved candle reads;
+    live stage B wallets already reach 215 s). refresh.Heartbeat beats from its
+    own thread every REFRESH_HEARTBEAT_S, the scheduler heartbeat included when
+    the scheduler runs the refresh. Thresholds are shrunk to fractions of a
+    second here; the ratios are what matter: one wallet 3x the stale threshold,
+    a beat every 1/8 of it."""
+    v, db = w["venue"], w["db"]
+    conn = store.connect(db)
+    monkeypatch.setattr(C, "REFRESH_HEARTBEAT_S", 0.05)
+    monkeypatch.setattr(C, "REFRESH_STALE_S", 0.4)
+    monkeypatch.setattr(C, "SCHEDULER_ALIVE_S", 0.4)
+    store.meta_set(conn, {"scheduler_heartbeat_ms": R.now_ms()})      # as the tick does before a refresh
+    v.block = threading.Event()                  # every portfolio read waits on it: the slow wallet
+    v.portfolio_calls.clear()
+    errs = []
+    opts = R.RefreshOptions(beat_scheduler=True)
+    th = threading.Thread(target=lambda: _safe(errs, lambda: R.run_refresh(v, settings(), EQUITY, opts, db_path=db)))
+    th.start()
+    deadline = time.time() + 5
+    while not v.portfolio_calls and time.time() < deadline:
+        time.sleep(0.01)
+    seen = []
+    t_end = time.time() + 1.2                    # 3x the stale threshold inside ONE wallet
+    while time.time() < t_end:
+        st = public.scout_status()
+        seen.append((st.state, st.error, R.scheduler_alive(conn)))
+        time.sleep(0.1)
+    v.block.set()
+    th.join(5)
+    assert not errs
+    assert len(seen) >= 8 and all(s == ("running", None, True) for s in seen), seen   # before: failed / False
+    assert public.scout_status().state == "idle"
+    row = store.latest_refresh(conn)
+    time.sleep(0.2)
+    assert store.latest_refresh(conn)["heartbeat_ms"] == row["heartbeat_ms"]    # the thread stopped with the refresh
+
+    # control: outside the scheduler the refresh row still beats, the scheduler heartbeat does not
+    stale = R.now_ms() - 10 * 60_000
+    store.meta_set(conn, {"scheduler_heartbeat_ms": stale})
+    v.block = threading.Event()
+    v.portfolio_calls.clear()
+    th = threading.Thread(target=lambda: _safe(errs, lambda: R.run_refresh(v, settings(), EQUITY, db_path=db)))
+    th.start()
+    while not v.portfolio_calls and time.time() < deadline + 5:
+        time.sleep(0.01)
+    time.sleep(0.9)
+    st = public.scout_status()
+    assert (st.state, st.error) == ("running", None)
+    assert not R.scheduler_alive(conn) and store.meta_get(conn, "scheduler_heartbeat_ms") == stale
+    v.block.set()
+    th.join(5)
+    assert not errs and public.scout_status().state == "idle"

@@ -192,9 +192,59 @@ class RefreshOptions:
     allow_partial: bool = False
     only: Optional[List[str]] = None       # restrict B/C to these addresses (on-demand)
     kind: str = "scheduled"
-    # Called at every progress step. The scheduler passes its own heartbeat
-    # writer, so a 20-minute refresh keeps `scheduler_alive` true while it runs.
+    # Called at every progress step (between two wallets): the scheduler drains
+    # the on-demand queue here.
     on_beat: Optional[Callable[[], None]] = None
+    # True when the scheduler runs the refresh: Heartbeat then also writes
+    # `scheduler_heartbeat_ms` (health `alive`, the queued status). A CLI refresh
+    # must not fake a live scheduler.
+    beat_scheduler: bool = False
+
+
+class Heartbeat:
+    """Beats the refresh row's `heartbeat_ms` (and, under the scheduler, the
+    scheduler heartbeat) from its own thread every C.REFRESH_HEARTBEAT_S while a
+    refresh runs. Liveness is a property of the process, not of per-wallet
+    progress: before this both heartbeats were written only at progress steps,
+    so one slow wallet made health report scout `alive: False` after 90 s and
+    the status say "failed: refresh stopped heartbeating (process died)" after
+    15 min while the scout was alive and working (throwaway stack 2026-10-15
+    04:33: stage C wallet 12/20 spent 15 min on 30 s waits per starved candle
+    read; live stage B wallets at p95 215 s already cross the 90 s). Its own
+    connection: the refresh thread's one must not be shared mid-transaction."""
+
+    def __init__(self, db_path: Optional[Path], refresh_id: str, scheduler: bool, every_s: float) -> None:
+        self.db_path, self.refresh_id, self.scheduler, self.every_s = db_path, refresh_id, scheduler, every_s
+        self.beats = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name=f"scout-heartbeat-{refresh_id[:8]}", daemon=True)
+
+    def __enter__(self) -> "Heartbeat":
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        self._stop.set()
+        self._thread.join(timeout=5.0)
+        return False
+
+    def _loop(self) -> None:
+        conn = None
+        try:
+            while not self._stop.wait(self.every_s):
+                try:
+                    if conn is None:
+                        conn = store.connect(self.db_path)
+                    t = now_ms()
+                    store.update_refresh(conn, self.refresh_id, heartbeat_ms=t)
+                    if self.scheduler:
+                        store.meta_set(conn, {"scheduler_heartbeat_ms": t})
+                    self.beats += 1
+                except Exception:
+                    logger.debug("scout heartbeat write failed", exc_info=True)
+        finally:
+            if conn is not None:
+                conn.close()
 
 
 @dataclass
@@ -230,7 +280,8 @@ def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optio
     rep = RefreshReport(refresh_id=rid)
     prog = Progress(conn, rid, on_beat=opts.on_beat)
     try:
-        _run(conn, venue, settings, sim_equity, opts, sizing, rep, prog, terms)
+        with Heartbeat(db_path, rid, scheduler=opts.beat_scheduler, every_s=C.REFRESH_HEARTBEAT_S):
+            _run(conn, venue, settings, sim_equity, opts, sizing, rep, prog, terms)
         store.update_refresh(conn, rid, state="done", finished_ms=now_ms(), heartbeat_ms=now_ms())
         prog.log(f"done: universe={rep.universe} stats={rep.stats_done} (failed {rep.stats_failed}, "
                  f"deferred {rep.stats_deferred}) sims={rep.sims_done} published={rep.published} "
@@ -479,7 +530,8 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
             if p.reason == "requested":
                 store.meta_set(conn, {"refresh_requested": None})
             rep = run_refresh(venue, settings, sim_equity,
-                              RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat), sizing, db_path, terms)
+                              RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat, beat_scheduler=True),
+                              sizing, db_path, terms)
         except ScoutBusy as exc:
             logger.debug("scout scheduler: %s due but %s", "".join(p.stages), exc)
         except Exception:

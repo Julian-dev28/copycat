@@ -253,10 +253,17 @@ re-sim path (`refresh.tick`/`run_refresh`), never for a `Settings`-hash
 change.
 
 Progress: `scout_refresh` row (stage, done/total, eta, heartbeat) and
-`tail -f /tmp/scout-refresh/progress.log`. The scheduler heartbeat
-(`scheduler_heartbeat_ms`, what health and `scout_build().alive` read) is
-beaten at every progress step too, so a long refresh never reads as "serve
-is not running".
+`tail -f /tmp/scout-refresh/progress.log`. A running refresh beats its row's
+`heartbeat_ms` from its own thread every `REFRESH_HEARTBEAT_S` (20 s), and the
+scheduler heartbeat (`scheduler_heartbeat_ms`, what health and
+`scout_build().alive` read) with it when the scheduler is the caller
+(`RefreshOptions.beat_scheduler`; a CLI refresh never fakes a live scheduler).
+Liveness is a property of the process, not of per-wallet progress: until
+2026-10-15 both were written only at progress steps, so one slow wallet
+(stage B p95 215 s live; a stage C wallet starved of candles sat 15 min)
+flipped health to `alive: False` after 90 s and the status to "failed:
+refresh stopped heartbeating (process died)" after 15 min while the scout
+was alive and working.
 
 ETA honesty gate (`refresh.eta_s`): no estimate before `COPYCAT_SCOUT_ETA_MIN_DONE`
 wallets are done (default 10) OR `COPYCAT_SCOUT_ETA_MIN_FRAC` of the total
@@ -480,6 +487,13 @@ to an already-simmed hash is near-instant, and checks PUT validates like
 LeaderOverride (422 on a bad value). 2 to 6 minutes solo; exit code = failed
 checks. Run it after touching `ScoutSimTerms`, `refresh.effective_hash`/
 `terms_hash`, `simstage.run_stage_c`'s cache-only path, or the sim-terms
-store/api functions.
+store/api functions. Beside a live copycat (shared per-IP budget,
+`COPYCAT_HL_BUCKET_PATH`) a cold first build cannot finish in time, so set
+`COPYCAT_SIM_TERMS_SEED_DB=<live data dir>/discovery.db`: the throwaway starts
+from a read-only sqlite backup of the live scout's database (caches, stats,
+sims, last board; the operator's stored terms and any queued request are
+dropped from the copy) and its first build is a warm pass. What the eval
+proves is a warm-board property; `stats_budget_check.sh` covers the cold path.
 Last run 2026-10-15 00:49 on e76615c, shared live bucket, background priority: 9/13 PASS, inconclusive. GET/PUT shapes, the documented default and both 422 validations passed; the four failures share one cause: the throwaway stack's first 40-wallet build had not finished after 601 s because the live scout's own hourly stats pass was drawing the same per-IP HL budget at the same time, so no sim existed to re-rank or switch back to (the three comparison checks passed on 0 vs 0). Re-run alone, between live stats passes (`/api/scout/status` idle), for the recorded verdict.
 Second run 2026-10-15 02:42 on 80cf15f (serial after history and budget, same shared bucket) was killed by the operator session's 2 h background limit 30 minutes into the first build, right after the budget eval had measured a 40-wallet cold stage B at 3,090 s beside the live pass. `COPYCAT_SIM_TERMS_REFRESH_WAIT_S` now overrides the 2,400 s first-build wait for a run beside a live stack.
+Third run 2026-10-15 03:37 to 04:44 on 246cfa5, universe 20 (a 40-wallet cold build cannot finish inside the operator session's 2 h background job limit beside the live stack), shared live bucket, background priority: 10/13, invalid. The cold stage B of 20 wallets took 32 min (p50 89 s per wallet beside the live engine and the live scout's own stats pass); stage C then starved on candleSnapshot (30 s wait, then None, coin after coin) and one wallet sat over 15 min, so `/api/scout/status` reported `failed: refresh stopped heartbeating (process died)` while the scout was alive and working. Check 2 accepted that (any state but running) and the four board checks ran on an empty board (three of them "passing" on 0 vs 0). Two fixes came out of it: `refresh.Heartbeat` (Pipeline, Progress above) with check 2 now requiring `idle`, and `COPYCAT_SIM_TERMS_SEED_DB` for a run beside a live stack. Fourth run: see the line below once it lands.
