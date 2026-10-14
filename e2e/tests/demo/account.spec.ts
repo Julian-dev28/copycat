@@ -17,6 +17,25 @@ test.describe("demo Account", () => {
     expect(writes, "demo mode must never send a non-GET request").toEqual([]);
   });
 
+  test("loading shows visible text, not three bare pulsing boxes (QA audit)", async ({ page }) => {
+    // app/account/page.tsx wraps the (client) page in <Suspense fallback={<PageSkeleton
+    // label="Loading account" />}>: real-world, this shows for however long the route's
+    // JS takes to arrive, which on a slow connection or a loaded dev server can run
+    // past 2s. Slow every script response so that window is wide enough to assert on,
+    // same as a user on a bad connection would actually see.
+    await page.route("**/*", async (route) => {
+      if (route.request().resourceType() === "script") await new Promise((r) => setTimeout(r, 400));
+      await route.continue();
+    });
+    const loaded = page.goto("/account?demo=1");
+    // PageSkeleton used to say "Loading account" only to a screen reader (sr-only);
+    // a sighted user saw nothing but empty pulsing boxes for the whole wait.
+    await expect(page.getByText("Loading account…")).toBeVisible();
+    await loaded;
+    await page.unroute("**/*");
+    await expect(page.getByRole("button", { name: "Accounts", exact: true })).toBeVisible({ timeout: 15_000 });
+  });
+
   test("create: passphrase, key shown once, 'I saved my key' gate", async ({ page }) => {
     const errors = trackErrors(page);
     await openAccounts(page);

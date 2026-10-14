@@ -52,8 +52,13 @@ export function PositionsTable({ positions, loading, nowMs }: { positions: CopyP
           {/* axe link-in-text-block: text-accent against the surrounding muted
               text is only 1.32:1, well under the 3:1 a color-only link needs,
               so the link must also carry its own non-color signal: underline,
-              not only on hover. */}
-          <Link href="/copy" className="text-accent underline underline-offset-2">
+              not only on hover.
+              Same-page anchor, not a route: "/copy" is a dead legacy path
+              (lib/trade/apiState.ts LEGACY_ROUTES) that redirects to
+              /settings, nowhere near "your copies" (regression: this used to
+              send a user with zero positions to Settings instead of the
+              wallets list sitting right above). */}
+          <Link href="#your-copies" className="text-accent underline underline-offset-2">
             Check your copies
           </Link>
         </p>
