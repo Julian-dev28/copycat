@@ -39,6 +39,15 @@ class PositionEvent:
     px: float            # leader's fill price
     fee: float = 0.0
     closed_pnl: float = 0.0
+    # HL's own fill classifies as a forced liquidation when its `dir` starts with
+    # "Liquidated" (same check as scout.metrics.real_liquidations; the venue's separate
+    # `liquidation` bool column is NOT used here -- measured 2026-10-14 on a real wallet
+    # that is the counterparty absorbing someone ELSE's liquidation: HL sets that bool on
+    # the counterparty's own ordinary "Open Long" fill too, so it does not mean "this
+    # account got liquidated", only "a liquidation engine fill touched this account").
+    # On a flip this is set on the close leg only: a forced liquidation closes/reduces a
+    # position, it never opens a new one, so the synthetic open half is never flagged.
+    liquidation: bool = False
 
 
 def _side_of(signed: float) -> Side:
@@ -67,23 +76,27 @@ def _is_flat(x: float) -> float:
 
 
 def _classify_one(coin: str, time_ms: int, start: float, end: float, px: float,
-                   fee: float, closed_pnl: float) -> List[PositionEvent]:
+                   fee: float, closed_pnl: float, liquidation: bool = False) -> List[PositionEvent]:
     start, end = _is_flat(start), _is_flat(end)
     if start == 0 and end == 0:
         return []
     if start == 0:
-        return [PositionEvent(coin, time_ms, "open", _side_of(end), abs(end), start, end, px, fee, closed_pnl)]
+        return [PositionEvent(coin, time_ms, "open", _side_of(end), abs(end), start, end, px, fee, closed_pnl,
+                              liquidation)]
     if end == 0:
-        return [PositionEvent(coin, time_ms, "close", _side_of(start), abs(start), start, end, px, fee, closed_pnl)]
+        return [PositionEvent(coin, time_ms, "close", _side_of(start), abs(start), start, end, px, fee, closed_pnl,
+                              liquidation)]
     same_side = (start > 0) == (end > 0)
     if same_side:
         kind: Kind = "add" if abs(end) > abs(start) else "reduce"
         return [PositionEvent(coin, time_ms, kind, _side_of(start), abs(abs(end) - abs(start)),
-                               start, end, px, fee, closed_pnl)]
-    # flip: close the old side entirely, then open the new side entirely.
+                               start, end, px, fee, closed_pnl, liquidation)]
+    # flip: close the old side entirely, then open the new side entirely. A forced
+    # liquidation can force-close (or force-reduce) a position; it never opens a new
+    # one, so only the close leg ever carries the flag.
     close_evt = PositionEvent(coin, time_ms, "close", _side_of(start), abs(start), start, 0.0,
-                               px, fee, closed_pnl)
-    open_evt = PositionEvent(coin, time_ms, "open", _side_of(end), abs(end), 0.0, end, px, 0.0, 0.0)
+                               px, fee, closed_pnl, liquidation)
+    open_evt = PositionEvent(coin, time_ms, "open", _side_of(end), abs(end), 0.0, end, px, 0.0, 0.0, False)
     return [close_evt, open_evt]
 
 
@@ -97,8 +110,9 @@ def reconstruct(fills: List[Dict[str, Any]]) -> Dict[str, List[PositionEvent]]:
         delta = abs(float(f["sz"])) * (1.0 if side == "B" else -1.0)
         start = float(f["start_position"])
         end = start + delta
+        liq = str(f.get("dir") or "").startswith("Liquidated")
         events = _classify_one(f["coin"], int(f["time_ms"]), start, end, float(f["px"]),
-                                float(f.get("fee", 0.0)), float(f.get("closed_pnl", 0.0)))
+                                float(f.get("fee", 0.0)), float(f.get("closed_pnl", 0.0)), liq)
         if events:
             by_coin.setdefault(f["coin"], []).extend(events)
     return by_coin

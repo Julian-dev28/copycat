@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
 import {
   biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders, STYLE_META,
-  visibleFlags,
+  truncationNotice, visibleFlags,
 } from "./labels";
 import { TRADING_STYLES } from "./types";
 
@@ -146,5 +146,17 @@ describe("coattailText (user_consensus P1 #6)", () => {
   it("drops the share clause when it's missing", () => {
     expect(coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: null }))
       .toBe("Opens often land soon after 0x04a9…95aa's");
+  });
+});
+
+describe("truncationNotice (Trade history checklist: truncation disclosed with the count that is visible)", () => {
+  it("null without the flag", () => {
+    expect(truncationNotice([], 500)).toBeNull();
+    expect(truncationNotice(["hft"], 500)).toBeNull();
+  });
+  it("names the exact visible count when the flag is set", () => {
+    const t = truncationNotice(["fills_truncated"], 9_412);
+    expect(t).toContain("9,412");
+    expect(t).toMatch(/10,000/);
   });
 });

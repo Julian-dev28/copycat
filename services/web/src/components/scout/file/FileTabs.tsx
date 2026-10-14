@@ -3,6 +3,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { clsx } from "clsx";
 import { Panel } from "@/components/ui/Panel";
+import { truncationNotice } from "@/lib/scout/labels";
 import type { TraderProfile } from "@/lib/scout/types";
 import { FillsTab, OrdersTab } from "./FillsOrders";
 import { PositionsTable } from "./PositionsTable";
@@ -21,6 +22,7 @@ type TabId = (typeof TABS)[number]["id"];
 export function FileTabs({ profile }: { profile: TraderProfile }) {
   const [tab, setTab] = useState<TabId>("positions");
   const address = profile.row.address;
+  const notice = truncationNotice(profile.row.flags, profile.row.score.fills_30d);
 
   function onKey(e: KeyboardEvent<HTMLDivElement>) {
     const i = TABS.findIndex((t) => t.id === tab);
@@ -61,8 +63,10 @@ export function FileTabs({ profile }: { profile: TraderProfile }) {
         ) : (
           <Panel className="overflow-hidden">
             {tab === "positions" ? <PositionsTable positions={profile.positions} asOfMs={profile.positions_as_of_ms} /> : null}
-            {tab === "trips" ? <TripsTable trips={profile.recent_trips} /> : null}
-            {tab === "fills" ? <FillsTab address={address} /> : null}
+            {tab === "trips" ? (
+              <TripsTable trips={profile.recent_trips} openPositions={profile.positions} truncationNotice={notice} />
+            ) : null}
+            {tab === "fills" ? <FillsTab address={address} truncationNotice={notice} /> : null}
             {tab === "orders" ? <OrdersTab address={address} /> : null}
           </Panel>
         )}

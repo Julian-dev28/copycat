@@ -72,6 +72,19 @@ def test_build_trips_nets_funding_when_the_caller_supplies_it():
     assert t.to_round_trip().funding_usd == pytest.approx(-1.5)
 
 
+def test_build_trips_liquidation_flag_propagates_to_the_round_trip():
+    """Same flag as scout.metrics.round_trips (user_consensus Trade history
+    checklist): build_trips/Trip.to_round_trip must carry it too, since the
+    thesis pipeline's RoundTrip feeds the same UI component."""
+    liquidated = fill(T0 + H, "BTC", "A", 1.0, 90.0, 1.0, closed_pnl=-10.0)
+    liquidated["dir"] = "Liquidated Isolated Long"
+    f = [fill(T0, "BTC", "B", 1.0, 100.0, 0.0), liquidated]
+    trips, still_open = build_trips(f)
+    assert still_open == 0 and len(trips) == 1
+    assert trips[0].liquidation is True
+    assert trips[0].to_round_trip().liquidation is True
+
+
 def test_outcome_metrics():
     fp = fp_of(book())
     assert fp.trips_analyzed == 5
@@ -177,7 +190,7 @@ def test_hidden_coin_pnl_caveats_are_capped_and_rolled_up():
     named = [c for c in fp.caveats if any(coin in c for coin in ["SOL", "ARB", "OP", "SUI", "APT"])
              and "more coin" not in c]
     assert len(named) == C.MAX_HIDDEN_PNL_CAVEATS
-    assert any(f"2 more coin" in c and "$3,000" in c for c in fp.caveats)   # APT $1000 + SUI $2000
+    assert any("2 more coin" in c and "$3,000" in c for c in fp.caveats)   # APT $1000 + SUI $2000
     assert any("position-holder" in c for c in fp.caveats)
 
 

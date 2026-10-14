@@ -58,26 +58,42 @@ def test_fills_paging_never_splits_a_millisecond(w):
     assert not any(f.time_ms == 7_000_000_000 for f in page2)   # none stranded, none duplicated
 
 
-def test_fill_view_carries_hls_liquidation_flag(w):
-    """Regression: HL's own liquidation flag was fetched by hl.venue.fills,
+def test_fill_view_flags_liquidation_from_dir_not_the_raw_hl_bool(w):
+    """Regression, twice over.
+
+    First (pre-v17): HL's own liquidation flag was fetched by hl.venue.fills,
     cached by discovery.db.insert_fills, then silently dropped before it
     reached LeaderFillView. A copier must be able to see which closing fill
-    was a forced liquidation, not an ordinary close."""
+    was a forced liquidation, not an ordinary close.
+
+    Second (v17, caught by the history_check eval against real HL data on a
+    hyperactive wallet): that fix used HL's raw per-fill `liquidation` bool
+    directly, which also fires on the COUNTERPARTY absorbing someone ELSE's
+    liquidation -- an ordinary "Open Long" fill with that bool set --
+    producing 16 "Liquidated" badges in the eval's served window for a
+    wallet with exactly ONE real liquidation. fill_view now classifies from
+    `dir` (same check as scout.metrics.real_liquidations / discovery.positions),
+    never the raw bool alone."""
     from discovery import db as discovery_db
     from discovery.scout import rows as R
 
     liq_ms = NOW + 60_000   # after every fixture fill (all close ~5d before NOW): sorts newest
+    counterparty_ms = NOW + 120_000
     conn = discovery_db.connect(w["db"])
     discovery_db.insert_fills(conn, A, [
         {"time_ms": liq_ms, "coin": "BTC", "px": 100.0, "sz": 1.0, "side": "A",
-         "dir": "Close Long", "start_position": 1.0, "closed_pnl": -50.0, "fee": 0.1, "liquidation": True},
+         "dir": "Liquidated Isolated Long", "start_position": 1.0, "closed_pnl": -50.0, "fee": 0.1, "liquidation": True},
+        # the counterparty-absorption shape: an ordinary open, HL's raw bool still true
+        {"time_ms": counterparty_ms, "coin": "ETH", "px": 50.0, "sz": 1.0, "side": "B",
+         "dir": "Open Long", "start_position": 0.0, "closed_pnl": 0.0, "fee": 0.05, "liquidation": True},
     ])
-    out = R.recent_fills(conn, A, None, 1)
-    assert out[0].time_ms == liq_ms and out[0].liquidation is True
+    out = R.recent_fills(conn, A, None, 2)
+    assert out[0].time_ms == counterparty_ms and out[0].liquidation is False
+    assert out[1].time_ms == liq_ms and out[1].liquidation is True
 
     live = public.scout_fills(A, None, 1000)
     assert all(hasattr(f, "liquidation") for f in live)
-    assert not any(f.liquidation for f in live if f.time_ms != liq_ms)  # the fixture fills aren't liquidations
+    assert not any(f.liquidation for f in live if f.time_ms not in (liq_ms,))  # only the real liquidation
 
 
 def test_orders_live_cached_and_failure_raises(w):

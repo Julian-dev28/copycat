@@ -20,6 +20,14 @@ describe("normalizeFills", () => {
     expect(normalizeFills({ rows: [{ time: 1, coin: "BTC", side: "B", px: 1, sz: 1 }] })).toHaveLength(1);
     expect(normalizeFills("nope")).toEqual([]);
   });
+
+  it("carries the liquidation flag through, defaulting to false", () => {
+    const out = normalizeFills([
+      { time_ms: 1, coin: "XPL", side: "A", dir: "Liquidated Isolated Long", px: 1, sz: 1, liquidation: true },
+      { time_ms: 2, coin: "BTC", side: "B", dir: "Open Long", px: 1, sz: 1 },
+    ]);
+    expect(out.map((f) => f.liquidation)).toEqual([false, true]);
+  });
 });
 
 describe("normalizeTransfers", () => {

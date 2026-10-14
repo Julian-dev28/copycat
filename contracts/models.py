@@ -13,7 +13,13 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 15  # v15: custom wallets on the Scout board. TraderRow.custom (the viewer added
+CONTRACT_VERSION = 17  # v17: RoundTrip.liquidation (this trip was force-closed, or partially force-
+#                        reduced, by HL's liquidation engine at least once during the hold -- a
+#                        liquidation is its own event type in the trade history, never an ordinary
+#                        closed loss; user_consensus_2026-10 Trade history correctness checklist).
+#                        v16 is reserved for a concurrent qa2 agent's change landing on a separate
+#                        branch; the comment chain above it is reconciled at merge time.
+# v15: custom wallets on the Scout board. TraderRow.custom (the viewer added
 #                        this wallet by hand: it is scored and simmed like the top 300 and survives
 #                        refreshes), ScoutPresets.custom (count), CustomWallet/CustomWalletRequest
 #                        (GET/POST /api/scout/custom, DELETE /api/scout/custom/{address})
@@ -476,6 +482,9 @@ class RoundTrip(BaseModel):
                                          # own sign (positive = received, negative = paid)
     net_pnl_usd: float                   # gross_pnl_usd - fee_usd + funding_usd
     win: bool
+    # v17: an HL forced liquidation touched this trip at least once during the hold (a full
+    # close or a partial reduce); never folded into an ordinary closed loss.
+    liquidation: bool = False
 
 class AccountRisk(BaseModel):
     perps_usd: float
@@ -499,7 +508,11 @@ class LeaderFillView(BaseModel):         # display shape of a leader fill
     notional_usd: float
     closed_pnl_usd: float
     fee_usd: float
-    liquidation: bool = False            # v13: HL's own liquidation flag on this fill
+    # v13, corrected under v17: whether THIS account's own position was force-closed/
+    # force-reduced on this fill (dir prefix "Liquidated", scout.rows.fill_view). NOT
+    # HL's raw per-fill liquidation bool, which also fires on the counterparty absorbing
+    # someone else's liquidation (regression, caught by the history_check eval 2026-10-14).
+    liquidation: bool = False
 
 
 class TraderProfile(BaseModel):          # the Trader file

@@ -1,0 +1,47 @@
+{
+  "scenario": "a flip: short to long with no flat in between, one HL fill, both trips fully captured",
+  "wallet": "0x057e4ef25b051110f91102d71ae9fecb2e913220",
+  "coin": "ZEC",
+  "start_ms": 1789186000000,
+  "end_ms": 1790612000000,
+  "query": "SELECT ... FROM fills_v2 WHERE wallet='0x057e...13220' AND coin='ZEC' ORDER BY time_ms",
+  "fills": [
+    {
+      "time_ms": 1789186499102,
+      "coin": "ZEC",
+      "px": 1135.8119318182,
+      "sz": 1.76,
+      "side": "A",
+      "dir": "Open Short",
+      "start_position": 0.0,
+      "closed_pnl": 0.0,
+      "fee": 0.719649,
+      "liquidation": false
+    },
+    {
+      "time_ms": 1790007147646,
+      "coin": "ZEC",
+      "px": 1493.9164772727,
+      "sz": 3.52,
+      "side": "B",
+      "dir": "Close Short",
+      "start_position": -1.76,
+      "closed_pnl": -630.232056,
+      "fee": 1.89309,
+      "liquidation": false
+    },
+    {
+      "time_ms": 1790611377282,
+      "coin": "ZEC",
+      "px": 1513.0,
+      "sz": 1.76,
+      "side": "A",
+      "dir": "Close Long",
+      "start_position": 1.76,
+      "closed_pnl": 33.555104,
+      "fee": 0.745606,
+      "liquidation": false
+    }
+  ],
+  "funding": []
+}

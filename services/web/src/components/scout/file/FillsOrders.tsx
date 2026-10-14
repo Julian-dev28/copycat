@@ -9,7 +9,7 @@ import { CoinBadge } from "@/components/scout/bits";
 import { formatPrice, formatSignedUsd, formatSize, formatUsd } from "@/lib/format";
 import { useFileFills, useFileOrders } from "./hooks";
 import { TD, TH } from "./PositionsTable";
-import { when, whenUtcTitle } from "./TripsTable";
+import { LIQUIDATION_HOVER, when, whenUtcTitle } from "./TripsTable";
 
 function Head({ cols }: { cols: string[] }) {
   return (
@@ -25,7 +25,7 @@ function Head({ cols }: { cols: string[] }) {
   );
 }
 
-export function FillsTab({ address }: { address: string }) {
+export function FillsTab({ address, truncationNotice }: { address: string; truncationNotice?: string | null }) {
   const q = useFileFills(address, true);
   if (q.isError && !q.data) return <LoadError what="his fills" error={q.error} onRetry={() => q.refetch()} />;
   const fills = q.data?.pages.flat() ?? [];
@@ -33,9 +33,10 @@ export function FillsTab({ address }: { address: string }) {
   if (!fills.length) return <p className="p-4 text-sm text-muted">No fills cached for this trader.</p>;
   return (
     <div className="flex flex-col">
+      {truncationNotice ? <p className="border-b border-border/60 bg-warn-soft px-3 py-2 text-xs text-warn">{truncationNotice}</p> : null}
       <TableScroll label="Fills">
         <table className="w-full text-sm">
-          <Head cols={["Time", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]} />
+          <Head cols={["Time (UTC)", "Coin", "Dir", "Price", "Size", "Notional", "Closed PnL", "Fee"]} />
           <tbody>
             {fills.map((f, i) => (
               <tr
@@ -49,7 +50,7 @@ export function FillsTab({ address }: { address: string }) {
                 <td className={clsx(TD, "font-sans text-xs", f.side === "B" ? "text-success" : "text-danger")}>
                   <span className="flex items-center gap-1.5">
                     {f.dir}
-                    {f.liquidation ? <Badge tone="danger">Liquidated</Badge> : null}
+                    {f.liquidation ? <Badge tone="danger" title={LIQUIDATION_HOVER}>Liquidated</Badge> : null}
                   </span>
                 </td>
                 <td className={TD}>{formatPrice(f.px)}</td>
@@ -85,11 +86,11 @@ export function OrdersTab({ address }: { address: string }) {
   return (
     <TableScroll label="Open orders">
       <table className="w-full text-sm">
-        <Head cols={["Placed", "Coin", "Side", "Type", "Price", "Size", "Notional", "Flags"]} />
+        <Head cols={["Placed (UTC)", "Coin", "Side", "Type", "Price", "Size", "Notional", "Flags"]} />
         <tbody>
           {q.data.map((o) => (
             <tr key={o.oid} className="border-b border-border/60 last:border-0">
-              <td className={TD}>{when(o.time_ms)}</td>
+              <td className={TD} title={whenUtcTitle(o.time_ms)}>{when(o.time_ms)}</td>
               <td className="px-3 py-2">
                 <CoinBadge coin={o.coin} />
               </td>

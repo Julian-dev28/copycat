@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCalendar, rampIndex } from "../calendar";
-import { fixtureProfile } from "../fixtures";
+import { fixtureProfile, fixtureRows } from "../fixtures";
 import { linePath, linearScale } from "../spark";
 import { chartData } from "../window";
 import { buildWhatIfRequest, changedFields, draftFromOverride, draftStale, overrideSettingsPatch } from "../whatIf";
@@ -91,6 +91,33 @@ describe("strategy fingerprint (demo)", () => {
     const labels = keyNumbers(fixtureFingerprint(ADDR, NOW)).map((k) => k.label);
     expect(labels).toContain("Avg trade leverage");
     expect(labels).not.toContain("Leverage");
+  });
+});
+
+describe("demo recent_trips cover the Trade history checklist shapes", () => {
+  it("every wallet with enough trips shows a real flip: same coin, opposite sides, touching instant", () => {
+    const rows = fixtureRows(NOW);
+    const row = rows.find((r) => r.trades_30d.trips >= 7 && !r.flags.includes("too_few_trades"));
+    expect(row).toBeTruthy();
+    const profile = fixtureProfile(row!, NOW);
+    const trips = profile.recent_trips;
+    const flipIdx = trips.findIndex((t, i) => i > 0 && t.coin === trips[i - 1].coin && t.side !== trips[i - 1].side && t.closed_ms === trips[i - 1].opened_ms);
+    expect(flipIdx).toBeGreaterThan(-1);
+  });
+
+  it("the wallet_liquidated board row carries that liquidation onto a real round trip, not just the score", () => {
+    const rows = fixtureRows(NOW);
+    const row = rows.find((r) => r.flags.includes("wallet_liquidated"));
+    expect(row).toBeTruthy();
+    const profile = fixtureProfile(row!, NOW);
+    expect(profile.recent_trips.some((t) => t.liquidation)).toBe(true);
+  });
+
+  it("fixtureProfile is deterministic: same row and clock, byte-identical recent_trips", () => {
+    const row = fixtureRows(NOW)[0];
+    const a = fixtureProfile(row, NOW).recent_trips;
+    const b = fixtureProfile(row, NOW).recent_trips;
+    expect(a).toEqual(b);
   });
 });
 

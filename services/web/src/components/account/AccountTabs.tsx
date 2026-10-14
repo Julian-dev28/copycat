@@ -10,6 +10,7 @@ import { Panel } from "@/components/ui/Panel";
 import { accountErrorText } from "@/lib/account/errors";
 import type { AccountSummary, TradingAccount } from "@/lib/account/types";
 import { formatUsd } from "@/lib/format";
+import { truncationNotice } from "@/lib/scout/labels";
 import { BalancesHistory, FillsHistory, OrdersHistory, TransfersHistory } from "./HistoryTables";
 import { useAccountMode } from "./hooks";
 import { AccountPositions } from "./AccountPositions";
@@ -27,7 +28,13 @@ function FromFile({ account, what }: { account: TradingAccount; what: "positions
   const p = q.data.profile;
   return what === "positions"
     ? <AccountPositions account={account} own={p.positions} asOfMs={p.positions_as_of_ms} demo={demo} />
-    : <TripsTable trips={p.recent_trips} />;
+    : (
+      <TripsTable
+        trips={p.recent_trips}
+        openPositions={p.positions}
+        truncationNotice={truncationNotice(p.row.flags, p.row.score.fills_30d)}
+      />
+    );
 }
 
 function Copytrade({ summary }: { summary: AccountSummary }) {

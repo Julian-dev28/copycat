@@ -195,6 +195,34 @@ def test_funding_by_trip_zero_for_coin_never_seen():
     assert funding_by_trip(idx, "BTC", 0, 1000) == 0.0
 
 
+def test_liquidation_flag_from_dir_not_the_raw_hl_bool_column():
+    """user_consensus Trade history checklist: a liquidation is its own event
+    type. Classified from the fill's own `dir` string (same check as
+    scout.metrics.real_liquidations), NOT HL's separate `liquidation` bool
+    column -- measured 2026-10-14 on a real wallet that was the COUNTERPARTY
+    absorbing someone else's liquidation: HL sets that bool on the
+    counterparty's own ordinary "Open Long" fill too, which would wrongly
+    flag this account as having been liquidated if relied on."""
+    ordinary = dict(fill(1000, "BTC", 100.0, 1.0, "A", 1.0), dir="Close Long")
+    liquidated = dict(fill(2000, "ETH", 50.0, 2.0, "A", 2.0), dir="Liquidated Isolated Long")
+    events = reconstruct([ordinary, liquidated])
+    assert events["BTC"][0].liquidation is False
+    assert events["ETH"][0].liquidation is True
+
+
+def test_flip_never_flags_the_synthetic_open_leg():
+    """A forced liquidation only ever closes or reduces a position; it can
+    never open a new one. On a flip (one fill crossing zero), the dir string
+    describes the whole fill, but only the close half may carry the flag --
+    an "open" fabricated purely to model the copier's book is never itself
+    a liquidation event."""
+    flip = dict(fill(1000, "BTC", 100.0, 2.0, "A", 1.0), dir="Liquidated Isolated Long")  # long 1 -> short -1
+    events = reconstruct([flip])
+    close_evt, open_evt = events["BTC"]
+    assert close_evt.kind == "close" and close_evt.liquidation is True
+    assert open_evt.kind == "open" and open_evt.liquidation is False
+
+
 def test_funding_by_trip_adjoining_trips_each_get_their_own_settlements():
     """Two round trips on the same coin back to back: a settlement at the
     boundary between them belongs to the trip that was open at that exact
