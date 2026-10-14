@@ -206,3 +206,81 @@ def test_ensure_liquidation_backfilled_retries_on_a_failed_read(conn):
     venue.set_fills(w, [fill(1_000)])
     assert fills_cache.ensure_liquidation_backfilled(conn, venue, w) is True
     assert db.get_fills_coverage(conn, w)["liq_backfilled"] == 1
+
+
+# ── per-pass page cap (indexing tightening: a 53,520-fill wallet backfilling ─
+# ── 30d in one call paid 27 pages = 3,240 weight in a single pass) ───────────
+
+class CappableVenue(FakeVenue):
+    """Simulates HL's own real pagination ceiling (hl.venue.fills' MAX_PAGES,
+    now made configurable via `max_pages`): returns at most `max_pages * 2000`
+    rows within [start_ms, end_ms], oldest first, when max_pages is given --
+    the exact partial-result shape the real venue now has."""
+    PAGE_SIZE = 2000
+
+    def fills(self, user, start_ms, end_ms, aggregate_by_time=False, max_pages=None):
+        self.fills_calls.append((user, start_ms, end_ms))
+        if user in self.fail_fills:
+            return None
+        rows = sorted((f for f in self._fills.get(user, []) if start_ms <= f["time_ms"] <= end_ms),
+                     key=lambda f: f["time_ms"])
+        if max_pages is not None:
+            rows = rows[: max_pages * self.PAGE_SIZE]
+        return rows
+
+
+def _dense_fills(n, start_ms, end_ms):
+    step = max(1, (end_ms - start_ms) // max(1, n))
+    return [fill(start_ms + i * step) for i in range(n)]
+
+
+def test_cold_sync_capped_leaves_the_oldest_slice_for_a_later_pass(conn):
+    """6,000 fills (3 real pages) over a 30d window, capped at 2 pages: the
+    pass must not pay for the 3rd page, coverage must stay contiguous and
+    honestly short on the recent edge (never a silent gap), and it must
+    read as still-catching-up (`is_lagging`)."""
+    venue = CappableVenue()
+    w = "0xdense"
+    now = 30 * DAY
+    venue.set_fills(w, _dense_fills(6_000, 0, now))
+
+    out = fills_cache.sync_fills(conn, venue, w, window_days=30, now_ms=now, max_pages=2)
+    assert len(venue.fills_calls) == 1                    # one call still, just a bounded answer
+    assert len(out) <= 2 * CappableVenue.PAGE_SIZE
+    cov = db.get_fills_coverage(conn, w)
+    assert cov["first_ms"] == 0                            # contiguous from the window start...
+    assert cov["last_ms"] < now                            # ...honestly short on the recent end
+    assert fills_cache.is_lagging(conn, w, now)
+
+    # a later pass keeps making forward progress (never backward, never a gap)
+    fills_cache.sync_fills(conn, venue, w, window_days=30, now_ms=now + 3_600_000, max_pages=2)
+    cov2 = db.get_fills_coverage(conn, w)
+    assert cov2["last_ms"] >= cov["last_ms"]
+    assert cov2["first_ms"] <= cov2["last_ms"]              # still one contiguous range, never inverted
+
+
+def test_sparse_cold_sync_is_not_capped_and_costs_one_page(conn):
+    """A normal (sparse) wallet must not pay extra calls just because a cap
+    is configured: one call, full coverage, not flagged as lagging."""
+    venue = CappableVenue()
+    w = "0xsparse"
+    venue.set_fills(w, [fill(5 * DAY), fill(10 * DAY)])
+    now = 30 * DAY
+
+    fills_cache.sync_fills(conn, venue, w, window_days=30, now_ms=now, max_pages=5)
+    assert len(venue.fills_calls) == 1
+    cov = db.get_fills_coverage(conn, w)
+    assert cov["first_ms"] == 0 and cov["last_ms"] == now
+    assert not fills_cache.is_lagging(conn, w, now)
+
+
+def test_uncapped_sync_is_unchanged_single_call_behavior(conn):
+    """max_pages=None (the default) is byte-for-byte the pre-existing
+    behavior: one call for the whole gap, regardless of density."""
+    venue = CappableVenue()
+    w = "0xuncapped"
+    venue.set_fills(w, _dense_fills(6_000, 0, 30 * DAY))
+    out = fills_cache.sync_fills(conn, venue, w, window_days=30, now_ms=30 * DAY)
+    assert len(venue.fills_calls) == 1
+    assert len(out) == 6_000
+    assert db.get_fills_coverage(conn, w)["last_ms"] == 30 * DAY

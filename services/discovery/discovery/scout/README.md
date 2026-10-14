@@ -39,9 +39,44 @@ Nothing heavy runs in the api process.
 | Stage | When | Work | Weight |
 |---|---|---|---|
 | A universe | 15 min | stats-data leaderboard via `hl.leaderboard.parse_rows`; AV >= $10k, 30d vlm >= $50k, allTime or 30d PnL > 0, no vaults (`COPYCAT_SCOUT_INCLUDE_VAULTS=1` to keep); top 300 by 30d PnL; book wallets always kept | 0 |
-| B stats | 60 min, budgeted | per wallet: `portfolio` + `account_state` + `extras` + incremental fills sync (discovery's fills cache). All-or-nothing per wallet; 2 failures in a row -> sits out a cycle, row flagged `stale`. Order: book, on-demand, stalest, then universe rank | ~170 warm, ~340 cold (measured) |
+| B stats | 60 min, budgeted | per wallet: see the cadence table below | see below |
 | C sim | after B; on settings change | `sim.simulate_wallet` on cached fills, candles via the shared cache; Copy Fit over the cohort | candles only |
 | publish | after every run | rows -> `scout_rows` under a new `refresh_id`, pointer switched in one transaction | 0 |
+
+### Stage B cadence (indexing tightening, 2026-10)
+
+Before this: every hourly pass re-read `account_state` + `extras` + `userFunding`
++ (re-checked) the liquidation backfill for EVERY wallet, every time, whether
+anything about the account had changed or not. Measured live 2026-10-14:
+`stage B: budget reached (28595 weight), 177 wallets deferred` -- 124 of 301
+wallets refreshed per pass (~230 weight/wallet), 50 minutes, 0.06 wallets/s.
+52 board rows sat `stale`.
+
+Now each endpoint has its own cadence; only `portfolio` and the fills tail run
+every pass for every wallet:
+
+| Endpoint | Cadence | Trigger to run early |
+|---|---|---|
+| `portfolio` | every pass | -- |
+| fills tail (`fills_cache.sync_fills`) | every pass, incremental | capped at `COPYCAT_SCOUT_MAX_FILLS_PAGES` (default 5) real pages per call: a 53,520-fill wallet's first-ever 30d backfill (27 pages, 3,240 weight in one pass) now costs at most 5 pages (600 weight), the rest next pass (`fills_cache.is_lagging`, flagged `fills_truncated`) |
+| `account_state`, `extras`, `userFunding`, liquidation backfill | `COPYCAT_SCOUT_FULL_EVERY_S` (default 6h) | a new fill landed since the last pass (the fills tail's newest timestamp moved), or this is the wallet's first-ever build |
+
+`scout_stats.full_ms` tracks the last time the slow set actually ran per
+wallet. On a cheap pass, `account_json`/`positions_json`/`positions_ms` are
+carried over unchanged (not re-fetched, not estimated); `extras_unavailable`/
+`funding_unavailable` carry over too so a wallet whose reads have been failing
+doesn't silently look fine in between full passes. See `stats.build_wallet`'s
+docstring for the exact rule.
+
+Per-pass instrumentation: `stats.run_stage_b` logs each wallet's weight by
+endpoint and seconds at DEBUG, and an INFO summary (p50/p95 weight, pages,
+seconds; the 5 most expensive wallets) after every pass, also stored in
+`scout_meta["stage_b_summary"]` (not on the `ScoutStatus` contract -- no
+version bump needed for an internal pacing metric; the eval and this README
+read it straight from `scout_meta`).
+
+Measured on a throwaway stack (`COPYCAT_SCOUT_UNIVERSE=40`, real Hyperliquid
+reads, `stats_budget_check.sh`), see "Tests" below for the exact run.
 
 Custom wallets (contract v15): `scout_custom` holds every address the user
 added by hand. Stage A keeps them through the universe swap (source `custom`
@@ -72,8 +107,12 @@ this it held the slot for `REFRESH_STALE_S` (15 min) after every restart.
 Budget per B pass: `COPYCAT_SCOUT_B_MAX_WEIGHT` (default 28,800 = 40 min at
 the ~720/min background share) and `COPYCAT_SCOUT_B_MAX_S` (50 min), charged by
 what each wallet actually called (`stats.CountingVenue`). Wallets past the
-budget go first next pass. A cold 300-wallet universe needs ~4 passes; warm
-passes cover ~170 wallets.
+budget go first next pass (stalest-first ordering + deferral already
+guarantees every wallet rotates through within two passes; see
+`test_every_wallet_rotates_through_within_two_passes`). With the cheap warm
+path, a steady-state pass costs far less per wallet than the pre-tightening
+~230 weight/wallet above, so a lot more of the 301-wallet universe fits in
+each 40-minute pass -- see the cadence table for the per-endpoint cost.
 
 Settings: the board is scored at `settings_hash(settings, sim_equity)`
 (Settings minus enabled/dry_run/leaders/contract_version, plus sim equity,
@@ -85,6 +124,14 @@ Progress: `scout_refresh` row (stage, done/total, eta, heartbeat) and
 (`scheduler_heartbeat_ms`, what health and `scout_build().alive` read) is
 beaten at every progress step too, so a long refresh never reads as "serve
 is not running".
+
+ETA honesty gate (`refresh.eta_s`): no estimate before `COPYCAT_SCOUT_ETA_MIN_DONE`
+wallets are done (default 10) OR `COPYCAT_SCOUT_ETA_MIN_FRAC` of the total
+(default 10%), whichever clears first. Before this, a pass logged `stage stats
+2.3% eta 394m02s | 7/301 rate 0.01/s` -- a number extrapolated from 7 samples,
+shown as fact. `ScoutStatus.eta_s` stays `Optional`; the web badge
+(`RefreshBadge`) shows `refreshing stats 7/301` with no time until the gate
+opens, then `~12m left`.
 
 ## Storage
 
@@ -133,12 +180,20 @@ python -m discovery.scout top [--n 20] [--sort fit] [--window 30d]
 
 ## Tests
 
-Gate (offline, ~1.6 s for all 59): `services/discovery/tests/test_scout_*.py`:
-metrics on hand-computed fixtures, Copy Fit weights/caps/gates, filters and
-sorts in the api query shape, switchover (old rows serve while a refresh runs,
-unswitched rows invisible, retention 3), single refresh slot, stage-B weight
-and wall-clock budget, settings change + `stale_settings`, scheduler tick,
-on-demand queue, what-if with zero HL calls.
+Gate (offline, ~2.8 s for all 128): `services/discovery/tests/test_scout_*.py`
++ `test_fills_cache.py`: metrics on hand-computed fixtures, Copy Fit
+weights/caps/gates, filters and sorts in the api query shape, switchover (old
+rows serve while a refresh runs, unswitched rows invisible, retention 3),
+single refresh slot, stage-B weight and wall-clock budget, rotation within two
+passes, the ETA honesty gate, settings change + `stale_settings`, scheduler
+tick, on-demand queue, what-if with zero HL calls. `test_scout_stats_warm.py`:
+the warm path itself (cold always full, no-new-fills skips account_state/
+extras/funding, a new fill forces a full pass early, the cadence fires
+without one, carried-over `extras_unavailable`, a custom wallet's universe
+row survives a cheap pass). `test_fills_cache.py`: the per-pass fills page cap
+(a dense wallet's capped sync stays contiguous and catches up over later
+passes; a sparse wallet costs one call regardless of the cap; uncapped is
+byte-for-byte unchanged).
 
 Live eval: `.venv/bin/python -m pytest services/discovery/tests/test_scout_live.py -m live -s`
 (stage A + stats for 10 + sim for 5; every metric populated or flagged;
@@ -155,3 +210,40 @@ checks. Run it after touching `refresh.service_requests`, `build_one`,
 `republish` or the custom store functions.
 Last run 2026-10-14 on c851d0b: 12/12 PASS, the row showed 9 s after the add
 while the refresh was at stats 0/41 ("built in 4s mid-refresh, board republished").
+
+Stage-B warm path, live: `services/discovery/evals/stats_budget_check.sh [universe]`
+(default 40) runs `scout refresh --stages AB` twice back to back on a
+throwaway data dir (real Hyperliquid reads, no account, no key): the first
+pass is cold (every wallet first-ever built), the second immediately after is
+warm (nothing new landed in between). Checks the whole cohort got built cold,
+the warm pass's wall clock and weight/wallet (p50) are inside budget, warm is
+measurably cheaper than cold, most warm-pass wallets skipped the slow-cadence
+set, and the ETA is absent early in a pass then present once the honesty gate
+opens. Exit code = failed checks. Run it after touching `stats.build_wallet`,
+`fills_cache.sync_fills`'s page cap, or the cadence constants in `config.py`.
+
+Wall clock on a fresh `COPYCAT_DATA_DIR` (new `hl_rate.bucket`, empty): a
+background-priority caller's per-item charge (`rate_limit.charge`) has no
+reserve floor, so a few fills/funding pages push the shared bucket well
+below the background floor (`COPYCAT_HL_RESERVE_FRAC`, default 0.4 of 1200),
+and every acquire after that waits (up to `http_post`'s own 30s `max_wait`)
+for refill (20/s) before the next call goes out. Measured 2026-10-14 on a
+brand-new throwaway bucket: wallets 1-8 built in well under the 90s/wallet
+HL budget, wallet 9 alone took over 90s (`sample` on the process showed it
+~70% in `time.sleep` inside `rate_limit.acquire`, the rest in an SSL read of
+a large fills response) -- the cold pass was still correctly progressing
+(stage B's `done` count kept climbing, no deferral, no failure) when this
+session's time budget ran out at stats 13/40, 40-wallet bucket at 450/1200
+tokens and climbing. This is the SAME mechanism the indexing ticket exists
+to reduce exposure to: fewer slow-cadence endpoint calls per wallet (this
+change) means fewer per-item surcharges hitting the bucket, means the warm
+pass (which this change makes nearly all portfolio + a 1-page fills tail)
+should clear its 40 wallets in well under the 90s/wallet cold rate even
+starting from the same depleted bucket -- but that specific comparison was
+not captured end-to-end in one session; re-run the script (ideally when
+nothing else on this host is drawing background HL weight) for the full
+recorded PASS/FAIL. `test_scout_stats_warm.py` and `test_fills_cache.py`
+(gate, deterministic, no live dependency) prove the mechanism itself: no
+account_state/extras/funding call on a no-new-fill warm pass, a new fill or
+the cadence forcing one right away, and the fills page cap staying
+contiguous and catching up over later passes.

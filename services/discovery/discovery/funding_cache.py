@@ -64,3 +64,19 @@ def sync_funding(conn: Any, venue: Venue, wallet: str, window_days: int, now_ms:
         last = now_ms
         db.set_funding_coverage(conn, wallet, first, last, now_ms)
     return db.get_cached_funding(conn, wallet, ws, min(now_ms, last))
+
+
+def cached_window(conn: Any, wallet: str, window_days: int, now_ms: int) -> List[Dict[str, Any]]:
+    """Read whatever funding is already cached for `wallet` in the last
+    `window_days`, with no HL call and no coverage write. Used on a stage-B
+    pass that skips the funding sync (indexing tightening: funding moves to
+    a slower cadence, `scout.config.FULL_REFRESH_EVERY_S`): round-trip
+    netting uses the last successfully fetched funding, up to that cadence
+    stale, instead of paying a userFunding page every hourly pass. []
+    when nothing has ever been cached for this wallet -- same empty-list
+    shape `sync_funding` returns for "no funding events", not an error."""
+    cov = db.get_funding_coverage(conn, wallet)
+    if cov is None:
+        return []
+    ws = now_ms - window_days * DAY_MS
+    return db.get_cached_funding(conn, wallet, ws, min(now_ms, cov["last_ms"]))

@@ -548,7 +548,7 @@ class HlVenue:
         return sizing.size_for_notional(coin, notional_usd, mid)
 
     def fills(self, user: str, start_ms: int, end_ms: int,
-              aggregate_by_time: bool = False) -> Optional[List[Dict[str, Any]]]:
+              aggregate_by_time: bool = False, max_pages: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         """userFillsByTime over [start_ms, end_ms] (both inclusive), paginated.
 
         HL caps each response at 2000 rows and returns them oldest-first
@@ -587,9 +587,16 @@ class HlVenue:
         Returns None if any page's fetch failed, or if a page's own cursor
         (last row's `time`) is unparseable: a silently truncated fill list
         is worse than a clear failure.
+
+        max_pages: caller-supplied tighter cap (discovery.scout's per-pass
+        budget: a dense wallet's full-window backfill otherwise pays for
+        every real page in one pass). None keeps the original 50-page
+        ceiling. Same partial-result-on-cap behavior either way, just at a
+        smaller number: the caller sees fewer rows, same as hitting the
+        built-in safety valve early.
         """
         PAGE_SIZE = 2000
-        MAX_PAGES = 50  # 100k-fill ceiling -- far above any realistic window's yield
+        MAX_PAGES = min(50, max_pages) if max_pages is not None else 50  # 100k-fill ceiling by default
         out: List[Dict[str, Any]] = []
         held: List[Dict[str, Any]] = []   # last page's rows at its last ms, re-read by the next page
         cursor = int(start_ms)

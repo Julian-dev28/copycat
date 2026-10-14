@@ -266,3 +266,65 @@ def test_scheduler_stays_alive_during_a_long_refresh(w, monkeypatch):
     seen.clear()
     R.run_refresh(v, settings(), EQUITY, db_path=db)
     assert seen and not any(seen), seen
+
+
+# ── ETA honesty gate (indexing tightening: "eta 394m02s" from 7/301) ────────
+
+def test_eta_hidden_below_both_thresholds_then_shown():
+    assert R.eta_s(0, 301, 10.0) is None                 # no progress at all
+    assert R.eta_s(7, 301, 60.0) is None                 # the exact regression: 7/301, 2.3%
+    assert R.eta_s(9, 301, 90.0) is None                 # still under 10 done AND under 10%
+    assert R.eta_s(10, 301, 100.0) is not None            # clears ETA_MIN_DONE
+    assert R.eta_s(5, 20, 20.0) is not None               # 25%: clears ETA_MIN_FRAC despite < 10 done
+    assert R.eta_s(30, 301, 150.0) == pytest.approx((301 - 30) * 150.0 / 30)
+
+
+def test_progress_step_does_not_write_an_eta_before_the_gate(w):
+    """Progress.step persists eta_s straight from refresh.eta_s: the stored
+    scout_refresh row (and so ScoutStatus/the web badge) must not show a
+    number before the gate opens."""
+    conn = store.connect(w["db"])
+    rid = "gatetest"
+    assert store.try_begin_refresh(conn, rid, R.now_ms(), "test") is None   # claims the slot, inserts the row
+    prog = R.Progress(conn, rid)
+    prog.begin("stats", 301)
+    prog.step(3, 301)
+    r = conn.execute("SELECT eta_s FROM scout_refresh WHERE refresh_id = ?", (rid,)).fetchone()
+    assert r["eta_s"] is None
+    prog.step(31, 301)                                     # 31/301 ~= 10.3%: clears ETA_MIN_FRAC
+    r2 = conn.execute("SELECT eta_s FROM scout_refresh WHERE refresh_id = ?", (rid,)).fetchone()
+    assert r2["eta_s"] is not None
+
+
+# ── rotation: every wallet refreshed within two passes ──────────────────────
+
+def test_every_wallet_rotates_through_within_two_passes(tmp_path):
+    from test_scout_world import build_venue
+    v = build_venue()
+    conn = store.connect(tmp_path / "rotation.db")
+    addrs = sorted(BOARD)
+    # tight: room for a couple of cold wallets in the first pass, not all 6
+    budget1 = stats.Budget(max_weight=stats.estimate_weight(False) * 2 + 1, max_s=60)
+    res1 = stats.run_stage_b(conn, v, addrs, NOW, budget1)
+    assert 0 < len(res1.done) < len(addrs), res1.done
+
+    budget2 = stats.Budget(max_weight=1e9, max_s=60)
+    res2 = stats.run_stage_b(conn, v, addrs, NOW, budget2)
+    assert set(res1.done) | set(res2.done) == set(addrs)   # two passes cover the whole cohort
+    assert set(res2.done[: len(res1.deferred)]) == set(res1.deferred)   # deferred wallets go first next pass
+
+
+# ── per-pass instrumentation (p50/p95 weight/pages/seconds, top 5) ──────────
+
+def test_stage_b_summary_is_logged_and_stored(tmp_path):
+    from test_scout_world import build_venue
+    v = build_venue()
+    conn = store.connect(tmp_path / "summary.db")
+    addrs = sorted(BOARD)
+    stats.run_stage_b(conn, v, addrs, NOW, stats.Budget(1e9, 60))
+    summary = store.meta_get(conn, "stage_b_summary")
+    assert summary is not None
+    assert summary["n"] == len(addrs) == summary["full_count"]   # every wallet was cold: a full pass
+    assert summary["weight_p50"] > 0 and summary["weight_p95"] >= summary["weight_p50"]
+    assert 0 < len(summary["top5"]) <= 5
+    assert summary["top5"][0]["weight"] >= summary["top5"][-1]["weight"]   # sorted, most expensive first

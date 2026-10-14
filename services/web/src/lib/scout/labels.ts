@@ -201,3 +201,24 @@ export function isStale(lastOkMs: number | null | undefined, nextDueMs: number |
   if (!lastOkMs || !nextDueMs || nextDueMs <= lastOkMs) return false;
   return nowMs - lastOkMs > 3 * (nextDueMs - lastOkMs);
 }
+
+/**
+ * RefreshBadge progress: a real wallet count ("7/301"), not a bare percent
+ * of a total the trader never sees (indexing tightening). Negative/missing
+ * inputs (shouldn't happen, but ScoutStatus is server data) clamp to 0.
+ */
+export function refreshCountLabel(done: number, total: number): string {
+  return `${Math.max(0, Math.trunc(done || 0))}/${Math.max(0, Math.trunc(total || 0))}`;
+}
+
+/**
+ * "~12m left", rounded to the nearest minute and never "~0m left" (floors
+ * at 1m while eta_s > 0). null/undefined/negative means no estimate yet --
+ * ScoutStatus.eta_s is None server-side until the pass has enough signal
+ * (refresh.eta_s's honesty gate: no estimate from 1-2 samples), and this
+ * returns null the same way so the badge shows progress with no time.
+ */
+export function refreshEtaLabel(etaS: number | null | undefined): string | null {
+  if (etaS === null || etaS === undefined || !Number.isFinite(etaS) || etaS < 0) return null;
+  return `~${Math.max(1, Math.round(etaS / 60))}m left`;
+}

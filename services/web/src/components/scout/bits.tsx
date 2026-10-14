@@ -11,7 +11,7 @@ import { useScoutMode, useScoutRefresh, useScoutStatus, type ScoutBook } from "@
 import { formatAgo } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
 import { MAX_LEADERS } from "@/lib/api/types";
-import { coinLabel, dexHint, isStale, STYLE_META } from "@/lib/scout/labels";
+import { coinLabel, dexHint, isStale, refreshCountLabel, refreshEtaLabel, STYLE_META } from "@/lib/scout/labels";
 import type { CoinStat, TradingStyle } from "@/lib/scout/types";
 
 /** href that keeps `?demo=1` when the board is in demo mode. */
@@ -156,10 +156,11 @@ export function RefreshBadge({ cohort, nowMs, asOfMs }: { cohort?: number; nowMs
     text = "checking…";
     dot = "bg-faint";
   } else if (running) {
+    const eta = refreshEtaLabel(s.eta_s);
     text = (
       <>
-        refreshing {s.stage ?? ""} <span className="font-num">{pct}%</span>
-        {s.eta_s ? <span className="text-muted"> · ~{Math.max(1, Math.round(s.eta_s / 60))}m left</span> : null}
+        refreshing {s.stage ?? ""} <span className="font-num">{refreshCountLabel(s.done, s.total)}</span>
+        {eta ? <span className="text-muted"> · {eta}</span> : null}
       </>
     );
     dot = "bg-accent animate-pulse-live";

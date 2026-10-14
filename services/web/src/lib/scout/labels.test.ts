@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { isApiTooOld } from "./api";
 import {
-  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders, STYLE_META,
-  visibleFlags,
+  biasLabel, coattailText, coinLabel, dexHint, FLAG_TEXT, flagText, formatHold, isStale, liquidationText, liqTone, netFundingSinceOpen, normalizeOrders,
+  refreshCountLabel, refreshEtaLabel, STYLE_META, visibleFlags,
 } from "./labels";
 import { TRADING_STYLES } from "./types";
 
@@ -146,5 +146,36 @@ describe("coattailText (user_consensus P1 #6)", () => {
   it("drops the share clause when it's missing", () => {
     expect(coattailText({ coattail_leader: "0x04a97ae7f350a22cd0cdb6b1875e8905b76495aa", coattail_share_pct: null }))
       .toBe("Opens often land soon after 0x04a9…95aa's");
+  });
+});
+
+describe("RefreshBadge progress (indexing tightening: a count, not a bare percent)", () => {
+  it("refreshCountLabel is a plain done/total count", () => {
+    expect(refreshCountLabel(7, 301)).toBe("7/301");
+    expect(refreshCountLabel(0, 301)).toBe("0/301");
+    expect(refreshCountLabel(301, 301)).toBe("301/301");
+  });
+
+  it("refreshCountLabel never goes negative even on bad input", () => {
+    expect(refreshCountLabel(-1, -5)).toBe("0/0");
+  });
+
+  it("refreshEtaLabel is null until the server-side gate opens", () => {
+    expect(refreshEtaLabel(null)).toBeNull();
+    expect(refreshEtaLabel(undefined)).toBeNull();
+    expect(refreshEtaLabel(0)).toBe("~1m left");   // 0 is a real estimate (almost done), not "no estimate"
+  });
+
+  it("refreshEtaLabel rounds to whole minutes and never shows 0m", () => {
+    expect(refreshEtaLabel(30)).toBe("~1m left");     // 30s rounds to 1m, floored, never "0m left"
+    expect(refreshEtaLabel(90)).toBe("~2m left");
+    expect(refreshEtaLabel(12 * 60)).toBe("~12m left");
+    expect(refreshEtaLabel(720)).toBe("~12m left");
+  });
+
+  it("refreshEtaLabel rejects non-finite or negative values", () => {
+    expect(refreshEtaLabel(NaN)).toBeNull();
+    expect(refreshEtaLabel(-5)).toBeNull();
+    expect(refreshEtaLabel(Infinity)).toBeNull();
   });
 });
