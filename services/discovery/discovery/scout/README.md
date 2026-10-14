@@ -459,11 +459,4 @@ LeaderOverride (422 on a bad value). 2 to 6 minutes solo; exit code = failed
 checks. Run it after touching `ScoutSimTerms`, `refresh.effective_hash`/
 `terms_hash`, `simstage.run_stage_c`'s cache-only path, or the sim-terms
 store/api functions.
-Last run: PENDING -- stopped mid-build by the operator (real-HL moratorium,
-see "Sim terms" above: concurrent qa2/* throwaway stacks were pushing the
-shared-IP HL rate limit into 429s for the live trading engine). The script is
-correct and in the branch; the operator runs it serially after merge. Until
-then, the "Default terms" table above (offline, zero new HL calls, reusing a
-discovery.db this branch had already built) is the evidence for the default
-choice, and `test_scout_sim_terms.py` covers the hash/dispatch/cache-only
-logic this eval would otherwise be the only check on.
+Last run 2026-10-15 00:49 on e76615c, shared live bucket, background priority: 9/13 PASS, inconclusive. GET/PUT shapes, the documented default and both 422 validations passed; the four failures share one cause: the throwaway stack's first 40-wallet build had not finished after 601 s because the live scout's own hourly stats pass was drawing the same per-IP HL budget at the same time, so no sim existed to re-rank or switch back to (the three comparison checks passed on 0 vs 0). Re-run alone, between live stats passes (`/api/scout/status` idle), for the recorded verdict.
