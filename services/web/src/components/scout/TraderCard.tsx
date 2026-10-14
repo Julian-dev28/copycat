@@ -10,6 +10,7 @@ import { Pnl } from "@/components/ui/Pnl";
 import { CopyFitMeter } from "./CopyFitMeter";
 import { SparkLegend, Sparkline } from "./Sparkline";
 import { AddToBookButton, CoinBadges, scoutHref, StyleTag } from "./bits";
+import { CustomBadge, RemoveCustomButton } from "./custom";
 import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
@@ -92,6 +93,8 @@ export function TraderCard({
   book,
   demo,
   nowMs,
+  onRemoveCustom,
+  removingCustom,
 }: {
   row: TraderRow;
   rank: number;
@@ -100,6 +103,9 @@ export function TraderCard({
   book: ScoutBook;
   demo: boolean;
   nowMs: number;
+  /** v15: takes a hand-added wallet off the board. */
+  onRemoveCustom?: (address: string) => void;
+  removingCustom?: string | null;
 }) {
   const inBook = row.in_book || book.inBook(row.address);
   const href = scoutHref(`/scout/${row.address}`, demo);
@@ -123,11 +129,15 @@ export function TraderCard({
             {LABELS.copying}
           </Badge>
         ) : null}
+        {row.custom && onRemoveCustom ? (
+          <RemoveCustomButton address={row.address} onRemove={onRemoveCustom} pending={removingCustom === row.address} className="relative z-10" />
+        ) : null}
       </header>
 
       <div className="flex flex-wrap items-center gap-1.5 pl-8">
         <StyleTag style={row.style} />
         <Badge title={SIZE_TIER_HINT[row.size_tier]}>{row.size_tier}</Badge>
+        {row.custom ? <CustomBadge /> : null}
         {isVault ? <Badge tone="warn" title="A vault: PnL is pooled across depositors, not yours alone">Vault</Badge> : null}
         <span className="text-xs text-muted">active {formatAgo(row.last_fill_ms, nowMs)}</span>
       </div>

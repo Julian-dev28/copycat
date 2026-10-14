@@ -114,14 +114,36 @@ describe("normalizePresets", () => {
       departed_30d: 12, departed_liquidated_30d: 4,
     })).toEqual({
       coins: [{ coin: "BTC", traders: 40 }, { coin: "xyz:TSLA", traders: 0 }], hip3: 12, total: 280,
-      departed: 12, departedLiquidated: 4,
+      departed: 12, departedLiquidated: 4, custom: 0,
     });
+    expect(normalizePresets({ coins: [], coin_counts: {}, hip3_count: 0, total: 3, custom: 2 }).custom).toBe(2);
+    expect(normalizePresets({ coins: [], coin_counts: {}, hip3_count: 0, total: 3, custom: -1 }).custom).toBe(0);
   });
 
   it("reads the draft shape and degrades on junk", () => {
     expect(normalizePresets({ coins: [{ coin: "ETH", traders: 3 }, { coin: "bad coin!" }], hip3: 2 }).coins).toEqual([{ coin: "ETH", traders: 3 }]);
-    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 });
-    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0 });
+    expect(normalizePresets(null)).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0 });
+    expect(normalizePresets({ coins: "BTC", hip3_count: -1 })).toEqual({ coins: [], hip3: 0, total: 0, departed: 0, departedLiquidated: 0, custom: 0 });
+  });
+});
+
+describe("preset=custom (v15: hand-added wallets)", () => {
+  it("parses, round-trips to the URL and the api query", () => {
+    const s = parse("preset=custom");
+    expect(s.preset).toBe("custom");
+    expect(boardStateToSearch(s)).toBe("preset=custom");
+    expect(boardStateToApiQuery(s)).toContain("preset=custom");
+    expect(parse("preset=mine").preset).toBe("all");
+  });
+
+  it("applyBoardQuery keeps only rows with custom=true, in any sort", () => {
+    const rows = fixtureRows(NOW);
+    const marked = rows.map((r, i) => (i % 7 === 3 ? { ...r, custom: true } : r));
+    const out = applyBoardQuery(marked, { ...DEFAULT_BOARD, preset: "custom", sort: "account_value", order: "asc" }, NOW);
+    expect(out.total).toBe(marked.filter((r) => r.custom).length);
+    expect(out.rows.every((r) => r.custom)).toBe(true);
+    expect(applyBoardQuery(rows, { ...DEFAULT_BOARD, preset: "custom" }, NOW).total).toBe(0);
+    expect(applyBoardQuery(marked, DEFAULT_BOARD, NOW).total).toBe(rows.length);   // "all" still shows everyone
   });
 });
 

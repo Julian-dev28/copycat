@@ -45,6 +45,11 @@ export function PresetRow({ state, presets, update }: { state: BoardState; prese
       <Chip active={state.preset === "hip3"} onClick={() => update({ preset: "hip3" })} title="Half or more of top-coin volume on HIP-3 (xyz:) markets">
         HIP-3 equities{presets?.hip3 ? <span className="num-sm text-muted">{presets.hip3}</span> : null}
       </Chip>
+      {(presets?.custom ?? 0) > 0 || state.preset === "custom" ? (
+        <Chip active={state.preset === "custom"} onClick={() => update({ preset: "custom" })} title="Wallets you added by hand, scored and simmed like every leaderboard wallet">
+          Custom{presets?.custom ? <span className="num-sm text-muted">{presets.custom}</span> : null}
+        </Chip>
+      ) : null}
       {presets?.coins.map((c) => (
         <Chip key={c.coin} active={state.preset === `coin:${c.coin}`} onClick={() => update({ preset: `coin:${c.coin}` })} title={`Traders whose #1 coin is ${c.coin}`}>
           Top {coinLabel(c.coin).name}
@@ -85,11 +90,14 @@ export function Toolbar({
   update,
   onOpenFilters,
   onClearFilters,
+  addWallet,
 }: {
   state: BoardState;
   update: Update;
   onOpenFilters: () => void;
   onClearFilters: () => void;
+  /** The "Add wallet" box (components/scout/custom.tsx), rendered with the search and sort controls. */
+  addWallet?: ReactNode;
 }) {
   const sortValue = `${state.sort}:${state.order}`;
   const known = SORT_OPTIONS.some((o) => `${o.sort}:${o.order}` === sortValue);
@@ -127,7 +135,8 @@ export function Toolbar({
             onChange={(v) => update({ view: v })}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {addWallet}
           <SearchBox value={state.q} onCommit={(q) => update({ q })} />
           <label className="flex-shrink-0">
             <span className="sr-only">Sort</span>

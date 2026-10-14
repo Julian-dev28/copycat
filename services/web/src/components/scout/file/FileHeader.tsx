@@ -4,16 +4,38 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { AddressChip } from "@/components/ui/AddressChip";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Panel } from "@/components/ui/Panel";
 import { CopyFitMeter } from "@/components/scout/CopyFitMeter";
 import { AddToBookButton, scoutHref, StyleTag } from "@/components/scout/bits";
+import { CustomBadge } from "@/components/scout/custom";
 import type { ScoutBook } from "@/hooks/useScout";
 import { explorerUrl } from "@/lib/address";
 import { formatAgo, formatUsd } from "@/lib/format";
 import { biasLabel, FLAG_TEXT, PNL_TIER_META, SIZE_TIER_HINT } from "@/lib/scout/labels";
 import type { TraderProfile } from "@/lib/scout/types";
 
-export function FileHeader({ profile, book, demo, nowMs }: { profile: TraderProfile; book: ScoutBook; demo: boolean; nowMs: number }) {
+/** v15: the file's custom-wallet state and actions (TraderFile wires the hooks). */
+export interface CustomActions {
+  isCustom: boolean;
+  pending: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+}
+
+export function FileHeader({
+  profile,
+  book,
+  demo,
+  nowMs,
+  custom,
+}: {
+  profile: TraderProfile;
+  book: ScoutBook;
+  demo: boolean;
+  nowMs: number;
+  custom?: CustomActions;
+}) {
   const { row, account } = profile;
   const inBook = book.inBook(row.address);
   return (
@@ -27,6 +49,7 @@ export function FileHeader({ profile, book, demo, nowMs }: { profile: TraderProf
             {row.display_name ? <h1 className="text-lg font-semibold">{row.display_name}</h1> : <h1 className="sr-only">Trader {row.address}</h1>}
             <AddressChip address={row.address} strong={!row.display_name} />
             {inBook ? <Badge tone="success">Copying</Badge> : null}
+            {custom?.isCustom ? <CustomBadge /> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
             <StyleTag style={row.style} />
@@ -58,8 +81,25 @@ export function FileHeader({ profile, book, demo, nowMs }: { profile: TraderProf
             <div className="text-[11px] text-muted">Copy Fit</div>
             <CopyFitMeter fit={row.score.copy_fit} size="lg" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <AddToBookButton address={row.address} book={book} inBook={inBook} size="md" />
+            {custom ? (
+              custom.isCustom ? (
+                <Button size="md" variant="secondary" onClick={custom.onRemove} disabled={custom.pending} title="Takes this wallet off the Scout board. Its cached data stays.">
+                  Remove from Scout
+                </Button>
+              ) : (
+                <Button
+                  size="md"
+                  variant="secondary"
+                  onClick={custom.onAdd}
+                  disabled={custom.pending}
+                  title="Keeps this wallet ranked on the Scout board through refreshes, even when it is not in the top 300."
+                >
+                  Add to Scout board
+                </Button>
+              )
+            ) : null}
             <a
               href={explorerUrl(row.address)}
               target="_blank"

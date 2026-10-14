@@ -12,12 +12,17 @@ import { Notice } from "@/components/ui/Notice";
 import { Panel } from "@/components/ui/Panel";
 import { FilterSheet, PresetRow, Toolbar } from "@/components/scout/BoardControls";
 import { BoardTicker } from "@/components/scout/BoardTicker";
+import { AddWalletBox } from "@/components/scout/custom";
 import { TraderCard } from "@/components/scout/TraderCard";
 import { TraderTable } from "@/components/scout/TraderTable";
-import { ApiTooOld, DeparturesNote, RefreshBadge } from "@/components/scout/bits";
+import { ApiTooOld, DeparturesNote, RefreshBadge, scoutHref } from "@/components/scout/bits";
+import { toast } from "@/components/ui/Toast";
 import { useNow } from "@/hooks/useNow";
-import { useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders } from "@/hooks/useScout";
+import {
+  useAddCustomWallet, useRemoveCustomWallet, useScoutBook, useScoutMode, useScoutPresets, useScoutRefresh, useScoutTraders,
+} from "@/hooks/useScout";
 import { formatUsd } from "@/lib/format";
+import { addedText } from "@/lib/scout/addWallet";
 import { isApiTooOld } from "@/lib/scout/api";
 import {
   boardStateToApiQuery, boardStateToSearch, clearFilters, countActiveFilters, DEFAULT_BOARD, MAX_LIMIT, PAGE_SIZE, parseBoardState,
@@ -53,8 +58,29 @@ function ScoutBoard() {
   const presets = useScoutPresets();
   const book = useScoutBook();
   const refresh = useScoutRefresh();
+  const addCustom = useAddCustomWallet();
+  const removeCustom = useRemoveCustomWallet();
   const nowMs = useNow();
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  /** Add any wallet to the board, then open its file (it builds on demand, the row follows). */
+  function addWallet(address: string) {
+    addCustom.mutate(address, {
+      onSuccess: (res) => {
+        toast(addedText(address, res.queued), { tone: "success" });
+        router.push(scoutHref(`/scout/${address}`, demo));
+      },
+      onError: (e) => toast.error(e.message),
+    });
+  }
+
+  function removeWallet(address: string) {
+    removeCustom.mutate(address, {
+      onSuccess: () => toast("Removed from Scout"),
+      onError: (e) => toast.error(e.message),
+    });
+  }
+  const removingCustom = removeCustom.isPending ? (removeCustom.variables ?? null) : null;
 
   function navigate(next: BoardState) {
     const qs = boardStateToSearch(next, demo ? { demo: "1" } : undefined);
@@ -104,7 +130,18 @@ function ScoutBoard() {
     const cards = (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {page.rows.map((row, i) => (
-          <TraderCard key={row.address} row={row} rank={i + 1} window={state.window} unit={state.unit} book={book} demo={demo} nowMs={nowMs} />
+          <TraderCard
+            key={row.address}
+            row={row}
+            rank={i + 1}
+            window={state.window}
+            unit={state.unit}
+            book={book}
+            demo={demo}
+            nowMs={nowMs}
+            onRemoveCustom={removeWallet}
+            removingCustom={removingCustom}
+          />
         ))}
       </div>
     );
@@ -122,6 +159,8 @@ function ScoutBoard() {
                 book={book}
                 demo={demo}
                 nowMs={nowMs}
+                onRemoveCustom={removeWallet}
+                removingCustom={removingCustom}
               />
             </div>
             <div className="sm:hidden">{cards}</div>
@@ -174,7 +213,13 @@ function ScoutBoard() {
 
       {presets.data ? <DeparturesNote departed={presets.data.departed} departedLiquidated={presets.data.departedLiquidated} /> : null}
       <PresetRow state={state} presets={presets.data} update={update} />
-      <Toolbar state={state} update={update} onOpenFilters={() => setFiltersOpen(true)} onClearFilters={() => navigate(clearFilters(state))} />
+      <Toolbar
+        state={state}
+        update={update}
+        onOpenFilters={() => setFiltersOpen(true)}
+        onClearFilters={() => navigate(clearFilters(state))}
+        addWallet={<AddWalletBox onAdd={addWallet} pending={addCustom.isPending} error={addCustom.error?.message} />}
+      />
       <FilterSheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}

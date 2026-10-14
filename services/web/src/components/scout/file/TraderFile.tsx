@@ -5,8 +5,11 @@ import { Loader2, SearchX } from "lucide-react";
 import { LoadError, PageSkeleton } from "@/components/PageStates";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { ApiTooOld } from "@/components/scout/bits";
+import { toast } from "@/components/ui/Toast";
 import { useNow } from "@/hooks/useNow";
-import { useScoutBook, useScoutMode } from "@/hooks/useScout";
+import { useAddCustomWallet, useRemoveCustomWallet, useScoutBook, useScoutCustom, useScoutMode } from "@/hooks/useScout";
+import { normAddr } from "@/lib/address";
+import { addedText } from "@/lib/scout/addWallet";
 import { buildingText, fileView } from "@/lib/scout/file/state";
 import type { WhatIfResult } from "@/lib/scout/types";
 import { FileHeader } from "./FileHeader";
@@ -34,6 +37,9 @@ export function TraderFile({ address }: { address: string }) {
   const q = useFileProfile(address);
   const book = useScoutBook();
   const nowMs = useNow();
+  const customList = useScoutCustom();
+  const addCustom = useAddCustomWallet();
+  const removeCustom = useRemoveCustomWallet();
   const [whatIf, setWhatIf] = useState<WhatIfResult | null>(null);
   const view = fileView(address, q.data, q.error);
 
@@ -53,10 +59,28 @@ export function TraderFile({ address }: { address: string }) {
 
   const base = q.data.profile;
   const profile = whatIf ? { ...base, sim_curve: whatIf.sim_curve } : base;
+  // The board row says `custom` once the board was republished with it; the custom list
+  // knows right after the add, before that republish. Either means it is custom.
+  const a = normAddr(base.row.address);
+  const isCustom = Boolean(base.row.custom) || (customList.data ?? []).some((c) => c.address === a);
+  const custom = {
+    isCustom,
+    pending: addCustom.isPending || removeCustom.isPending,
+    onAdd: () =>
+      addCustom.mutate(a, {
+        onSuccess: (res) => toast(addedText(a, res.queued), { tone: "success" }),
+        onError: (e) => toast.error(e.message),
+      }),
+    onRemove: () =>
+      removeCustom.mutate(a, {
+        onSuccess: () => toast("Removed from Scout"),
+        onError: (e) => toast.error(e.message),
+      }),
+  };
 
   return (
     <div className="flex flex-col gap-4">
-      <FileHeader profile={base} book={book} demo={demo} nowMs={nowMs} />
+      <FileHeader profile={base} book={book} demo={demo} nowMs={nowMs} custom={custom} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-4">
           <Panel>

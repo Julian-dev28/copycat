@@ -11,6 +11,7 @@ import { TABLE, TableScroll } from "@/components/ui/Table";
 import { CopyFitMeter } from "./CopyFitMeter";
 import { Sparkline } from "./Sparkline";
 import { AddToBookButton, CoinBadges, scoutHref, StyleTag } from "./bits";
+import { CustomBadge, RemoveCustomButton } from "./custom";
 import type { ScoutBook } from "@/hooks/useScout";
 import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
@@ -60,6 +61,8 @@ export function TraderTable({
   book,
   demo,
   nowMs,
+  onRemoveCustom,
+  removingCustom,
 }: {
   rows: TraderRow[];
   window: PnlWindow;
@@ -69,6 +72,9 @@ export function TraderTable({
   book: ScoutBook;
   demo: boolean;
   nowMs: number;
+  /** v15: takes a hand-added wallet off the board. */
+  onRemoveCustom?: (address: string) => void;
+  removingCustom?: string | null;
 }) {
   return (
     <Panel className="overflow-hidden">
@@ -126,6 +132,7 @@ export function TraderTable({
                         <span className="flex flex-wrap items-center gap-1.5">
                           <AddressChip address={row.address} />
                           {inBook ? <Badge tone="accent">{LABELS.copying}</Badge> : null}
+                          {row.custom ? <CustomBadge /> : null}
                           {isVault ? <Badge tone="warn" title="A vault: PnL is pooled across depositors, not yours alone">Vault</Badge> : null}
                         </span>
                         {liqText ? (
@@ -178,7 +185,12 @@ export function TraderTable({
                     <Sparkline points={row.pnl_spark_30d} sim={row.sim_spark_30d} width={96} height={28} className="w-24" />
                   </td>
                   <td className={clsx(TABLE.td, "text-right")}>
-                    <AddToBookButton address={row.address} book={book} inBook={inBook} variant="secondary" />
+                    <span className="inline-flex items-center justify-end gap-2">
+                      {row.custom && onRemoveCustom ? (
+                        <RemoveCustomButton address={row.address} onRemove={onRemoveCustom} pending={removingCustom === row.address} />
+                      ) : null}
+                      <AddToBookButton address={row.address} book={book} inBook={inBook} variant="secondary" />
+                    </span>
                   </td>
                 </tr>
               );

@@ -248,6 +248,7 @@ export function fixturePresets(rows: TraderRow[]): ScoutPresetsWire {
     // demo values so the survivorship note (user_consensus P1 #7) is visible in ?demo=1 too
     departed_30d: 11,
     departed_liquidated_30d: 3,
+    custom: rows.filter((r) => r.custom).length,
   };
 }
 
