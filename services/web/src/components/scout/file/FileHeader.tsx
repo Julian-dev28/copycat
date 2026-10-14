@@ -12,7 +12,7 @@ import { CustomBadge } from "@/components/scout/custom";
 import type { ScoutBook } from "@/hooks/useScout";
 import { explorerUrl } from "@/lib/address";
 import { formatAgo, formatUsd } from "@/lib/format";
-import { biasLabel, FLAG_TEXT, PNL_TIER_META, SIZE_TIER_HINT } from "@/lib/scout/labels";
+import { biasLabel, flagText, flagTone, PNL_TIER_META, SIZE_TIER_HINT, visibleFlags } from "@/lib/scout/labels";
 import type { TraderProfile } from "@/lib/scout/types";
 
 /** v15: the file's custom-wallet state and actions (TraderFile wires the hooks). */
@@ -62,15 +62,21 @@ export function FileHeader({
             <span>{biasLabel(account.long_bias_pct)}</span>
             <span>· last active {row.last_fill_ms ? formatAgo(row.last_fill_ms, nowMs) : "unknown"}</span>
           </div>
-          {row.flags.length ? (
-            <div className="flex flex-wrap gap-1">
-              {row.flags.map((f) => (
-                <Badge key={f} tone="warning">
-                  {FLAG_TEXT[f] ?? f}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
+          {(() => {
+            // The 10k-fills note is dropped here (visibleFlags): Copy Fit's
+            // own breakdown already states it as a non-binding cap, so
+            // showing it again as a second pill is just repetition.
+            const flags = visibleFlags(row.flags);
+            return flags.length ? (
+              <div className="flex flex-wrap gap-1">
+                {flags.map((f) => (
+                  <Badge key={f} tone={flagTone(f)} title={flagTone(f) === "neutral" ? undefined : "Weighs on whether to trust or copy this trader"}>
+                    {flagText(f)}
+                  </Badge>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div>

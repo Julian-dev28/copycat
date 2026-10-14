@@ -16,6 +16,7 @@ import { formatAgo, formatPct, formatUsd } from "@/lib/format";
 import { LABELS } from "@/lib/labels";
 import { coattailText, flagText, liquidationText, SIZE_TIER_HINT, visibleFlags } from "@/lib/scout/labels";
 import { longShortSplit } from "@/lib/scout/split";
+import { ifCopiedText } from "@/lib/scout/copyFit";
 import type { PnlUnit } from "@/lib/scout/query";
 import type { PnlWindow, TraderRow, TraderScore } from "@/lib/scout/types";
 import { formatSignedUsdCompact, WINDOW_LABEL, windowPerf } from "@/lib/scout/window";
@@ -31,32 +32,32 @@ export function WindowPnl({ row, window, unit, arrow, className }: { row: Trader
 }
 
 /**
- * "If you copied" line: the sim return plus its dip, or why the sim shows
- * nothing. Below it, copy capacity with a reason when it's low
- * (user_consensus P0 #2: this belongs on the main panel before "Add to
- * book", not only in an expand row).
+ * "If you copied" line, as a sentence (UX audit: "IF YOU COPIED 30D -0.4% ·
+ * max dip 0.0% · capacity 4% · 100% of skipped opens: under the $10.50
+ * minimum order at your size" read like a stats dump in both the good case,
+ * where most of it said nothing, and the starved case, where the one fact
+ * that mattered sat after two middle dots). ifCopiedText builds the words;
+ * this only adds color to the return itself, up or down.
  */
 export function IfCopied({ s, className }: { s: TraderScore; className?: string }) {
+  const t = ifCopiedText(s);
   if (s.sim_copies === 0) {
     return (
       <span className={clsx("text-xs text-muted", className)} title="The sim replays the last 30 days at your settings; this trader opened nothing it could copy.">
-        No copy opened in the 30d sim
+        {t.headline}
       </span>
     );
   }
-  const cap = s.sim_copy_capacity_pct;
   return (
-    <span className={clsx("flex flex-col gap-0.5", className)}>
-      <span className="inline-flex items-baseline gap-2 text-xs">
+    <span className={clsx("flex flex-col gap-0.5 text-xs", className)}>
+      <span className="text-fg-soft">
+        Your copy, 30d:{" "}
         <Pnl value={s.sim_return_pct} format="pct" className="num font-medium" />
-        <span className="num-sm text-muted" title="Largest peak-to-trough dip of the simulated copy">
-          max dip {formatPct(Math.abs(s.sim_max_drawdown_pct))}
-        </span>
+        <span title="Largest peak-to-trough dip of the simulated copy">, worst dip {formatPct(Math.abs(s.sim_max_drawdown_pct))}.</span>
       </span>
-      {cap !== null && cap !== undefined ? (
-        <span className="num-sm text-muted" title="Share of their 30d opens the sim could actually execute at your settings and the board's sim equity, not necessarily your own balance">
-          capacity {formatPct(cap, 0)}
-          {s.sim_capacity_note ? <span className="text-warn"> · {s.sim_capacity_note}</span> : null}
+      {t.capacity ? (
+        <span className="text-muted" title="Share of their 30d opens the sim could actually execute at your settings and the board's sim equity, not necessarily your own balance">
+          {t.capacity}
         </span>
       ) : null}
     </span>
@@ -190,8 +191,9 @@ export function TraderCard({
 
       <div className="mt-auto flex items-end justify-between gap-3 border-t border-border pt-3">
         <div className="min-w-0 leading-tight">
-          <div className="text-label text-muted">If you copied, 30d</div>
-          <IfCopied s={s} className="mt-1" />
+          {/* IfCopied's own sentence ("Your copy, 30d: ...") carries the
+              "30d" context now; a label above it would just repeat "30d". */}
+          <IfCopied s={s} />
           {flags.length ? (
             <div className="mt-1.5 truncate text-[11px] text-warn" title={flags.map(flagText).join("; ")}>
               {flagText(flags[0])}

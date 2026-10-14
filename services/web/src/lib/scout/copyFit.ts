@@ -7,7 +7,8 @@
  *   fit = 100 * sum(weight * part), then gates/caps in order:
  *   inactive -> 0, liquidated -> <= 20, too_few_trades -> <= 40, hft/vault -> <= 50
  */
-import type { CopyFit } from "./types";
+import { formatPct, formatSignedPct } from "@/lib/format";
+import type { CopyFit, TraderScore } from "./types";
 
 /** Display order: sim first (it is the dominant term), then the trader-quality terms. */
 export const PART_ORDER = ["sim", "sharpe", "drawdown", "consistency", "sample", "win_rate", "capacity", "recency"] as const;
@@ -125,4 +126,33 @@ export function fitPartsLine(fit: Pick<CopyFit, "parts" | "weights">, n = 3): st
   if (!parts.length) return "No part scored above zero";
   const words = parts.map((p) => `${p.label} ${Math.round(p.points)}`);
   return `Points: ${words.join(" · ")} (of 100)`;
+}
+
+/** Matches discovery/scout/simstage.py capacity_reason()'s stable "N% of skipped opens: <reason>" format (pinned by services/discovery/tests/test_scout_simstage.py), so the reason clause can be reused in a different sentence shape without the sim's wording itself becoming web code's business. */
+const CAPACITY_NOTE_RE = /^\d+% of skipped opens: (.+)$/;
+
+export interface IfCopiedText {
+  /** "Your copy, 30d: -0.4%, worst dip 0.0%." or, with nothing simulated, why. */
+  headline: string;
+  /** "Only 4% of their opens fit your size; the rest were under the $10.50 minimum order at your size." null when there is nothing to explain (not simulated, or capacity high enough that the sim stays quiet about it). */
+  capacity: string | null;
+}
+
+/**
+ * "If you copied" as sentences a trader can read in one pass (UX audit:
+ * "IF YOU COPIED 30D -0.4% · max dip 0.0% · capacity 4% · 100% of skipped
+ * opens: under the $10.50 minimum order at your size" read like a raw stats
+ * dump in both the good case, where it says nothing, and the starved case,
+ * where the one fact that matters -- most of their opens never fit -- was
+ * buried after two middle dots).
+ */
+export function ifCopiedText(s: Pick<TraderScore, "sim_copies" | "sim_return_pct" | "sim_max_drawdown_pct" | "sim_copy_capacity_pct" | "sim_capacity_note">): IfCopiedText {
+  if (s.sim_copies === 0) return { headline: "No copy opened in the 30d sim", capacity: null };
+  const headline = `Your copy, 30d: ${formatSignedPct(s.sim_return_pct)}, worst dip ${formatPct(Math.abs(s.sim_max_drawdown_pct))}.`;
+  const cap = s.sim_copy_capacity_pct;
+  if (cap === null || cap === undefined) return { headline, capacity: null };
+  const capPct = formatPct(cap, 0);
+  const reason = s.sim_capacity_note?.match(CAPACITY_NOTE_RE)?.[1] ?? null;
+  const capacity = reason ? `Only ${capPct} of their opens fit your size; the rest were ${reason}.` : `${capPct} of their opens fit your size.`;
+  return { headline, capacity };
 }
