@@ -74,6 +74,7 @@ def test_top_wallet_added_as_custom_keeps_its_leaderboard_row(w):
     conn = store.connect(db)
     cw = public.scout_custom_add(A)
     assert cw is not None and cw.on_board and not cw.queued   # already served: nothing to build
+    assert public.scout_profile(A).row.custom is True         # the file knows at once, before any republish
     R.tick(v, settings(), EQUITY, db_path=db)
     assert store.universe_row(conn, A)["source"] == "lb"
     # the mark shows after the next publish
@@ -142,3 +143,33 @@ def test_a_request_during_a_long_refresh_is_served_before_it_ends(w, monkeypatch
     assert seen["on_board_during"], "the board was republished with it before the refresh ended"
     assert store.request_row(conn, X) is None
     assert _row(X) is not None and _row(X).custom
+
+
+def test_a_wallet_added_during_the_very_first_refresh_gets_a_board_before_it_ends(tmp_path, monkeypatch):
+    """Fresh database: no board has ever been published. A custom wallet added while the
+    first full refresh runs must still show up before that refresh ends (the live eval
+    custom_wallet_check.sh caught republish() doing nothing with no pointer to rebuild)."""
+    from test_scout_world import build_venue
+    monkeypatch.setenv("COPYCAT_SCOUT_PROGRESS_DIR", str(tmp_path / "progress"))
+    v = build_venue()
+    db = tmp_path / "discovery.db"
+    public.configure(db_path=db, venue=v)
+    conn = store.connect(db)
+    _give_history(v, X)
+    assert store.pointer(conn) is None
+    seen = {"calls": 0, "on_board_during": None}
+    orig = v.portfolio
+
+    def hooked(user):
+        seen["calls"] += 1
+        if seen["calls"] == 1:
+            public.scout_custom_add(X)                     # added one wallet into the first refresh
+        elif user != X and store.stats_row(conn, X) and seen["on_board_during"] is None:
+            seen["on_board_during"] = _row(X) is not None   # seen from a reader while B still runs
+        return orig(user)
+
+    monkeypatch.setattr(v, "portfolio", hooked)
+    R.tick(v, settings(), EQUITY, db_path=db)
+    assert seen["on_board_during"] is True, seen
+    page = public.scout_page(q(limit=200))
+    assert page.cohort_size > 1 and _row(X) is not None and _row(X).custom   # the full board replaced the first one

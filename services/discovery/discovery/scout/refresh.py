@@ -321,14 +321,20 @@ def build_one(conn: Any, venue: Venue, settings: Settings, sim_equity: float, si
     return err
 
 
-def republish(conn: Any, sim_equity: float) -> Optional[int]:
+def republish(conn: Any, settings: Settings, sim_equity: float) -> int:
     """Rebuild the served board from what is stored (no HL call) so a wallet built just now
-    shows up at once instead of at the end of the next full refresh. None before the
-    first build. Uses the served build's settings hash and equity, so rows stay comparable."""
+    shows up at once instead of at the end of the next full refresh. Uses the served
+    build's settings hash and equity so rows stay comparable; before the first build
+    (fresh database, the first full refresh still running) it publishes a first board
+    at the wanted hash with whatever has stats, which the full refresh then replaces.
+    Caught by evals/custom_wallet_check.sh: a wallet added during the very first refresh
+    was built but had no board to appear on for the refresh's whole run."""
     ptr = store.pointer(conn)
     if ptr is None:
-        return None
-    return rows.build(conn, uuid.uuid4().hex, ptr["settings_hash"], float(ptr.get("sim_equity") or sim_equity), now_ms())
+        h, eq = settings_hash(settings, sim_equity), sim_equity
+    else:
+        h, eq = ptr["settings_hash"], float(ptr.get("sim_equity") or sim_equity)
+    return rows.build(conn, uuid.uuid4().hex, h, eq, now_ms())
 
 
 def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: float, sizing: Any,
@@ -343,6 +349,7 @@ def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: fl
     for a in store.pending_requests(conn, MAX_REQUEST_ATTEMPTS):
         if store.request_row(conn, a) is None:        # served meanwhile by a nested beat
             continue
+        t0 = time.monotonic()
         try:
             if nested:
                 err = build_one(conn, venue, settings, sim_equity, sizing, a, book, custom)
@@ -352,8 +359,12 @@ def service_requests(conn: Any, venue: Venue, settings: Settings, sim_equity: fl
                             sizing, db_path)
                 err = _stats_error(conn, a)
             store.finish_request(conn, a, err)
+            published = None
             if err is None and a in custom:
-                republish(conn, sim_equity)
+                published = republish(conn, settings, sim_equity)
+            logger.info("scout on-demand: %s %s in %.0fs%s%s", a, "failed" if err else "built",
+                        time.monotonic() - t0, " mid-refresh" if nested else "",
+                        f", board republished ({published} rows)" if published is not None else "")
         except ScoutBusy:
             return
         except Exception as exc:

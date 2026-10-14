@@ -265,12 +265,14 @@ def profile(conn: sqlite3.Connection, address: str) -> Optional[TraderProfile]:
         return None
     stats = _loads(st_row["stats_json"], {})
     ptr = store.pointer(conn)
-    row: Optional[TraderRow] = None
+    custom = address in set(store.custom_addresses(conn))   # live from scout_custom: right from the add,
+    row: Optional[TraderRow] = None                           # before the board is republished with the mark
     sim_curve: List[Dict[str, Any]] = []
     if ptr:
         rj = store.row_json(conn, ptr["refresh_id"], address)
         if rj:
             row = TraderRow.model_validate_json(rj)
+            row.custom = custom
     sim = _profile_sim(conn, address, ptr)
     if sim:
         sim_curve = _loads(sim["sim_curve_json"], [])
@@ -279,7 +281,7 @@ def profile(conn: sqlite3.Connection, address: str) -> Optional[TraderProfile]:
         simf = (_loads(sim["score_json"], {}) if sim else {}) or _unsim_fields(stats)
         flags = _flags(u, stats, simf, {"updated_ms": st_row["updated_ms"], "fail_count": st_row["fail_count"]},
                        int(st_row["updated_ms"]))
-        row = make_row(u, stats, simf, sim_curve, flags, None)
+        row = make_row(u, stats, simf, sim_curve, flags, None, custom=custom)
     port = M.parse_portfolio(_loads(st_row["portfolio_json"], []))
     acct = _loads(st_row["account_json"], {})
     risk = stats.get("risk") or {}

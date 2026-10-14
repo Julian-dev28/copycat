@@ -137,3 +137,13 @@ on-demand queue, what-if with zero HL calls.
 Live eval: `.venv/bin/python -m pytest services/discovery/tests/test_scout_live.py -m live -s`
 (stage A + stats for 10 + sim for 5; every metric populated or flagged;
 portfolio vs leaderboard 30d PnL within 2% for >= 90%).
+
+Custom wallets, live: `services/discovery/evals/custom_wallet_check.sh [0x<wallet>]`
+starts a throwaway api + `scout serve` on a temp data dir (real Hyperliquid
+reads, no account, no key, 40-wallet universe), queues a full refresh, adds
+the wallet while that refresh runs, and checks the row shows on
+`preset=custom` with `custom=true` before the refresh ends, that its file is
+served with real account value and sim fields, that `presets.custom` counts
+it, and that DELETE takes it off at once. 2 to 6 minutes; exit code = failed
+checks. Run it after touching `refresh.service_requests`, `build_one`,
+`republish` or the custom store functions.
