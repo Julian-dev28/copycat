@@ -80,9 +80,11 @@ def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
 class Progress:
     """Writes stage progress to scout_refresh and appends to the progress log."""
 
-    def __init__(self, conn: Any, refresh_id: str, log_path: Optional[Path] = None) -> None:
+    def __init__(self, conn: Any, refresh_id: str, log_path: Optional[Path] = None,
+                 on_beat: Optional[Callable[[], None]] = None) -> None:
         self.conn, self.refresh_id = conn, refresh_id
         self.log_path = log_path or C.progress_log_path()
+        self.on_beat = on_beat
         self.stage = "leaderboard"
         self.t0 = time.monotonic()
         self.errors = 0
@@ -95,16 +97,25 @@ class Progress:
         self.stage, self.t0 = stage, time.monotonic()
         store.update_refresh(self.conn, self.refresh_id, stage=stage, done=0, total=total, eta_s=None,
                              heartbeat_ms=now_ms())
+        self._beat()
         self.log(f"stage {stage} start, {total} to do")
 
     def step(self, done: int, total: int) -> None:
         el = time.monotonic() - self.t0
         eta = eta_s(done, total, el)
         store.update_refresh(self.conn, self.refresh_id, done=done, total=total, eta_s=eta, heartbeat_ms=now_ms())
+        self._beat()
         pct = done / total * 100.0 if total else 100.0
         rate = done / el if el > 0 else 0.0
         self.log(f"stage {self.stage} {pct:5.1f}% eta {_fmt_s(eta)} | {done}/{total} rate {rate:.2f}/s "
                  f"errors {self.errors}")
+
+    def _beat(self) -> None:
+        if self.on_beat is not None:
+            try:
+                self.on_beat()
+            except Exception:
+                logger.debug("progress beat failed", exc_info=True)
 
     def log(self, msg: str) -> None:
         line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} scout-refresh {self.refresh_id[:8]} {msg}"
@@ -135,6 +146,9 @@ class RefreshOptions:
     allow_partial: bool = False
     only: Optional[List[str]] = None       # restrict B/C to these addresses (on-demand)
     kind: str = "scheduled"
+    # Called at every progress step. The scheduler passes its own heartbeat
+    # writer, so a 20-minute refresh keeps `scheduler_alive` true while it runs.
+    on_beat: Optional[Callable[[], None]] = None
 
 
 @dataclass
@@ -163,7 +177,7 @@ def run_refresh(venue: Venue, settings: Settings, sim_equity: float, opts: Optio
     if blocking is not None:
         raise ScoutBusy(f"scout refresh {blocking['refresh_id'][:8]} is running (stage {blocking['stage']})")
     rep = RefreshReport(refresh_id=rid)
-    prog = Progress(conn, rid)
+    prog = Progress(conn, rid, on_beat=opts.on_beat)
     try:
         _run(conn, venue, settings, sim_equity, opts, sizing, rep, prog)
         store.update_refresh(conn, rid, state="done", finished_ms=now_ms(), heartbeat_ms=now_ms())
@@ -285,10 +299,18 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
     t = now_ms()
     want = settings_hash(settings, sim_equity)
     store.meta_set(conn, {"scheduler_heartbeat_ms": t, "wanted_hash": want})
+
+    def beat() -> None:
+        # Before this, the heartbeat was written only here and after the stages
+        # ran, so every refresh longer than SCHEDULER_ALIVE_S (90s; a full one
+        # takes 20 minutes) made health report scout `alive: False` and the
+        # status say "scout serve is not running" while it was running.
+        store.meta_set(conn, {"scheduler_heartbeat_ms": now_ms()})
+
     for a in store.pending_requests(conn, MAX_REQUEST_ATTEMPTS):
         try:
-            run_refresh(venue, settings, sim_equity, RefreshOptions(stages=("B", "C"), only=[a], kind="ondemand"),
-                        sizing, db_path)
+            run_refresh(venue, settings, sim_equity,
+                        RefreshOptions(stages=("B", "C"), only=[a], kind="ondemand", on_beat=beat), sizing, db_path)
             ok = store.stats_row(conn, a)
             store.finish_request(conn, a, None if ok and ok.get("updated_ms") and not ok.get("fail_count")
                                  else (ok or {}).get("last_error") or "no stats")
@@ -303,8 +325,8 @@ def tick(venue: Venue, settings: Settings, sim_equity: float, sizing: Any = None
         try:
             if p.reason == "requested":
                 store.meta_set(conn, {"refresh_requested": None})
-            rep = run_refresh(venue, settings, sim_equity, RefreshOptions(stages=p.stages, kind=p.reason),
-                              sizing, db_path)
+            rep = run_refresh(venue, settings, sim_equity,
+                              RefreshOptions(stages=p.stages, kind=p.reason, on_beat=beat), sizing, db_path)
         except ScoutBusy:
             pass
         except Exception:

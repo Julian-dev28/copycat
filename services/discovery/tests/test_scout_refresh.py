@@ -193,3 +193,36 @@ def test_connect_adds_a_new_table_to_a_database_that_predates_it(tmp_path):
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scout_departures'"
     ).fetchone() is not None
     assert store.departures_summary(conn2, 0) == {"departed": 0, "departed_liquidated": 0}   # no longer 500s
+
+
+def test_scheduler_stays_alive_during_a_long_refresh(w, monkeypatch):
+    """Health (`scout_build().alive`) and the queued status read
+    `scheduler_heartbeat_ms`. The tick wrote it only before and after the
+    stages, so any refresh longer than SCHEDULER_ALIVE_S (90s; a full ABC
+    takes 20 to 45 minutes live) reported scout dead, "scout serve is not
+    running; the build is queued", for its whole run. Every progress step
+    now beats the scheduler heartbeat, but only when the scheduler runs the
+    refresh: a CLI refresh must not fake a live scheduler."""
+    v, db = w["venue"], w["db"]
+    conn = store.connect(db)
+    clock = {"t": R.now_ms()}
+    monkeypatch.setattr(R, "now_ms", lambda: clock["t"])
+    seen = []
+    orig = v.portfolio
+
+    def slow_portfolio(user):
+        clock["t"] += 60_000                       # each trader's stats take a minute
+        seen.append(R.scheduler_alive(conn, clock["t"]))
+        return orig(user)
+
+    monkeypatch.setattr(v, "portfolio", slow_portfolio)
+    store.meta_set(conn, {"last_a_ms": 0, "last_b_ms": 0})      # stats due: the tick runs ABC
+    R.tick(v, settings(), EQUITY, db_path=db)
+    assert len(seen) >= 3, seen
+    assert all(seen), seen                         # before the fix: [True, False, False, ...]
+
+    # control: the same refresh outside the scheduler leaves a stale heartbeat stale
+    store.meta_set(conn, {"scheduler_heartbeat_ms": clock["t"] - 10 * 60_000})
+    seen.clear()
+    R.run_refresh(v, settings(), EQUITY, db_path=db)
+    assert seen and not any(seen), seen
