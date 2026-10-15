@@ -11,7 +11,8 @@ import { normAddr } from "@/lib/address";
 import { formatPct, formatSignedPct, formatUsd } from "@/lib/format";
 import { isBusy, whatIfErrorText } from "@/lib/scout/file/source";
 import type { TraderScore, WhatIfResult } from "@/lib/scout/types";
-import { buildWhatIfRequest, DEFAULT_WHATIF_EQUITY, draftFromOverride, overrideDiffers, overrideSettingsPatch, type WhatIfField } from "@/lib/scout/whatIf";
+import { useSettings } from "@/hooks/useSettings";
+import { buildWhatIfRequest, DEFAULT_WHATIF_EQUITY, draftFromOverride, leverageNote, overrideDiffers, overrideSettingsPatch, SIZING_WORD, type WhatIfField } from "@/lib/scout/whatIf";
 import { useFileWhatIf } from "./hooks";
 import { WhatIfFields } from "./WhatIfFields";
 
@@ -36,6 +37,9 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
   const [errors, setErrors] = useState<Partial<Record<WhatIfField, string>>>({});
   const [saved, setSaved] = useState(false);
   const run = useFileWhatIf(address);
+  const globalSizingMode = useSettings().data?.sizing_mode;
+  const globalSizing = globalSizingMode ? (SIZING_WORD[globalSizingMode] ?? globalSizingMode) : undefined;
+  const note = leverageNote(draft.sizing_mode, globalSizingMode);
 
   const built = buildWhatIfRequest(draft);
   const canSave = built.ok && overrideDiffers(built.body.override, stored);
@@ -63,7 +67,7 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
 
   return (
     <Panel>
-      <PanelHeader title="What you would have made" description="Re-run the 30d copy sim with your own settings. Nothing is saved unless you press save." />
+      <PanelHeader title="What you would have made" description="Re-run the 30d copy sim on your Settings plus the fields below (the board line above uses Scout's sim terms). Nothing is saved unless you press save." />
       <form
         className="flex flex-col gap-3 px-4 pb-4"
         onSubmit={(e) => {
@@ -71,9 +75,10 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
           submit();
         }}
       >
-        <SimLine label="Saved settings" s={base} />
+        <SimLine label="Scout board sim (the board's sim terms)" s={base} />
         {run.data ? <SimLine label="This what-if" s={run.data.score} /> : null}
-        <WhatIfFields draft={draft} set={set} errors={errors} />
+        <WhatIfFields draft={draft} set={set} errors={errors} globalSizing={globalSizing} />
+        {note ? <p className="text-xs text-muted">{note}</p> : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" variant="primary" size="sm" disabled={run.isPending}>
             {run.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}

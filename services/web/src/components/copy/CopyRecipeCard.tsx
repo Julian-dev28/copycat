@@ -32,7 +32,7 @@ export function CopyRecipeCard({ settings, status }: { settings: Settings; statu
   } else if (r.sizingMode === "fixed_notional") {
     headline = `${formatUsd(r.notionalUsd)} per copy at ${lev}`;
   } else {
-    headline = `Sized like the trader, ${Math.round(settings.sleeve_frac * 100)}% of equity x ${settings.size_multiplier}, at ${lev}`;
+    headline = `Sized like the trader: ${Math.round(settings.sleeve_frac * 100)}% of equity, ${settings.size_multiplier}x their size, at ${lev}`;
   }
 
   return (

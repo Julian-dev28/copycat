@@ -27,7 +27,7 @@ export function WalletHeader({ address, row, nowMs, fileHref, inBook, onScout = 
         </div>
       </div>
       <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
-        <Stat label="Index">
+        <Stat label="Index" title="30-day equity index: 100 thirty days ago, deposits and withdrawals removed">
           <span className="font-num text-base font-semibold">{formatIndex(q?.price)}</span>
         </Stat>
         <Stat label="24h">

@@ -40,12 +40,12 @@ function Num({ f, label, draft, set, errors, placeholder }: { f: WhatIfField; la
   );
 }
 
-function Pick({ f, label, options, draft, set }: { f: WhatIfField; label: string; options: [string, string][]; draft: WhatIfDraft; set: SetField }) {
+function Pick({ f, label, options, draft, set, globalLabel }: { f: WhatIfField; label: string; options: [string, string][]; draft: WhatIfDraft; set: SetField; globalLabel?: string }) {
   const id = `wi-${f}`;
   return (
     <Field id={id} label={label}>
       <select id={id} className={INPUT} value={draft[f]} onChange={(e) => set(f, e.target.value)}>
-        <option value="">Global default</option>
+        <option value="">{globalLabel ?? "Global default"}</option>
         {options.map(([v, l]) => (
           <option key={v} value={v}>
             {l}
@@ -56,12 +56,12 @@ function Pick({ f, label, options, draft, set }: { f: WhatIfField; label: string
   );
 }
 
-export function WhatIfFields({ draft, set, errors }: { draft: WhatIfDraft; set: SetField; errors: Errors }) {
+export function WhatIfFields({ draft, set, errors, globalSizing }: { draft: WhatIfDraft; set: SetField; errors: Errors; /** Settings' sizing mode in a word, for the "Global default (…)" option. */ globalSizing?: string }) {
   const mode = draft.sizing_mode;
   return (
     <div className="grid grid-cols-2 gap-3">
       <Num f="equity" label="Your equity (USD)" draft={draft} set={set} errors={errors} placeholder="1000" />
-      <Pick f="sizing_mode" label="Sizing" draft={draft} set={set} options={[["proportional", "Proportional"], ["fixed_margin", "Fixed margin"], ["fixed_notional", "Fixed notional"]]} />
+      <Pick f="sizing_mode" label="Sizing" draft={draft} set={set} globalLabel={globalSizing ? `Global default (${globalSizing})` : undefined} options={[["proportional", "Proportional"], ["fixed_margin", "Fixed margin"], ["fixed_notional", "Fixed notional"]]} />
       {mode === "proportional" || mode === "" ? <Num f="size_multiplier" label="Multiplier" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_margin" ? <Num f="fixed_margin_usd" label="Margin per trade (USD)" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_notional" ? <Num f="fixed_notional_usd" label="Notional per trade (USD)" draft={draft} set={set} errors={errors} /> : null}

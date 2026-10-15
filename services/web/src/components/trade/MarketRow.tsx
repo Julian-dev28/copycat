@@ -60,7 +60,7 @@ export function MarketRow({
             {m.name ? <span className="font-num block truncate text-[11px] text-muted">{shortenAddress(m.address, 4, 4)}</span> : null}
           </span>
         </span>
-        <span className="font-num text-right text-sm">{formatIndex(m.quote?.price)}</span>
+        <span className="font-num text-right text-sm" title="30-day equity index (100 = thirty days ago)">{formatIndex(m.quote?.price)}</span>
         <ChangeText pct={ch} className="text-right text-xs" />
         <span className="flex justify-end">
           <FitPill value={m.row?.score.copy_fit?.value} />

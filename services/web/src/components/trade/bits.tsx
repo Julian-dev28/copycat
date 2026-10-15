@@ -20,10 +20,10 @@ export function PnlText({ usd, children, className }: { usd: number | null | und
 }
 
 /** Small label + value pair for header stats. */
-export function Stat({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+export function Stat({ label, children, className, title }: { label: string; children: ReactNode; className?: string; title?: string }) {
   return (
     <div className={clsx("flex flex-col", className)}>
-      <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
+      <span title={title} className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
       <span className="text-sm">{children}</span>
     </div>
   );

@@ -111,7 +111,7 @@ export function PerformanceChart({
             aria-label="Chart metric"
             options={[
               { value: "pnl", label: "PnL" },
-              { value: "value", label: "Account value" },
+              { value: "value", label: "Value" },
             ]}
             value={metric}
             onChange={setMetric}

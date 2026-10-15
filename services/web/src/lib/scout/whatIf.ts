@@ -150,3 +150,26 @@ export function changedFields(draft: WhatIfDraft, saved: WhatIfDraft): WhatIfFie
 export function draftStale(draft: WhatIfDraft, ran: WhatIfDraft | null): boolean {
   return ran !== null && changedFields(draft, ran).length > 0;
 }
+
+/** Settings' sizing modes in a word, for the "Global default (proportional)" option label. */
+export const SIZING_WORD: Record<string, string> = {
+  proportional: "proportional",
+  fixed_margin: "fixed margin",
+  fixed_notional: "fixed notional",
+  allocation: "allocation",
+};
+
+/**
+ * Why a what-if can leave the curve where it was: under proportional sizing a
+ * copy's size is their exposure ratio times your sleeve, so leverage changes
+ * margin and liquidation risk, not the size, and the curve only moves when a
+ * copy gets liquidated. Julien ran 1x and 20x on a proportional global default
+ * and saw the same +4.2% (2026-10-16). Null when sizing is not proportional or
+ * not known.
+ */
+export function leverageNote(draftSizing: SizingMode | "", globalSizing: string | null | undefined): string | null {
+  const effective = draftSizing || globalSizing || "";
+  if (effective !== "proportional") return null;
+  const via = draftSizing ? "" : " (your Settings default)";
+  return `Proportional sizing${via} mirrors their exposure ratio, so leverage changes margin and liquidation risk, not each copy's size: the curve only moves when a copy gets liquidated. Pick Fixed margin or Fixed notional to size by leverage.`;
+}

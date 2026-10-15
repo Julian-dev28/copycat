@@ -42,8 +42,8 @@ export function StatTiles({ profile }: { profile: TraderProfile }) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Tile label="30d PnL" value={formatSignedUsd(p30?.pnl_usd)} sub={p30 ? `${formatPct(p30.roi_pct)} ROI on ${formatUsd(p30.volume_usd, true)} volume` : undefined} tone={(p30?.pnl_usd ?? 0) >= 0 ? "text-up" : "text-down"} />
         <Tile label="Leverage" value={formatLeverage(account.account_leverage)} sub={`margin used ${formatPct(account.margin_usage_pct, 0)}`} />
-        <Tile label="Nearest liq" value={formatPct(account.nearest_liq_pct)} sub="price move to their closest liquidation" tone={LIQ[liqTone(account.nearest_liq_pct)]} />
-        <Tile label="Long share" value={formatPct(account.long_bias_pct, 0)} sub={`${formatUsd(account.long_notional_usd, true)} L / ${formatUsd(account.short_notional_usd, true)} S · best streak ${profile.longest_win_streak_days}d`} />
+        <Tile label="Nearest liq" value={formatPct(account.nearest_liq_pct)} sub="to nearest liquidation" tone={LIQ[liqTone(account.nearest_liq_pct)]} />
+        <Tile label="Long share" value={formatPct(account.long_bias_pct, 0)} sub={`${formatUsd(account.long_notional_usd, true)} long · ${formatUsd(account.short_notional_usd, true)} short`} />
       </div>
       <Panel className="overflow-hidden">
         <TableScroll label="Stats by window">

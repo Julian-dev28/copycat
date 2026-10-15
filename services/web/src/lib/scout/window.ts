@@ -13,7 +13,8 @@ export const WINDOW_MS: Record<PnlWindow, number | null> = {
   all: null,
 };
 
-export const WINDOW_LABEL: Record<PnlWindow, string> = { "1d": "24h", "7d": "7d", "30d": "30d", all: "All time" };
+/** Short enough for a four-way segmented control: "All time" rendered as "All ti…" (2026-10-16 sweep). */
+export const WINDOW_LABEL: Record<PnlWindow, string> = { "1d": "24h", "7d": "7d", "30d": "30d", all: "All" };
 
 export function windowPerf(row: Pick<TraderRow, "perf">, w: PnlWindow): WindowPerf | null {
   return row.perf.find((p) => p.window === w) ?? null;

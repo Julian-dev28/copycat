@@ -53,7 +53,10 @@ export function SegmentedControl<T extends string>({
       aria-label={aria["aria-label"]}
       aria-disabled={disabled || undefined}
       onKeyDown={onKey}
-      className={clsx("relative isolate flex w-full rounded-sm border border-border bg-surface-2 p-1", className)}
+      // grid, not flex: `flex-1 basis-0` items share the track equally but a shrink-to-fit
+      // control then sized itself below its labels ("24h" rendered as "2…", 2026-10-16).
+      // Equal 1fr tracks take the widest label's width in a w-auto control and split a w-full one.
+      className={clsx("relative isolate grid w-full auto-cols-fr grid-flow-col rounded-sm border border-border bg-surface-2 p-1", className)}
       style={{ "--n": options.length, "--i": idx } as CSSProperties}
     >
       {selected ? (
@@ -81,7 +84,7 @@ export function SegmentedControl<T extends string>({
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             className={clsx(
-              "flex-1 basis-0 truncate whitespace-nowrap rounded-sm font-medium transition-colors duration-[var(--dur-fast)]",
+              "min-w-0 truncate whitespace-nowrap rounded-sm font-medium transition-colors duration-[var(--dur-fast)]",
               size === "sm" ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:text-sm",
               "disabled:cursor-not-allowed disabled:opacity-40",
               active ? "text-fg" : "text-muted hover:text-fg",

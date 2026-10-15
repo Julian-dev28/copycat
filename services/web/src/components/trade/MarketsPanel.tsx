@@ -44,9 +44,24 @@ export function MarketsPanel({
   return (
     <Panel className="flex min-h-0 flex-col overflow-hidden xl:h-full">
       <div className="flex flex-col gap-2 border-b border-border p-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-heading text-fg">Markets</h2>
-          <span className="text-xs text-muted">every trader is a market</span>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-heading text-fg" title="Every trader is a market: pick one, invest, and copycat mirrors their trades">
+            Markets
+          </h2>
+          <span className="flex shrink-0 items-center gap-2">
+            {/* shrink-0: a flex item that may shrink squeezes the control under its labels ("2…") */}
+            <SegmentedControl
+              size="sm"
+              aria-label="Change window"
+              className="!w-auto shrink-0"
+              options={[
+                { value: "24h", label: "24h" },
+                { value: "7d", label: "7d" },
+              ]}
+              value={change}
+              onChange={setChange}
+            />
+          </span>
         </div>
         <Input
           leading={<Search size={13} aria-hidden="true" />}
@@ -91,21 +106,19 @@ export function MarketsPanel({
         tabIndex={0}
         className="max-h-[22rem] min-h-0 flex-1 overflow-y-auto md:max-h-[34rem] xl:max-h-none"
       >
+        {/* The columns are a 30-day equity index (100 thirty days ago, deposits and withdrawals removed),
+            its change over the window the toggle picks, and Copy Fit. The header used to say "Index"
+            next to a toggle squeezed into 3.5rem, which rendered as "2…" (2026-10-16 screenshot). */}
         <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_2rem] items-center gap-2 border-b border-border bg-surface-2 px-3 py-1.5 text-label text-muted">
           <span>Trader</span>
-          <span className="text-right" title="Equity index: 100 thirty days ago, deposits and withdrawals removed">Index</span>
-          <span className="col-span-2 flex justify-end">
-            <SegmentedControl
-              size="sm"
-              aria-label="Change window"
-              className="!w-auto"
-              options={[
-                { value: "24h", label: "24h" },
-                { value: "7d", label: "7d" },
-              ]}
-              value={change}
-              onChange={setChange}
-            />
+          <span className="text-right" title="30-day equity index: 100 thirty days ago, deposits and withdrawals removed. 112 means up 12% in 30 days.">
+            30d
+          </span>
+          <span className="text-right" title={`Change over the last ${change === "24h" ? "24 hours" : "7 days"} (the toggle above picks the window)`}>
+            {change}
+          </span>
+          <span className="text-right" title="Copy Fit, 0 to 100">
+            Fit
           </span>
         </div>
         {error ? <p className="p-3 text-xs text-danger">{error}</p> : null}
