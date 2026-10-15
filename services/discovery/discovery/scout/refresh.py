@@ -107,7 +107,7 @@ def _had_real_liquidation(conn: Any, address: str) -> bool:
         return False
 
 
-def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
+def eta_s(done: int, total: int, elapsed_s: float, cap_s: Optional[float] = None) -> Optional[float]:
     """None until there is enough signal to be honest (indexing tightening):
     at least C.ETA_MIN_DONE wallets done AND C.ETA_MIN_FRAC of the total,
     whichever comes LAST. A 7/301 pass (2.3%, 7 done) used to show
@@ -115,12 +115,20 @@ def eta_s(done: int, total: int, elapsed_s: float) -> Optional[float]:
     as a fact. "Either" was not enough: at 10/301 (3.3%) the first live pass
     on the warm path printed "eta 261m03s" from ten wallets built while two
     evals shared the HL budget. Below the gate, the web badge shows progress
-    with no time."""
+    with no time.
+    `cap_s`: the stage's wall-clock cap (stats.Budget.max_s, 50 min for
+    stage B). A pass the cap ends is over in `cap_s - elapsed_s`, whatever
+    its rate says: the 2026-10-15 08:33 live pass (56/301 after 49 min beside
+    an eval) showed "~189m left" and ended five minutes later, 245 wallets
+    deferred to the next pass. The estimate is for THIS pass."""
     if done <= 0 or total <= 0 or elapsed_s <= 0:
         return None
     if done < C.ETA_MIN_DONE or done < total * C.ETA_MIN_FRAC:
         return None
-    return max(0, total - done) * elapsed_s / done
+    eta = max(0, total - done) * elapsed_s / done
+    if cap_s is not None:
+        eta = min(eta, max(0.0, float(cap_s) - elapsed_s))
+    return eta
 
 
 class Progress:
@@ -133,14 +141,15 @@ class Progress:
         self.on_beat = on_beat
         self.stage = "leaderboard"
         self.t0 = time.monotonic()
+        self.cap_s: Optional[float] = None
         self.errors = 0
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
         except OSError:
             pass
 
-    def begin(self, stage: str, total: int) -> None:
-        self.stage, self.t0 = stage, time.monotonic()
+    def begin(self, stage: str, total: int, cap_s: Optional[float] = None) -> None:
+        self.stage, self.t0, self.cap_s = stage, time.monotonic(), cap_s
         store.update_refresh(self.conn, self.refresh_id, stage=stage, done=0, total=total, eta_s=None,
                              heartbeat_ms=now_ms())
         self._beat()
@@ -148,7 +157,7 @@ class Progress:
 
     def step(self, done: int, total: int) -> None:
         el = time.monotonic() - self.t0
-        eta = eta_s(done, total, el)
+        eta = eta_s(done, total, el, cap_s=self.cap_s)
         store.update_refresh(self.conn, self.refresh_id, done=done, total=total, eta_s=eta, heartbeat_ms=now_ms())
         self._beat()
         pct = done / total * 100.0 if total else 100.0
@@ -330,7 +339,7 @@ def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: R
         t = time.monotonic()
         budget = stats.Budget(opts.max_weight_b, opts.max_s_b)
         n = len(addrs) if opts.limit_b is None else min(len(addrs), opts.limit_b)
-        prog.begin("stats", n)
+        prog.begin("stats", n, cap_s=opts.max_s_b)
         res = stats.run_stage_b(conn, venue, addrs, now_ms(), budget, book=book,
                                 requested=opts.only or (), limit=opts.limit_b, progress=prog.step, custom=custom)
         prog.errors += len(res.failed)
@@ -346,7 +355,7 @@ def _run(conn: Any, venue: Venue, settings: Settings, sim_equity: float, opts: R
     if "C" in opts.stages:
         t = time.monotonic()
         budget = stats.Budget(opts.max_weight_c, opts.max_s_c)
-        prog.begin("sim", len(addrs) if opts.limit_c is None else min(len(addrs), opts.limit_c))
+        prog.begin("sim", len(addrs) if opts.limit_c is None else min(len(addrs), opts.limit_c), cap_s=opts.max_s_c)
         res_c = simstage.run_stage_c(conn, venue, addrs, effective_settings_for_leader(terms, settings), eff_equity,
                                      want, budget, sizing or simstage.default_sizing(), limit=opts.limit_c,
                                      progress=prog.step, allow_cache_only=not terms.use_live_settings)

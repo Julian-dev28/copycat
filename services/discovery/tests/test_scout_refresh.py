@@ -302,6 +302,30 @@ def test_progress_step_does_not_write_an_eta_before_the_gate(w):
     assert r2["eta_s"] is not None
 
 
+def test_eta_never_exceeds_the_stage_time_cap(w):
+    """The estimate is for THIS pass, and stats.Budget ends a pass at its
+    wall-clock cap whatever the rate says: the 2026-10-15 08:33 live pass
+    (56/301 after 49 min beside an eval) showed "~189m left" and the 50 min
+    cap ended it five minutes later, 245 wallets deferred."""
+    rate_eta = (301 - 56) * 2940.0 / 56
+    assert R.eta_s(56, 301, 2940.0) == pytest.approx(rate_eta)                 # no cap: the rate
+    assert R.eta_s(56, 301, 2940.0, cap_s=3000.0) == pytest.approx(60.0)       # the cap, 1 min away
+    assert R.eta_s(56, 301, 3100.0, cap_s=3000.0) == 0.0                       # past the cap: ends now
+    assert R.eta_s(299, 301, 2940.0, cap_s=3000.0) == pytest.approx(2 * 2940.0 / 299)   # the rate when it is sooner
+    assert R.eta_s(5, 301, 2940.0, cap_s=3000.0) is None                       # the honesty gate still wins
+    # Progress hands the stage's cap through: run_refresh begins stats with opts.max_s_b, sim with max_s_c
+    conn = store.connect(w["db"])
+    rid = "captest"
+    assert store.try_begin_refresh(conn, rid, R.now_ms(), "test") is None
+    prog = R.Progress(conn, rid)
+    prog.begin("stats", 301, cap_s=3000.0)
+    prog.t0 -= 2940.0                                      # 49 min into the pass
+    prog.step(56, 301)
+    r = conn.execute("SELECT eta_s FROM scout_refresh WHERE refresh_id = ?", (rid,)).fetchone()
+    assert r["eta_s"] == pytest.approx(60.0, abs=1.0)
+    assert R.RefreshOptions().max_s_b == C.STAGE_B_MAX_S and R.RefreshOptions().max_s_c == C.STAGE_C_MAX_S
+
+
 # ── rotation: every wallet refreshed within two passes ──────────────────────
 
 def test_every_wallet_rotates_through_within_two_passes(tmp_path):

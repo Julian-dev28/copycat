@@ -274,12 +274,16 @@ refresh stopped heartbeating (process died)" after 15 min while the scout
 was alive and working.
 
 ETA honesty gate (`refresh.eta_s`): no estimate before `COPYCAT_SCOUT_ETA_MIN_DONE`
-wallets are done (default 10) OR `COPYCAT_SCOUT_ETA_MIN_FRAC` of the total
-(default 10%), whichever clears first. Before this, a pass logged `stage stats
+wallets are done (default 10) AND `COPYCAT_SCOUT_ETA_MIN_FRAC` of the total
+(default 10%), whichever clears last. Before this, a pass logged `stage stats
 2.3% eta 394m02s | 7/301 rate 0.01/s` -- a number extrapolated from 7 samples,
 shown as fact. `ScoutStatus.eta_s` stays `Optional`; the web badge
 (`RefreshBadge`) shows `refreshing stats 7/301` with no time until the gate
-opens, then `~12m left`.
+opens, then `~12m left`. The estimate is for this pass and never exceeds the
+stage's wall-clock cap (`Progress.begin(cap_s=...)`, `STAGE_B_MAX_S` for
+stats, `STAGE_C_MAX_S` for sims): on 2026-10-15 08:33 the live pass, 56/301
+after 49 min beside an eval, showed `~189m left` and the 50 min cap ended it
+five minutes later with 245 wallets deferred to the next pass.
 
 ## Storage
 
