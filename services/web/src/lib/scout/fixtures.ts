@@ -501,8 +501,10 @@ export function fixtureProfile(row: TraderRow, nowMs: number): TraderProfile {
  */
 export function fixtureWhatIf(profile: TraderProfile, req: WhatIfRequest): WhatIfResult {
   const o: LeaderOverride = req.override;
-  const levFactor = o.leverage_mode === "fixed" && o.leverage ? o.leverage / 20 : o.leverage_mode === "match" ? 0.6 : 1;
-  const sizeFactor = o.sizing_mode === "proportional" ? (o.size_multiplier ?? 1) * 0.8 : o.sizing_mode === "fixed_notional" ? (o.fixed_notional_usd ?? 10.5) / 20 : (o.fixed_margin_usd ?? 5) / 5;
+  const levFactor = o.sizing_mode === "allocation" && o.target_leverage ? o.target_leverage / 20
+    : o.leverage_mode === "fixed" && o.leverage ? o.leverage / 20 : o.leverage_mode === "match" ? 0.6 : 1;
+  const sizeFactor = o.sizing_mode === "allocation" ? (o.allocation_usd ?? 100) / 100
+    : o.sizing_mode === "proportional" ? (o.size_multiplier ?? 1) * 0.8 : o.sizing_mode === "fixed_notional" ? (o.fixed_notional_usd ?? 10.5) / 20 : (o.fixed_margin_usd ?? 5) / 5;
   const k = Math.max(0.05, Math.min(6, levFactor * sizeFactor * (1000 / req.sim_equity_usd) ** 0.3));
   const base = profile.sim_curve[0]?.value ?? FIXTURE_SIM_EQUITY;
   const sim_curve = profile.sim_curve.map((p) => ({ t_ms: p.t_ms, value: round(req.sim_equity_usd * Math.max(0.01, 1 + ((p.value / base - 1) * k)), 2) }));

@@ -5,7 +5,7 @@ import { Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Panel, PanelHeader } from "@/components/ui/Panel";
 import { AddToBookButton } from "@/components/scout/bits";
-import type { ScoutBook } from "@/hooks/useScout";
+import { useScoutSimTerms, type ScoutBook } from "@/hooks/useScout";
 import { useSyncedState } from "@/hooks/useSyncedState";
 import { normAddr } from "@/lib/address";
 import { formatPct, formatSignedPct, formatUsd } from "@/lib/format";
@@ -16,14 +16,20 @@ import { buildWhatIfRequest, DEFAULT_WHATIF_EQUITY, draftFromOverride, leverageN
 import { useFileWhatIf } from "./hooks";
 import { WhatIfFields } from "./WhatIfFields";
 
+/** "liquidated:ETH" flags -> "ETH", so "1 liq" says which copy. */
+export function liquidatedCoins(flags: readonly string[] | null | undefined): string[] {
+  return (flags ?? []).filter((f) => f.startsWith("liquidated:")).map((f) => f.slice("liquidated:".length));
+}
+
 function SimLine({ label, s }: { label: string; s: TraderScore }) {
+  const liq = liquidatedCoins(s.flags);
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
       <span className="w-full text-[11px] text-muted">{label}</span>
       <span className={`font-num font-semibold ${s.sim_return_pct >= 0 ? "text-up" : "text-down"}`}>{formatSignedPct(s.sim_return_pct)}</span>
-      <span className="font-num text-muted">DD {formatPct(s.sim_max_drawdown_pct)}</span>
-      <span className="font-num text-muted">
-        {s.sim_liquidations} liq · {formatUsd(s.sim_fees_usd)} fees
+      <span className="font-num text-muted" title="Largest peak-to-trough dip of the copy's equity">max dip {formatPct(s.sim_max_drawdown_pct)}</span>
+      <span className="font-num text-muted" title={liq.length ? `Copies liquidated in the sim: ${liq.join(", ")}` : "No copy got liquidated in the sim"}>
+        {s.sim_liquidations} liq{liq.length ? ` (${liq.join(", ")})` : ""} · {formatUsd(s.sim_fees_usd)} fees
       </span>
     </div>
   );
@@ -32,7 +38,8 @@ function SimLine({ label, s }: { label: string; s: TraderScore }) {
 export function WhatIfPanel({ address, base, book, onResult }: { address: string; base: TraderScore; book: ScoutBook; onResult: (r: WhatIfResult | null) => void }) {
   const a = normAddr(address);
   const stored = book.overrides[a];
-  const seed = useMemo(() => draftFromOverride(stored, DEFAULT_WHATIF_EQUITY), [stored]);
+  const terms = useScoutSimTerms().data;
+  const seed = useMemo(() => draftFromOverride(stored, DEFAULT_WHATIF_EQUITY, terms), [stored, terms]);
   const [draft, setDraft] = useSyncedState(seed);
   const [errors, setErrors] = useState<Partial<Record<WhatIfField, string>>>({});
   const [saved, setSaved] = useState(false);
@@ -67,7 +74,7 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
 
   return (
     <Panel>
-      <PanelHeader title="What you would have made" description="Re-run the 30d copy sim on your Settings plus the fields below (the board line above uses Scout's sim terms). Nothing is saved unless you press save." />
+      <PanelHeader title="What you would have made" description="Re-run the 30d copy sim with these terms; it starts from the board's sim terms, so change one thing and compare. Return is on the equity you enter. Nothing is saved unless you press save." />
       <form
         className="flex flex-col gap-3 px-4 pb-4"
         onSubmit={(e) => {
@@ -75,7 +82,7 @@ export function WhatIfPanel({ address, base, book, onResult }: { address: string
           submit();
         }}
       >
-        <SimLine label="Scout board sim (the board's sim terms)" s={base} />
+        <SimLine label={terms ? `Scout board sim (${formatUsd(terms.allocation_usd)} at ${terms.exposure_mode === "target" ? `${terms.target_leverage}x` : "their leverage"} from a ${formatUsd(terms.sim_equity_usd)} account)` : "Scout board sim (the board's sim terms)"} s={base} />
         {run.data ? <SimLine label="This what-if" s={run.data.score} /> : null}
         <WhatIfFields draft={draft} set={set} errors={errors} globalSizing={globalSizing} />
         {note ? <p className="text-xs text-muted">{note}</p> : null}

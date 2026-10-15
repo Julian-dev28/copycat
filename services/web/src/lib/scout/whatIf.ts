@@ -13,6 +13,9 @@ import type { WhatIfRequest } from "./types";
 export interface WhatIfDraft {
   equity: string;
   sizing_mode: SizingMode | "";
+  /** "allocation": invest this much at `target_leverage`, the Trade ticket's and the board's model. */
+  allocation_usd: string;
+  target_leverage: string;
   size_multiplier: string;
   fixed_margin_usd: string;
   fixed_notional_usd: string;
@@ -31,12 +34,46 @@ function str(v: number | null | undefined): string {
   return v === null || v === undefined ? "" : String(v);
 }
 
-/** Draft from a stored override ("" = inherit the book-wide value). */
-export function draftFromOverride(override: LeaderOverride | null | undefined, equity: number): WhatIfDraft {
+/** The board's sim terms, the shape the what-if seeds from (ScoutSimTerms without the flags it does not use). */
+export interface WhatIfSeed {
+  sim_equity_usd: number;
+  allocation_usd: number;
+  exposure_mode: "target" | "match";
+  target_leverage?: number | null;
+  margin_mode: MarginMode;
+  max_worse_entry_pct: number;
+}
+
+/**
+ * Draft from a stored override ("" = inherit the book-wide value). With no
+ * override and the board's sim terms at hand, start FROM those terms: the
+ * what-if then opens equal to the "Scout board sim" line and a leverage change
+ * moves it. It used to open on the Settings defaults (proportional sizing on
+ * this host), where leverage changes nothing and the two lines were never
+ * comparable (Julien, 2026-10-16: "still does nothing").
+ */
+export function draftFromOverride(override: LeaderOverride | null | undefined, equity: number, seed?: WhatIfSeed | null): WhatIfDraft {
   const o = override ?? {};
+  if (!override && seed) {
+    return {
+      equity: String(seed.sim_equity_usd),
+      sizing_mode: "allocation",
+      allocation_usd: str(seed.allocation_usd),
+      target_leverage: seed.exposure_mode === "target" ? str(seed.target_leverage) : "",
+      size_multiplier: "",
+      fixed_margin_usd: "",
+      fixed_notional_usd: "",
+      leverage_mode: seed.exposure_mode === "match" ? "match" : "",
+      leverage: "",
+      margin_mode: seed.margin_mode,
+      max_worse_entry_pct: str(seed.max_worse_entry_pct),
+    };
+  }
   return {
     equity: String(equity),
     sizing_mode: o.sizing_mode ?? "",
+    allocation_usd: str(o.allocation_usd),
+    target_leverage: str(o.target_leverage),
     size_multiplier: str(o.size_multiplier),
     fixed_margin_usd: str(o.fixed_margin_usd),
     fixed_notional_usd: str(o.fixed_notional_usd),
@@ -50,6 +87,8 @@ export function draftFromOverride(override: LeaderOverride | null | undefined, e
 type Bound = { min: number; max: number; int?: boolean; label: string };
 
 const BOUNDS: Partial<Record<WhatIfField, Bound>> = {
+  allocation_usd: { min: HL_MIN_ORDER_USD, max: 1e9, label: `Invest at least $${HL_MIN_ORDER_USD}` },
+  target_leverage: { min: 1, max: MAX_LEVERAGE_CAP, int: true, label: `Leverage must be a whole number 1 to ${MAX_LEVERAGE_CAP}` },
   size_multiplier: { min: 0, max: 100, label: "Multiplier must be 0 to 100" },
   fixed_margin_usd: { min: 0.01, max: Infinity, label: "Margin must be at least $0.01" },
   fixed_notional_usd: { min: HL_MIN_ORDER_USD, max: Infinity, label: `Notional must be at least $${HL_MIN_ORDER_USD}` },
@@ -90,6 +129,16 @@ export function buildWhatIfRequest(d: WhatIfDraft): WhatIfBuild {
   if (mode && mode !== "fixed_margin") delete override.fixed_margin_usd;
   if (mode && mode !== "fixed_notional") delete override.fixed_notional_usd;
   if (mode && mode !== "proportional") delete override.size_multiplier;
+  if (mode !== "allocation") {
+    delete override.allocation_usd;
+    delete override.target_leverage;
+  } else {
+    // invest $X at Nx: the leverage is the target, not a leverage_mode
+    if (d.allocation_usd.trim() === "") errors.allocation_usd = `Invest at least $${HL_MIN_ORDER_USD}`;
+    if (override.target_leverage != null) override.exposure_mode = "target";
+    delete override.leverage_mode;
+    delete override.leverage;
+  }
   if (override.leverage_mode && override.leverage_mode !== "fixed") delete override.leverage;
 
   if (Object.keys(errors).length) return { ok: false, errors };
@@ -115,6 +164,8 @@ export function overrideDiffers(draftOverride: LeaderOverride, stored: LeaderOve
 export const WHATIF_FIELD_LABEL: Record<WhatIfField, string> = {
   equity: "Equity",
   sizing_mode: "Sizing",
+  allocation_usd: "Invest",
+  target_leverage: "Leverage x",
   size_multiplier: "Multiplier",
   fixed_margin_usd: "Margin per trade",
   fixed_notional_usd: "Notional per trade",

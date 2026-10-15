@@ -61,12 +61,14 @@ export function WhatIfFields({ draft, set, errors, globalSizing }: { draft: What
   return (
     <div className="grid grid-cols-2 gap-3">
       <Num f="equity" label="Your equity (USD)" draft={draft} set={set} errors={errors} placeholder="1000" />
-      <Pick f="sizing_mode" label="Sizing" draft={draft} set={set} globalLabel={globalSizing ? `Global default (${globalSizing})` : undefined} options={[["proportional", "Proportional"], ["fixed_margin", "Fixed margin"], ["fixed_notional", "Fixed notional"]]} />
+      <Pick f="sizing_mode" label="Sizing" draft={draft} set={set} globalLabel={globalSizing ? `Global default (${globalSizing})` : undefined} options={[["allocation", "Invest $ at Nx"], ["proportional", "Proportional"], ["fixed_margin", "Fixed margin"], ["fixed_notional", "Fixed notional"]]} />
+      {mode === "allocation" ? <Num f="allocation_usd" label="Invest (USD)" draft={draft} set={set} errors={errors} placeholder="100" /> : null}
+      {mode === "allocation" ? <Num f="target_leverage" label="Leverage (x)" draft={draft} set={set} errors={errors} placeholder="3" /> : null}
       {mode === "proportional" || mode === "" ? <Num f="size_multiplier" label="Multiplier" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_margin" ? <Num f="fixed_margin_usd" label="Margin per trade (USD)" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_notional" ? <Num f="fixed_notional_usd" label="Notional per trade (USD)" draft={draft} set={set} errors={errors} /> : null}
-      <Pick f="leverage_mode" label="Leverage" draft={draft} set={set} options={[["match", "Match theirs"], ["max", "Coin max"], ["fixed", "Fixed"]]} />
-      {draft.leverage_mode === "fixed" ? <Num f="leverage" label="Leverage (x)" draft={draft} set={set} errors={errors} /> : null}
+      {mode !== "allocation" ? <Pick f="leverage_mode" label="Leverage" draft={draft} set={set} options={[["match", "Match theirs"], ["max", "Coin max"], ["fixed", "Fixed"]]} /> : null}
+      {mode !== "allocation" && draft.leverage_mode === "fixed" ? <Num f="leverage" label="Leverage (x)" draft={draft} set={set} errors={errors} /> : null}
       <Pick f="margin_mode" label="Margin" draft={draft} set={set} options={[["cross", "Cross"], ["isolated", "Isolated"]]} />
       <Num f="max_worse_entry_pct" label="Max worse entry %" draft={draft} set={set} errors={errors} />
     </div>
