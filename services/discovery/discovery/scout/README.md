@@ -452,7 +452,23 @@ every 429 back-off, read before the first wallet and after the last), and
 the check is `wall - bucket_wait_s <= 240`. Beside a live engine every call
 queues on the shared per-IP bucket (378 s of wall clock for about 100 s of
 work on 2026-10-15), and that queue is the engine's, not the warm path's;
-the raw wall clock is still printed next to it.
+the raw wall clock is still printed next to it. The weight check (3) judges
+`stage_b_summary.warm_weight_p50`, the median over the wallets that skipped
+the slow-cadence set: how many take the full set in a warm pass is how many
+traded or failed during the cold pass, a function of that pass's length
+(bucket contention), not of the warm path (11 of 20 on 2026-10-15 put the
+all-wallet median on a full-set wallet, 117, with the warm path at about
+40). The full-set share and median (`full_weight_p50`), the all-wallet
+median and `failed` are printed next to it, and each pass prints every
+failed wallet's reason plus the bucket give-ups per read type (a read
+`hl.http` could not serve within its 30 s wait fails the wallet, which the
+next pass rebuilds). Beside a live copycat the eval is a second background
+caller on the shared bucket: the live scout's own pass slows and some of
+its reads give up (8 wallets of 56 in its 07:44 to 08:34 pass on
+2026-10-15, rebuilt by its next pass); the engine, foreground priority,
+drew no 429. That is the price of a real-HL eval on the trading host; there
+is no idle window to wait for (stage B hourly for up to 50 min, then stage
+C), so the eval measures net of contention instead.
 Last run 2026-10-15 01:25 to 02:42 on 80cf15f, beside the live scout's hourly
 pass (shared bucket, background priority), universe 40: 5/7. Cold pass 3,090 s,
 23,930 weight (p50 395, pages p50 5.0, 40/40 built, 0 deferred); warm pass
@@ -477,6 +493,23 @@ seconds p50 5.0 but p95 65 on the 7 full-set wallets, every call queued
 behind the engine on the shared bucket; no host where copycat trades could
 pass a raw wall-clock check, which is why the check now subtracts the
 measured bucket wait (see the re-run below).
+Re-run 2026-10-15 07:35 to 08:31 on 9c60e86 (wait meter in), universe 20,
+shared bucket, background priority, beside the live engine and, from 07:44,
+the live scout's own 301-wallet pass (restarted at 07:35): 6/7. Cold pass
+2,089 s wall of which 1,963 s bucket wait, 11,697 weight (p50 394, p95
+1,518, pages p50 5.5, p95 24.6), 16/20 built, 4 failed (reasons not kept:
+the eval printed the pass output only on a non-zero exit; it now prints
+every failed wallet and the bucket give-ups per read type). Warm pass 1,322
+s wall, 1,241 s bucket wait, 80 s of work, 5,548 weight, 19/20 built (the
+three cold failures rebuilt from scratch), p50 117, p95 906, pages p50
+2.0, full set on 11/20. Check 2 passes net of wait (80.1 s of work for 20
+wallets). Check 3 (then the all-wallet p50 <= 60) failed at 117: with 11 of
+20 on the full set the all-wallet median is a full-set wallet; the warm
+path's own median was not in the summary, which is why the summary now
+carries `warm_weight_p50` and the check judges it (see the re-run below).
+ETA absent below the gate over 21,406 samples and present after it. Cost to
+the live board: the live scout's pass did 56 wallets in its 50 min (54 s
+per wallet against 29 s on 04:10) and 8 of its reads gave up after 30 s.
 Live scout, first pass under real billing (d89b1d0, 2026-10-15 04:10 to 05:01,
 `stage_b_summary` in scout_meta): n=91, full set on 87 (the 6 h full-refresh
 window had lapsed for the whole deferred backlog), weight p50 92, p95 310,

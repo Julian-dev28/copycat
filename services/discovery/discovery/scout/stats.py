@@ -428,24 +428,39 @@ def bucket_waited_s() -> float:
     return float(_hl_rate_limit.waited_s()) if _hl_rate_limit is not None else 0.0
 
 
-def summarize_pass(costs: Sequence[WalletCost], bucket_wait_s: float = 0.0) -> Optional[Dict[str, Any]]:
+def summarize_pass(costs: Sequence[WalletCost], bucket_wait_s: float = 0.0,
+                   failed: int = 0) -> Optional[Dict[str, Any]]:
     """p50/p95 weight, pages, seconds + the 5 most expensive wallets, for
     the INFO log line and scout_meta["stage_b_summary"]. None for an empty
     pass (nothing admitted: fully budget-starved or an empty cohort).
     `bucket_wait_s`: how much of the pass was spent asleep waiting for HL
     budget, so a reader (stats_budget_check.py check 2) can tell slow work
-    from a pass queued behind the engine on the shared bucket."""
+    from a pass queued behind the engine on the shared bucket.
+    `warm_weight_p50` / `full_weight_p50` split the weight median by path:
+    the wallets that skipped the slow-cadence set and the ones that took it.
+    How many take the full set in a warm pass is how many traded (or failed)
+    during the previous pass, a function of that pass's length and so of
+    bucket contention, not of the warm path; the all-wallet median flips to a
+    full-set wallet once more than half did (11/20 on 2026-10-15, p50 117
+    with the warm path itself at about 40). None when no wallet took that
+    path. `failed`: wallets whose build raised (not in `costs`' percentiles
+    beyond the weight they burned before failing)."""
     if not costs:
         return None
     weights = [c.weight for c in costs]
+    warm = [c.weight for c in costs if not c.due_full]
+    full = [c.weight for c in costs if c.due_full]
     pages = [c.pages for c in costs]
     seconds = [c.seconds for c in costs]
     top5 = sorted(costs, key=lambda c: c.weight, reverse=True)[:5]
     return {
         "n": len(costs),
-        "full_count": sum(1 for c in costs if c.due_full),
+        "full_count": len(full),
+        "failed": int(failed),
         "weight_p50": round(_percentile(weights, 0.50), 1),
         "weight_p95": round(_percentile(weights, 0.95), 1),
+        "warm_weight_p50": round(_percentile(warm, 0.50), 1) if warm else None,
+        "full_weight_p50": round(_percentile(full, 0.50), 1) if full else None,
         "pages_p50": round(_percentile(pages, 0.50), 2),
         "pages_p95": round(_percentile(pages, 0.95), 2),
         "seconds_p50": round(_percentile(seconds, 0.50), 3),
@@ -498,11 +513,13 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
                     a, cv.weight, cv.weight_by, pages, elapsed, cost.due_full)
         if progress:
             progress(i + 1, len(order))
-    summary = summarize_pass(res.costs, bucket_wait_s=bucket_waited_s() - waited_before)
+    summary = summarize_pass(res.costs, bucket_wait_s=bucket_waited_s() - waited_before, failed=len(res.failed))
     if summary:
-        logger.info("scout stage B summary: n=%d full=%d weight p50=%.0f p95=%.0f pages p50=%.1f p95=%.1f "
-                   "seconds p50=%.2f p95=%.2f bucket wait=%.0fs top5=%s", summary["n"], summary["full_count"],
-                   summary["weight_p50"], summary["weight_p95"], summary["pages_p50"], summary["pages_p95"],
-                   summary["seconds_p50"], summary["seconds_p95"], summary["bucket_wait_s"], summary["top5"])
+        logger.info("scout stage B summary: n=%d full=%d failed=%d weight p50=%.0f p95=%.0f (warm path p50=%s, "
+                   "full set p50=%s) pages p50=%.1f p95=%.1f seconds p50=%.2f p95=%.2f bucket wait=%.0fs top5=%s",
+                   summary["n"], summary["full_count"], summary["failed"], summary["weight_p50"],
+                   summary["weight_p95"], summary["warm_weight_p50"], summary["full_weight_p50"],
+                   summary["pages_p50"], summary["pages_p95"], summary["seconds_p50"], summary["seconds_p95"],
+                   summary["bucket_wait_s"], summary["top5"])
         store.meta_set(conn, {"stage_b_summary": summary})
     return res

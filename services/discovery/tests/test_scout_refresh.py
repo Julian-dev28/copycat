@@ -418,3 +418,41 @@ def test_stage_b_summary_records_the_bucket_wait(tmp_path, monkeypatch):
     monkeypatch.undo()
     stats.run_stage_b(conn, v, addrs, NOW + 1, stats.Budget(1e9, 60))
     assert store.meta_get(conn, "stage_b_summary")["bucket_wait_s"] == 0.0
+
+
+def test_stage_b_summary_splits_the_median_by_path_and_counts_failures(tmp_path, monkeypatch):
+    """`warm_weight_p50` is the median over the wallets that skipped the
+    slow-cadence set, `full_weight_p50` over the ones that took it, `failed`
+    the builds that raised. The 2026-10-15 07:35 budget eval put 11 of 20
+    warm-pass wallets on the full set (3 of them cold failures rebuilt, the
+    rest had traded during a 35 min cold pass), so the all-wallet p50 (117)
+    was a full-set wallet while the warm path itself cost about 40; the eval's
+    check 3 judges the warm path."""
+    from test_scout_world import build_venue
+    W = stats.WalletCost
+    costs = [W("0xa", 40.0, 1.0, 1.0, False), W("0xb", 41.0, 1.0, 1.0, False), W("0xc", 42.0, 1.0, 1.0, False),
+             W("0xd", 200.0, 2.0, 5.0, True), W("0xe", 300.0, 2.0, 9.0, True)]
+    s = stats.summarize_pass(costs, failed=2)
+    assert (s["n"], s["full_count"], s["failed"]) == (5, 2, 2)
+    assert s["weight_p50"] == 42.0 and s["warm_weight_p50"] == 41.0 and s["full_weight_p50"] == 250.0
+    all_full = stats.summarize_pass(costs[3:])
+    assert all_full["warm_weight_p50"] is None and all_full["full_weight_p50"] == 250.0 and all_full["failed"] == 0
+    assert stats.summarize_pass([c for c in costs if not c.due_full])["full_weight_p50"] is None
+
+    # run_stage_b: a wallet whose build raises is counted as failed, the rest keep their percentiles
+    v = build_venue()
+    conn = store.connect(tmp_path / "failed.db")
+    addrs = sorted(BOARD)
+    real_build = stats.build_wallet
+
+    def build(conn_, cv, address, now_ms, **kw):
+        if address == addrs[0]:
+            raise RuntimeError("portfolio read failed")
+        return real_build(conn_, cv, address, now_ms, **kw)
+
+    monkeypatch.setattr(stats, "build_wallet", build)
+    res = stats.run_stage_b(conn, v, addrs, NOW, stats.Budget(1e9, 60))
+    assert res.failed == [addrs[0]] and len(res.done) == len(addrs) - 1
+    summary = store.meta_get(conn, "stage_b_summary")
+    assert summary["failed"] == 1 and summary["n"] == len(addrs)   # the failed wallet's burned weight still counts
+    assert summary["full_count"] == len(addrs) - 1 or summary["full_count"] == len(addrs)
