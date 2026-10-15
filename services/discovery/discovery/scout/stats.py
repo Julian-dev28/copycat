@@ -396,6 +396,7 @@ class WalletCost:
     pages: float          # fills + funding pages that came back (CountingVenue.pages_by)
     due_full: bool
     calls: Dict[str, int] = field(default_factory=dict)
+    failed: bool = False  # the build raised: its weight was burned, it is not a built wallet
 
 
 @dataclass
@@ -428,35 +429,41 @@ def bucket_waited_s() -> float:
     return float(_hl_rate_limit.waited_s()) if _hl_rate_limit is not None else 0.0
 
 
-def summarize_pass(costs: Sequence[WalletCost], bucket_wait_s: float = 0.0,
-                   failed: int = 0) -> Optional[Dict[str, Any]]:
+def summarize_pass(costs: Sequence[WalletCost], bucket_wait_s: float = 0.0) -> Optional[Dict[str, Any]]:
     """p50/p95 weight, pages, seconds + the 5 most expensive wallets, for
     the INFO log line and scout_meta["stage_b_summary"]. None for an empty
     pass (nothing admitted: fully budget-starved or an empty cohort).
     `bucket_wait_s`: how much of the pass was spent asleep waiting for HL
     budget, so a reader (stats_budget_check.py check 2) can tell slow work
     from a pass queued behind the engine on the shared bucket.
-    `warm_weight_p50` / `full_weight_p50` split the weight median by path:
+    The percentiles are over BUILT wallets (`built`); a failed build
+    (`failed`, WalletCost.failed) burned its weight before the read that gave
+    up and is neither a cold nor a warm build: 8 of 20 cold builds failed on
+    2026-10-15 beside the live scout and their small burned weights pulled the
+    cold median to 258 while their rebuilds pushed the warm median to 412.
+    `top5` is over every attempt, burned weight included.
+    `warm_weight_p50` / `full_weight_p50` split the built median by path:
     the wallets that skipped the slow-cadence set and the ones that took it.
     How many take the full set in a warm pass is how many traded (or failed)
     during the previous pass, a function of that pass's length and so of
     bucket contention, not of the warm path; the all-wallet median flips to a
     full-set wallet once more than half did (11/20 on 2026-10-15, p50 117
     with the warm path itself at about 40). None when no wallet took that
-    path. `failed`: wallets whose build raised (not in `costs`' percentiles
-    beyond the weight they burned before failing)."""
+    path."""
     if not costs:
         return None
-    weights = [c.weight for c in costs]
-    warm = [c.weight for c in costs if not c.due_full]
-    full = [c.weight for c in costs if c.due_full]
-    pages = [c.pages for c in costs]
-    seconds = [c.seconds for c in costs]
+    built = [c for c in costs if not c.failed]
+    weights = [c.weight for c in built]
+    warm = [c.weight for c in built if not c.due_full]
+    full = [c.weight for c in built if c.due_full]
+    pages = [c.pages for c in built]
+    seconds = [c.seconds for c in built]
     top5 = sorted(costs, key=lambda c: c.weight, reverse=True)[:5]
     return {
         "n": len(costs),
+        "built": len(built),
         "full_count": len(full),
-        "failed": int(failed),
+        "failed": len(costs) - len(built),
         "weight_p50": round(_percentile(weights, 0.50), 1),
         "weight_p95": round(_percentile(weights, 0.95), 1),
         "warm_weight_p50": round(_percentile(warm, 0.50), 1) if warm else None,
@@ -494,6 +501,7 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
         cv = CountingVenue(venue)
         t = clock_ms()
         t0 = time.monotonic()
+        failed = False
         try:
             src = "book" if a in book_set else ("custom" if a in custom_set else ("ondemand" if a in req_set else None))
             build_wallet(conn, cv, a, t, source_if_new=src)
@@ -502,22 +510,24 @@ def run_stage_b(conn: sqlite3.Connection, venue: Venue, addresses: Sequence[str]
             n = store.record_stats_failure(conn, a, t, f"{type(exc).__name__}: {exc}", int(C.STAGE_B_EVERY_S * 1000))
             logger.warning("scout stage B: %s failed (%d in a row): %s", a, n, exc)
             res.failed.append(a)
+            failed = True
         elapsed = time.monotonic() - t0
         budget.charge(cv.weight)
         res.weight += cv.weight
         pages = float(cv.pages_by.get("fills", 0) + cv.pages_by.get("funding", 0))
         cost = WalletCost(address=a, weight=cv.weight, seconds=elapsed, pages=pages,
-                          due_full="account_state" in cv.calls, calls=dict(cv.calls))
+                          due_full="account_state" in cv.calls, calls=dict(cv.calls), failed=failed)
         res.costs.append(cost)
         logger.debug("scout stage B wallet %s: weight=%.0f %s pages=%.1f seconds=%.2f full=%s",
                     a, cv.weight, cv.weight_by, pages, elapsed, cost.due_full)
         if progress:
             progress(i + 1, len(order))
-    summary = summarize_pass(res.costs, bucket_wait_s=bucket_waited_s() - waited_before, failed=len(res.failed))
+    summary = summarize_pass(res.costs, bucket_wait_s=bucket_waited_s() - waited_before)
     if summary:
-        logger.info("scout stage B summary: n=%d full=%d failed=%d weight p50=%.0f p95=%.0f (warm path p50=%s, "
-                   "full set p50=%s) pages p50=%.1f p95=%.1f seconds p50=%.2f p95=%.2f bucket wait=%.0fs top5=%s",
-                   summary["n"], summary["full_count"], summary["failed"], summary["weight_p50"],
+        logger.info("scout stage B summary: n=%d built=%d full=%d failed=%d weight p50=%.0f p95=%.0f (warm path "
+                   "p50=%s, full set p50=%s) pages p50=%.1f p95=%.1f seconds p50=%.2f p95=%.2f bucket wait=%.0fs "
+                   "top5=%s",
+                   summary["n"], summary["built"], summary["full_count"], summary["failed"], summary["weight_p50"],
                    summary["weight_p95"], summary["warm_weight_p50"], summary["full_weight_p50"],
                    summary["pages_p50"], summary["pages_p95"], summary["seconds_p50"], summary["seconds_p95"],
                    summary["bucket_wait_s"], summary["top5"])

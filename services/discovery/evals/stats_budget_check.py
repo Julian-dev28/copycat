@@ -32,7 +32,12 @@ Proves, with real data and real timings:
      full set in a warm pass is how many traded or failed during the cold
      pass, a function of that pass's length (bucket contention), not of the
      warm path (11/20 on 2026-10-15 put the all-wallet p50 at 117)
-  4. the warm pass really is cheaper than the cold one (weight p50 dropped)
+  4. a warm-path build really is cheaper than a cold build: the warm pass's
+     warm_weight_p50 against the cold pass's weight_p50 (every cold build
+     takes the full set). Percentiles are over BUILT wallets: a build that
+     failed burned its weight before the read that gave up and is neither a
+     cold nor a warm build (8 of 20 on 2026-10-15 09:40 dragged the all-wallet
+     cold median to 258 and pushed the warm one to 412)
   5. not every warm-pass wallet took the slow-cadence set
      (stage_b_summary.full_count < n) -- the whole point of the cadence
   6. the ETA (scout_refresh.eta_s) is None early in a pass and a real number
@@ -182,15 +187,34 @@ def warm_path_check(summary: Optional[Dict[str, Any]]) -> Tuple[bool, str]:
     if not summary:
         return False, "no summary"
     n, full = int(summary["n"]), int(summary["full_count"])
+    built = int(summary.get("built", n))
     warm_p50 = summary.get("warm_weight_p50")
     fallback = warm_p50 is None
     judged = float(summary["weight_p50"] if fallback else warm_p50)
-    detail = (f"warm path p50 {judged:g} over {n - full} wallet(s)" if not fallback
-              else f"no warm-path median ({'every wallet took the full set' if full >= n else 'older summary'}), "
+    detail = (f"warm path p50 {judged:g} over {built - full} wallet(s)" if not fallback
+              else f"no warm-path median ({'every wallet took the full set' if full >= built else 'older summary'}), "
                    f"judging the all-wallet p50 {judged:g}")
-    detail += (f"; full set on {full}/{n} (p50 {summary.get('full_weight_p50')}); all {n}: p50 {summary['weight_p50']}"
-               f", failed {summary.get('failed', 0)}")
+    detail += (f"; full set on {full}/{built} built (p50 {summary.get('full_weight_p50')}); "
+               f"all built: p50 {summary['weight_p50']}; failed {summary.get('failed', 0)} of {n}")
     return judged <= WARM_WEIGHT_P50_MAX, detail
+
+
+def cheaper_check(cold: Optional[Dict[str, Any]], warm: Optional[Dict[str, Any]]) -> Tuple[bool, str]:
+    """Check 4: a warm-path build costs less than a cold build. Like with
+    like: the warm pass's `warm_weight_p50` (its warm-path wallets) against
+    the cold pass's `weight_p50` (every cold build takes the full set).
+    The all-wallet medians are not comparable: on 2026-10-15 8 of 20 cold
+    builds failed at a read the bucket could not serve, their small burned
+    weight pulled the cold median to 258 and their heavy rebuilds pushed the
+    warm median to 412, while the warm path cost 40 and a cold build 242."""
+    if not cold or not warm:
+        return False, "no summary"
+    warm_p50 = warm.get("warm_weight_p50")
+    if warm_p50 is None:
+        warm_p50 = warm["weight_p50"]      # no warm path ran (or an older summary): the all-wallet median
+    ok = float(warm_p50) < float(cold["weight_p50"])
+    return ok, (f"cold build p50 {cold['weight_p50']} over {cold.get('built', cold['n'])} built vs warm path p50 "
+                f"{warm_p50}; all-wallet medians cold {cold['weight_p50']} warm {warm['weight_p50']}")
 
 
 def main() -> int:
@@ -222,10 +246,8 @@ def main() -> int:
 
     check("3. warm-path weight p50/wallet <= 60 (wallets that skipped the full set)", *warm_path_check(warm_summary))
 
-    ok_cheaper = (cold_summary is not None and warm_summary is not None
-                 and warm_summary["weight_p50"] < cold_summary["weight_p50"])
-    check("4. warm weight p50 is lower than cold weight p50", ok_cheaper,
-         f"cold={cold_summary and cold_summary['weight_p50']} warm={warm_summary and warm_summary['weight_p50']}")
+    check("4. a warm-path build is cheaper than a cold build (warm path p50 < cold build p50)",
+          *cheaper_check(cold_summary, warm_summary))
 
     ok_full = warm_summary is not None and warm_summary["full_count"] < warm_summary["n"]
     check("5. not every warm-pass wallet took the slow-cadence set", ok_full,

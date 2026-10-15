@@ -41,8 +41,8 @@ def test_failure_lines_list_each_failed_wallet_and_count_bucket_give_ups_per_rea
 def test_warm_path_check_judges_the_warm_path_not_the_all_wallet_median():
     # the 2026-10-15 07:35 warm pass: 11/20 on the full set, all-wallet p50 117, warm path about 40
     s = {"n": 20, "full_count": 11, "failed": 0, "weight_p50": 117.0, "warm_weight_p50": 40.0, "full_weight_p50": 393.0}
-    ok, detail = ev.warm_path_check(s)
-    assert ok and detail.startswith("warm path p50 40 over 9 wallet(s)") and "full set on 11/20 (p50 393.0)" in detail
+    ok, detail = ev.warm_path_check(s)        # no "built" key: an older summary counts every wallet as built
+    assert ok and detail.startswith("warm path p50 40 over 9 wallet(s)") and "full set on 11/20 built (p50 393.0)" in detail
     ok, detail = ev.warm_path_check({**s, "warm_weight_p50": 61.0})
     assert not ok
     # every wallet took the full set: no warm path ran, the all-wallet median is judged and fails
@@ -52,6 +52,20 @@ def test_warm_path_check_judges_the_warm_path_not_the_all_wallet_median():
     ok, detail = ev.warm_path_check({"n": 3, "full_count": 1, "weight_p50": 41.0})
     assert ok and "older summary" in detail
     assert ev.warm_path_check(None) == (False, "no summary")
+
+
+def test_cheaper_check_compares_a_warm_path_build_with_a_cold_build():
+    # the 2026-10-15 09:40 run: all-wallet medians cold 258.5 < warm 412.5 (8 cold builds failed, rebuilt warm)
+    cold = {"n": 20, "built": 12, "full_count": 12, "failed": 8, "weight_p50": 242.5, "warm_weight_p50": None}
+    warm = {"n": 20, "built": 19, "full_count": 11, "failed": 1, "weight_p50": 412.5, "warm_weight_p50": 40.0}
+    ok, detail = ev.cheaper_check(cold, warm)
+    assert ok and detail.startswith("cold build p50 242.5 over 12 built vs warm path p50 40.0")
+    assert not ev.cheaper_check(cold, {**warm, "warm_weight_p50": 242.5})[0]
+    assert not ev.cheaper_check(cold, {**warm, "warm_weight_p50": None})[0]      # no warm path: 412.5 vs 242.5 fails
+    assert ev.cheaper_check(None, warm) == (False, "no summary")
+    s = {"n": 20, "built": 19, "full_count": 11, "failed": 1, "weight_p50": 412.5, "warm_weight_p50": 40.0,
+         "full_weight_p50": 695.0}
+    assert ev.warm_path_check(s)[1].startswith("warm path p50 40 over 8 wallet(s); full set on 11/19 built")
 
 
 def test_eta_gate_evidence_mirrors_the_honesty_gate():

@@ -466,7 +466,12 @@ all-wallet median on a full-set wallet, 117, with the warm path at about
 median and `failed` are printed next to it, and each pass prints every
 failed wallet's reason plus the bucket give-ups per read type (a read
 `hl.http` could not serve within its 30 s wait fails the wallet, which the
-next pass rebuilds). Beside a live copycat the eval is a second background
+next pass rebuilds). The percentiles are over built wallets (`built`): a
+failed build burned its weight before the read that gave up and is neither
+a cold nor a warm build, so check 4 (a warm-path build is cheaper than a
+cold one) compares the warm pass's `warm_weight_p50` with the cold pass's
+`weight_p50`, every cold build taking the full set; the all-wallet medians
+are printed, not judged. Beside a live copycat the eval is a second background
 caller on the shared bucket: the live scout's own pass slows and some of
 its reads give up (8 wallets of 56 in its 07:44 to 08:34 pass on
 2026-10-15, rebuilt by its next pass); the engine, foreground priority,
@@ -514,6 +519,26 @@ carries `warm_weight_p50` and the check judges it (see the re-run below).
 ETA absent below the gate over 21,406 samples and present after it. Cost to
 the live board: the live scout's pass did 56 wallets in its 50 min (54 s
 per wallet against 29 s on 04:10) and 8 of its reads gave up after 30 s.
+Re-run 2026-10-15 08:40 to 09:40 on 974e14a (warm-path check 3 and the
+failure print-out in), universe 20, shared bucket, background priority,
+beside the live engine and the live scout's pass (restarted 08:40 and
+08:46): 6/7 as run. Cold pass 1,739 s wall of which 1,657 s bucket wait,
+6,667 weight, 12/20 built, 8 failed, every failure a read the bucket could
+not serve within 30 s (7 fills tails, 1 portfolio; give-ups by type:
+userFillsByTime 7, userFunding 5, spotMetaAndAssetCtxs 2, userAbstraction
+2, portfolio 1). Warm pass 1,887 s wall, 1,792 s bucket wait, 95 s of work,
+8,335 weight, 19/20 built, 1 failed, full set on 11 (the 8 cold failures
+rebuilt from scratch plus 3 with new fills), warm path p50 40 over 9
+wallets, full-set p50 695, pages p50 3.5. Checks 1, 2, 3 (40 <= 60), 5, 6
+(22,859 samples), 7 pass. Check 4 failed as written (all-wallet p50 cold
+258.5 vs warm 412.5): the 8 failed cold builds burned about 20 each before
+giving up and pulled the cold median down, then their rebuilds pushed the
+warm median up. Both medians were populations of failures, not of builds,
+which is why the summary now takes its percentiles over built wallets and
+check 4 compares the warm path (40) with a cold build (this run's full-set
+p50 242.5): on this run's numbers that reads 7/7. Not re-run a third time
+the same morning: each run slows the live board's pass for an hour (13
+of the live pass's wallets failed on bucket give-ups during this one).
 Live scout, first pass under real billing (d89b1d0, 2026-10-15 04:10 to 05:01,
 `stage_b_summary` in scout_meta): n=91, full set on 87 (the 6 h full-refresh
 window had lapsed for the whole deferred backlog), weight p50 92, p95 310,

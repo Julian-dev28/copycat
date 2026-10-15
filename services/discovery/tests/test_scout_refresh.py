@@ -455,13 +455,19 @@ def test_stage_b_summary_splits_the_median_by_path_and_counts_failures(tmp_path,
     from test_scout_world import build_venue
     W = stats.WalletCost
     costs = [W("0xa", 40.0, 1.0, 1.0, False), W("0xb", 41.0, 1.0, 1.0, False), W("0xc", 42.0, 1.0, 1.0, False),
-             W("0xd", 200.0, 2.0, 5.0, True), W("0xe", 300.0, 2.0, 9.0, True)]
-    s = stats.summarize_pass(costs, failed=2)
-    assert (s["n"], s["full_count"], s["failed"]) == (5, 2, 2)
+             W("0xd", 200.0, 2.0, 5.0, True), W("0xe", 300.0, 2.0, 9.0, True),
+             # two builds that gave up at the fills read: portfolio weight burned, nothing built
+             W("0xf", 20.0, 30.0, 0.0, False, failed=True), W("0x10", 2000.0, 30.0, 0.0, False, failed=True)]
+    s = stats.summarize_pass(costs)
+    assert (s["n"], s["built"], s["full_count"], s["failed"]) == (7, 5, 2, 2)
+    # percentiles over the 5 built wallets: the failed 20 and 2000 would have moved the median either way
     assert s["weight_p50"] == 42.0 and s["warm_weight_p50"] == 41.0 and s["full_weight_p50"] == 250.0
-    all_full = stats.summarize_pass(costs[3:])
+    assert s["pages_p95"] == 9.0 - 0.2 * 4 or s["pages_p95"] >= 5.0          # built wallets' pages only
+    assert s["top5"][0] == {"address": "0x10", "weight": 2000.0}             # burned weight still shows in top5
+    all_full = stats.summarize_pass(costs[3:5])
     assert all_full["warm_weight_p50"] is None and all_full["full_weight_p50"] == 250.0 and all_full["failed"] == 0
-    assert stats.summarize_pass([c for c in costs if not c.due_full])["full_weight_p50"] is None
+    assert stats.summarize_pass(costs[:3])["full_weight_p50"] is None
+    assert stats.summarize_pass(costs[5:])["weight_p50"] == 0.0 and stats.summarize_pass(costs[5:])["built"] == 0
 
     # run_stage_b: a wallet whose build raises is counted as failed, the rest keep their percentiles
     v = build_venue()
@@ -478,5 +484,5 @@ def test_stage_b_summary_splits_the_median_by_path_and_counts_failures(tmp_path,
     res = stats.run_stage_b(conn, v, addrs, NOW, stats.Budget(1e9, 60))
     assert res.failed == [addrs[0]] and len(res.done) == len(addrs) - 1
     summary = store.meta_get(conn, "stage_b_summary")
-    assert summary["failed"] == 1 and summary["n"] == len(addrs)   # the failed wallet's burned weight still counts
-    assert summary["full_count"] == len(addrs) - 1 or summary["full_count"] == len(addrs)
+    assert summary["failed"] == 1 and summary["n"] == len(addrs) and summary["built"] == len(addrs) - 1
+    assert summary["full_count"] == len(addrs) - 1          # every built wallet was cold: the full set
