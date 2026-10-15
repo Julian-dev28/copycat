@@ -856,8 +856,8 @@ export interface paths {
          *     come back, zeroed, read_ok false. ROE % = (realized + unrealized) /
          *     allocation_usd x 100, None for a wallet not on allocation sizing. Terms:
          *     in-book wallets from settings; out-of-book ones from the engine's
-         *     `effective` (the terms they last ran with). `style` is his Scout style
-         *     when Scout has his board row, else null.
+         *     `effective` (the terms they last ran with). `style` is their Scout style
+         *     when Scout has their board row, else null.
          */
         get: operations["list_wallets_api_wallets_get"];
         put?: never;
@@ -954,7 +954,7 @@ export interface paths {
         /**
          * Pause Wallet
          * @description Pause one wallet: the engine opens and adds nothing for it (skip
-         *     "paused"); its open copies still follow his reduces and closes. Pausing
+         *     "paused"); its open copies still follow their reduces and closes. Pausing
          *     is not stopping: the wallet stays in the book. A global wallet gets a
          *     minimal override `{paused: true}` and stays "global". 404 when the wallet
          *     is not in the book.
@@ -977,8 +977,8 @@ export interface paths {
         put?: never;
         /**
          * Preview Wallet
-         * @description What investing would copy of his book right now, sized by the same
-         *     `engine.sizing.plan_allocation` the engine uses. 502 when his live read
+         * @description What investing would copy of their book right now, sized by the same
+         *     `engine.sizing.plan_allocation` the engine uses. 502 when their live read
          *     fails, 503 when the engine package is missing.
          */
         post: operations["preview_wallet_api_wallets__address__preview_post"];
@@ -997,11 +997,11 @@ export interface paths {
         };
         /**
          * Wallet Projection
-         * @description His last 30d replayed onto `allocation_usd` at these terms (counter =
+         * @description Their last 30d replayed onto `allocation_usd` at these terms (counter =
          *     every side inverted, liquidations on our side), by discovery's copy-sim
          *     on CACHED fills and candles only: no HL call in this request. Unset terms
          *     come from the wallet's current settings (custom override, else the
-         *     Settings tab), and his coin filters apply. No cached data for him yet:
+         *     Settings tab), and their coin filters apply. No cached data for them yet:
          *     202 with the Scout status, and a build is queued (as GET
          *     /api/scout/traders/{a} does). 409 while another what-if runs.
          */
@@ -1025,8 +1025,8 @@ export interface paths {
         put?: never;
         /**
          * Resume Wallet
-         * @description Resume a paused wallet. Moves he made while paused are not entered
-         *     midway; the next position he opens is copied. 404 when not in the book.
+         * @description Resume a paused wallet. Moves they made while paused are not entered
+         *     midway; the next position they open is copied. 404 when not in the book.
          */
         post: operations["resume_wallet_api_wallets__address__resume_post"];
         delete?: never;
@@ -4070,7 +4070,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description his book changed, or your book is full */
+            /** @description their book changed, or your book is full */
             409: {
                 headers: {
                     [name: string]: unknown;

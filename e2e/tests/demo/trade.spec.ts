@@ -89,7 +89,7 @@ test.describe("demo Trade", () => {
     await expect(backtest(page)).toContainText("$300.00");
     const follow = await changedFrom(page, at100, "amount must change the backtest");
     const slider = await setLeverage(page, "End");
-    const max = await changedFrom(page, follow, "max leverage must change the backtest vs follow-his-leverage");
+    const max = await changedFrom(page, follow, "max leverage must change the backtest vs follow-their-leverage");
     await slider.press("Home");
     await expect(slider).toHaveValue("1");
     const one = await changedFrom(page, max, "1x must change the backtest vs max leverage");

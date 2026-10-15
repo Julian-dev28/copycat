@@ -169,7 +169,7 @@ def test_fixed_cap_holds_through_any_add_sequence(s, lev, fracs, px):
 
 @given(st.floats(-1e6, 1e6).filter(lambda x: x != 0))
 def test_counter_is_copy_inverted(szi):
-    """Prevents: a counter copy that ends up on HIS side (doubling his bet
+    """Prevents: a counter copy that ends up on HIS side (doubling their bet
     instead of fading it)."""
     assert sizing.our_is_long(szi, "copy") == (szi > 0)
     assert sizing.our_is_long(szi, "counter") == (szi < 0)

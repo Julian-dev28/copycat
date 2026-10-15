@@ -1,9 +1,9 @@
 """Contract v9 one-shot wallets (LeaderOverride.one_shot, set by an MCP copy
-plan with follow=false): copy only what he held when first seen, same side;
+plan with follow=false): copy only what they held when first seen, same side;
 afterwards no new opens, no adds, no flips' new side; exits always mirror.
 
 Hand numbers as in test_v8_direction: proportional, our equity $10,000,
-sleeve 0.5, his equity $1,000,000. 1000 @ 100 = $100,000 of his -> $500 = 5.0 at mid 100.
+sleeve 0.5, their equity $1,000,000. 1000 @ 100 = $100,000 of their -> $500 = 5.0 at mid 100.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def test_copies_what_he_holds_then_nothing_new(engine_state, venue):
     venue.hold(LEADER1, "SOL", 1000.0, entry_px=100.0)              # a new position: not copied
     venue.hold(LEADER1, "BTC", 1500.0, entry_px=100.0)              # an add: not copied
     out = run(venue, cfg(), engine_state, 1)
-    assert out["skipped"]["SOL"] == "one-shot: only the positions he held when copied"
+    assert out["skipped"]["SOL"] == "one-shot: only the positions they held when copied"
     assert out["skipped"]["BTC"] == "one-shot: adds not copied"
     assert len(venue.orders) == n
     venue.hold(LEADER1, "ETH", 0.0)                                 # exit: mirrored
@@ -76,7 +76,7 @@ def test_a_closed_coin_reopened_later_is_not_copied(engine_state, venue):
     n = len(venue.orders)
     venue.hold(LEADER1, "BTC", 1000.0, entry_px=100.0)
     out = run(venue, cfg(), engine_state, 2)
-    assert out["skipped"]["BTC"] == "one-shot: only the positions he held when copied"
+    assert out["skipped"]["BTC"] == "one-shot: only the positions they held when copied"
     assert len(venue.orders) == n
 
 
@@ -88,11 +88,11 @@ def test_a_flip_closes_and_does_not_open_the_new_side(engine_state, venue):
     venue.hold(LEADER1, "BTC", -1000.0, entry_px=100.0)
     out = run(venue, cfg(), engine_state, 1)
     assert out["closed"] == ["BTC"] and not out["opened"]
-    assert out["skipped"]["BTC"] == "one-shot: only the positions he held when copied"
+    assert out["skipped"]["BTC"] == "one-shot: only the positions they held when copied"
 
 
 def test_a_held_position_waiting_on_entry_deviation_still_opens_later(engine_state, venue):
-    """The plan's entry deviation: a held position whose mid is too far from his
+    """The plan's entry deviation: a held position whose mid is too far from their
     entry waits (pending) and opens once price comes back."""
     setup(venue)
     venue.hold(LEADER1, "BTC", 1000.0, entry_px=100.0)

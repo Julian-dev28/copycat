@@ -108,7 +108,7 @@ class Demo:
 
             # Step 3 (DEMO "Understand the strategy").
             ok, prof, _ = await self.call(s, "trader_profile", {"address": self.trader, "wait_s": 90})
-            self.check("3. trader_profile returns his file", ok and isinstance(prof, dict)
+            self.check("3. trader_profile returns their file", ok and isinstance(prof, dict)
                        and prof.get("status") != "building", str((prof or {}).get("status") or "ready"))
             ok, fp, _ = await self.call(s, "trader_fingerprint", {"address": self.trader, "wait_s": 120})
             self.check("3. trader_fingerprint returns a deterministic summary from real trades",
@@ -124,7 +124,7 @@ class Demo:
             self.check("4. copy_plan builds a plan with an id and a table to show",
                        ok and bool(pid) and "|" in str((cp or {}).get("present")), str(pid))
             pv = plan.get("preview") or {}
-            self.check("4. the plan sizes at least one of his positions",
+            self.check("4. the plan sizes at least one of their positions",
                        len(pv.get("slices") or []) > 0, f"{len(pv.get('slices') or [])} positions, "
                        f"{pv.get('copied')} copied, ${pv.get('planned_margin_usd', 0):,.2f} margin")
             pend = self.pending()

@@ -3,7 +3,7 @@
  * or flags hft, trades faster than a poll-based copier can follow. Pure, tested.
  */
 export const ALGO_WARNING =
-  "This wallet trades like an algo. Fast traders' results usually don't survive copy latency: copycat reads their positions every few seconds, so you enter later and at worse prices than he did.";
+  "This wallet trades like an algo. Fast traders' results usually don't survive copy latency: copycat reads their positions every few seconds, so you enter later and at worse prices than they did.";
 
 /** Flags arrive bare ("hft") or with a detail ("hft:412/day"). */
 const hasHft = (flags: readonly string[] | null | undefined) => (flags ?? []).some((f) => f.split(":")[0].toLowerCase() === "hft");

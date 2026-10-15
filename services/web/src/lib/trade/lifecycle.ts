@@ -64,7 +64,7 @@ export function rowActions(status: WalletStatus): RowAction[] {
 export const STATUS_BADGE: Record<WalletStatus, { label: string; tone: "success" | "neutral" | "warning" | "danger" | "accent"; hint: string }> = {
   running: { label: "running", tone: "success", hint: "Copying every open, add, reduce and close." },
   paused: { label: "paused", tone: "neutral", hint: "No new copies; exits still followed." },
-  stopping: { label: "stopping", tone: "warning", hint: "Opening nothing new; open copies are closing or following him out." },
+  stopping: { label: "stopping", tone: "warning", hint: "Opening nothing new; open copies are closing or following them out." },
   stopped: { label: "stopped", tone: "neutral", hint: "Done: no open copies. Archive it to tidy the list." },
   archived: { label: "archived", tone: "neutral", hint: "Kept for its history and PnL." },
 };
@@ -79,6 +79,6 @@ export function archiveConfirmed(typed: string): boolean {
 /** Plain-words result line after an action. */
 export function actionDone(action: "pause" | "resume" | "archive", name: string): string {
   if (action === "pause") return `Paused ${name}: no new copies; exits still followed.`;
-  if (action === "resume") return `Resumed ${name}: copying his new positions again.`;
+  if (action === "resume") return `Resumed ${name}: copying their new positions again.`;
   return `Archived ${name}. It lives under Archived now.`;
 }

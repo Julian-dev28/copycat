@@ -590,7 +590,7 @@ def test_copy_plan_output_has_plan_present_fingerprint_and_latest_thesis():
     t = out["latest_thesis"]
     assert t["title"] == "new" and len(t["markdown"]) == 4000 and t["truncated"] is True
     p = out["present"]
-    for needle in ("Copy plan `plan_0123456789abcdef`", "$50.00", "his leverage", "| BTC | long | $50,000.00",
+    for needle in ("Copy plan `plan_0123456789abcdef`", "$50.00", "their leverage", "| BTC | long | $50,000.00",
                    "under the $10.5 minimum", "Trading is not live", "+4.2% return", "NO (enabled=false"):
         assert needle in p, needle
     assert "ABC234" not in p and "turned off" in p          # no flag: no code to confirm with
@@ -657,7 +657,7 @@ def test_execute_copy_plan_is_absent_without_the_flag():
 
 @pytest.mark.parametrize("status,detail,needle", [
     (403, "Execution from Claude Code is off. To allow it", "Execution from Claude Code is off"),
-    (410, "this plan expired", "expired"), (409, "his book changed", "his book changed"),
+    (410, "this plan expired", "expired"), (409, "their book changed", "their book changed"),
     (429, "at most 10 plan executes per hour", "per hour"),
 ])
 def test_execute_copy_plan_surfaces_the_api_refusal(status, detail, needle):

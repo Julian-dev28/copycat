@@ -2,7 +2,7 @@
 pause, skip events tagged with their leader, archived orphans. Hand numbers:
 
 proportional sizing, our equity $10,000, sleeve 0.5, one leader -> $5,000 sleeve.
-His equity $1,000,000. A position of 1000 BTC @ 100 is $100,000 of his notional:
+Their equity $1,000,000. A position of 1000 BTC @ 100 is $100,000 of their notional:
 100,000 / 1,000,000 x 5,000 = $500 -> 5.0 BTC at mid 100.
 """
 from __future__ import annotations

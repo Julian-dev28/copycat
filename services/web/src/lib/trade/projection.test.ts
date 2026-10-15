@@ -5,7 +5,7 @@ const idx = [100, 110, 99, 120].map((value, i) => ({ t_ms: i * 86_400_000, value
 const base = { address: "0xa", index: idx, allocationUsd: 1_000, mode: "match" as const, hisLeverage: 2 };
 
 describe("projection", () => {
-  it("copy follows his returns on the allocation", () => {
+  it("copy follows their returns on the allocation", () => {
     const p = localProjection({ ...base, direction: "copy" });
     expect(p.curve.map((c) => Math.round(c.value))).toEqual([1000, 1100, 990, 1200]);
     expect(p.return_pct).toBeCloseTo(20);
@@ -20,7 +20,7 @@ describe("projection", () => {
     expect(p.trade_direction).toBe("counter");
     expect(p.return_pct).toBeLessThan(0);
   });
-  it("set leverage scales his returns by L / his leverage; a wipe-out counts as a liquidation", () => {
+  it("set leverage scales their returns by L / their leverage; a wipe-out counts as a liquidation", () => {
     const p = localProjection({ ...base, direction: "counter", mode: "target", targetLeverage: 40, hisLeverage: 2 });
     expect(p.liquidations).toBe(1);
     expect(p.curve.at(-1)!.value).toBe(0);

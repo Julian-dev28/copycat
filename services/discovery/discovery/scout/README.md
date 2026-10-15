@@ -163,7 +163,7 @@ network):
 | live deployment's own terms ($15.20, target 50x capped 15x) | 38 | 7 | 10 |
 
 `exposure_mode=match` sizes notional off the LEADER's own gross-notional
-ratio, so a leader who already runs hot on his own book still produces a
+ratio, so a leader who already runs hot on their own book still produces a
 high-risk copy even at a "low" cap number; `exposure_mode=target` controls
 notional directly, independent of the leader's own leverage. Lower fixed
 leverage monotonically helped here. >= 5 sim copies tops out around 7-8/40

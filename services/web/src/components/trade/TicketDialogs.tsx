@@ -69,7 +69,7 @@ export function SwitchSourceDialog({
           {to === "global"
             ? "Its custom terms are cleared and the Settings tab applies from the next cycle. "
             : "From the next cycle it uses the terms in this ticket instead of the Settings tab. "}
-          Open copies are re-sized to the new terms as he trades; nothing is closed now.
+          Open copies are re-sized to the new terms as they trade; nothing is closed now.
           {live ? <b className="mt-2 block text-foreground">Trading is live: real orders follow the new terms.</b> : null}
         </>
       }
@@ -102,7 +102,7 @@ export function StopDialog({
   const [close, setClose] = useState(true);
   const options = [
     { value: true, title: "Close positions now", text: `Market-close your ${openCopies} open cop${openCopies === 1 ? "y" : "ies"} of ${name} (reduce-only) and free the margin.` },
-    { value: false, title: "Let open copies run out", text: "Open nothing new. Each open copy closes when he closes his position, so you keep his exits." },
+    { value: false, title: "Let open copies run out", text: "Open nothing new. Each open copy closes when they close their position, so you keep their exits." },
   ];
   return (
     <Dialog

@@ -13,7 +13,7 @@ Public surface (the only names other services import):
 | `engine.public.status() -> EngineStatus` | last cycle's snapshot, read from SQLite, no network |
 | `engine.public.events(limit, since_ms)` | `EngineEvent`s, newest first |
 | `engine.public.preview_wallet(address, req, settings, venue=None)` | Trade ticket preview (`WalletPreview`), read only |
-| `engine.public.leader_book(address, venue=None)` | v9: his positions from one account read, `[{coin, side, notional_usd}]` (size x entry); the api hashes it for MCP copy plans |
+| `engine.public.leader_book(address, venue=None)` | v9: their positions from one account read, `[{coin, side, notional_usd}]` (size x entry); the api hashes it for MCP copy plans |
 | `engine.public.read_stops()` | pending `data/stop/<address>.flag` requests |
 | `engine.public.leader_events(address, limit, before_ms)` | one wallet's events, newest first (tail read, 8MB cap) |
 | `engine.public.wallet_ledgers()` / `archive_wallet(address)` | per-wallet ledger rows; mark a stopped wallet archived (`ArchiveRefused` while it has copies) |
@@ -33,8 +33,8 @@ Every rule below is pinned by a gate test in `tests/`.
 - "Not ours": if your account already holds a coin that has no row in the
   engine's `copies` table (you opened it by hand, or another bot did), the
   engine never touches it and never copies into it.
-- Orphans: a leader removed from `Settings.leaders` while we still hold his
-  copies keeps having his exits mirrored, but never gets new exposure.
+- Orphans: a leader removed from `Settings.leaders` while we still hold their
+  copies keeps having their exits mirrored, but never gets new exposure.
 
 **Exits**
 - Exits (reduce, close, flip) mirror even when `enabled` is false. Disabling
@@ -47,7 +47,7 @@ Every rule below is pinned by a gate test in `tests/`.
   last-seen size is frozen at the stale value so the diff keeps firing).
   Closes are idempotent: the hl venue sizes them from a fresh read.
 - A reduce takes the same fraction off our real size that the leader took off
-  his. Reduces are never bumped to the $10.50 minimum: a reduce under it whose
+  theirs. Reduces are never bumped to the $10.50 minimum: a reduce under it whose
   remainder is above it is skipped and accumulates; a remainder under it
   becomes a full close.
 - A flip (long to short in one read) is a close then a fresh open.
@@ -62,39 +62,39 @@ Every rule below is pinned by a gate test in `tests/`.
   is skipped ("needs more margin than available").
 - Margin room cap: notional <= available margin on that dex x leverage x 0.95.
 - `max_open_copies`: no new open once this many copies exist (adds still go).
-- `only_new_positions`: the first read of a leader is a baseline; what he
-  already holds is ignored until he goes flat on it.
+- `only_new_positions`: the first read of a leader is a baseline; what they
+  already holds is ignored until they go flat on it.
 - An add to a copy whose leader's previous size is flat: proportional sizes
-  off his added notional; fixed modes skip (no fraction to scale).
+  off their added notional; fixed modes skip (no fraction to scale).
 
 **Sizing modes** (`engine/sizing.py`)
 - `fixed_margin`: notional = `fixed_margin_usd x leverage`.
 - `fixed_notional`: notional = `fixed_notional_usd`.
-- `proportional`: his added notional / his equity x (our equity x
+- `proportional`: their added notional / their equity x (our equity x
   `sleeve_frac` / number of leaders) x `size_multiplier`.
-- Adds in fixed modes scale OUR real current notional by his fractional add.
+- Adds in fixed modes scale OUR real current notional by their fractional add.
 
 - `allocation` (Trade page, "invest $X in this wallet", `allocation_usd`):
-  - exposure `match`: his added notional / his equity x allocation (his
+  - exposure `match`: their added notional / their equity x allocation (their
     leverage carries through).
-  - exposure `target`: his added notional / his gross notional after the
+  - exposure `target`: their added notional / their gross notional after the
     change x allocation x leverage, where leverage is
     min(`target_leverage`, coin max, `max_position_leverage`), also the
     exchange leverage. Using the capped leverage keeps each slice's margin
-    at allocation x his weight, so the wallet's margin is the allocation.
-  - Adds use the same formula on his incremental notional, at the copy's own
-    leverage. Reduces/closes are unchanged (same fraction he took off).
-  - Allocation cap: this wallet's total copy margin (our copies of him at
+    at allocation x their weight, so the wallet's margin is the allocation.
+  - Adds use the same formula on their incremental notional, at the copy's own
+    leverage. Reduces/closes are unchanged (same fraction they took off).
+  - Allocation cap: this wallet's total copy margin (our copies of them at
     mark / leverage, plus orders sent earlier this cycle) stays <=
     allocation x 1.02. An open/add is trimmed to fit; under $10.50 it is
     skipped ("allocation full").
   - Small accounts (`small_account_mode`):
     - `concentrate` (default): at every open/add the eligible set is
-      recomputed from his whole book: the smallest slice under $10.50 is
-      dropped and the rest renormalized (x his gross / gross left), one at a
+      recomputed from their whole book: the smallest slice under $10.50 is
+      dropped and the rest renormalized (x their gross / gross left), one at a
       time, until all clear the minimum, so the whole allocation goes into
-      his biggest positions. Coins we already copy for him stay eligible
-      until he exits. A coin outside the set is skipped and ignored until he
+      their biggest positions. Coins we already copy for them stay eligible
+      until they exit. A coin outside the set is skipped and ignored until they
       goes flat on it.
     - `bump`: a slice >= 25% of $10.50 is rounded up if it still fits the
       allocation cap.
@@ -114,10 +114,10 @@ Every rule below is pinned by a gate test in `tests/`.
 min(`max_order_volume_pct` % of the coin's 24h volume, book depth within
 `max_slippage_pct` of mid) (`venue.market_stats`, `venue.depth_usd`). The rest
 is carried in kv `catch_up` and sent one capped order per cycle, at the
-copy's leverage, through the same room/allocation caps, until filled or he
+copy's leverage, through the same room/allocation caps, until filled or they
 changes that position (then the diff takes over and the carry is dropped).
 A carry under $10.50 is dropped. Paused (kept) while entries are blocked or
-the mid is worse than his entry by more than `max_worse_entry_pct`. The
+the mid is worse than their entry by more than `max_worse_entry_pct`. The
 unfilled part of a partially filled IOC joins the carry. The open/add event
 says "split: $X now, $Y over the next cycles". If either liquidity read fails,
 an order under $50k goes uncapped; a bigger one is skipped and stays pending.
@@ -142,14 +142,14 @@ orphan's `effective` shows the allocation terms it last ran with.
 **Stop one wallet**: `data/stop/<address>.flag` `{close_positions}` (written by
 the api, which also removes the wallet from settings). That leader is an
 orphan from the cycle the flag is seen, even if settings still list it.
-`close_positions` true: every copy of his is closed reduce-only (even in
+`close_positions` true: every copy of their is closed reduce-only (even in
 dry_run, like close-all), `close` events with reason "stop wallet"; a failed
 or partial close keeps the flag and retries next cycle (`stopping` true);
 once flat the flag is deleted and `skip` "wallet stopped" is logged. False:
-the flag is deleted at once; his copies keep following his exits.
+the flag is deleted at once; their copies keep following their exits.
 
 **Read-budget pacing** (`engine/pacing.py`): one cycle's /info weight is
-estimated as, per account read (ours + each leader), 2 per dex he is active
+estimated as, per account read (ours + each leader), 2 per dex they are active
 on + 2 for spot, + 22 per leader with `include_spot_staked`, + 2 per dex we
 hold copies on (allMids). The worker sleeps max(`poll_interval_s`,
 weight x 60 / (1200 x 0.6)), so the engine uses at most 60% of HL's budget.
@@ -164,17 +164,17 @@ weight x 60 / (1200 x 0.6)), so the engine uses at most 60% of HL's budget.
 mode, multiplier, fixed amounts, leverage mode/value, margin mode and
 `max_worse_entry_pct` for that leader only (`Settings.for_leader`).
 
-**Trade direction (contract v8, `trade_direction`)**: `copy` mirrors his side;
-`counter` takes the opposite side of every position he opens (he goes long, we
+**Trade direction (contract v8, `trade_direction`)**: `copy` mirrors their side;
+`counter` takes the opposite side of every position they open (they go long, we
 go short).
 - Sizes are identical in both directions: every sizing formula uses |size| x
-  price (his notional, his gross notional, our current notional), so only the
+  price (their notional, their gross notional, our current notional), so only the
   order side flips.
-- Opens and adds take OUR side; reduces and closes follow his size changes on
+- Opens and adds take OUR side; reduces and closes follow their size changes on
   our position (reduce-only, side read from our real size). A flip is a close,
-  then a fresh open on the opposite of his NEW side.
-- `max_worse_entry_pct` checks OUR side against HIS entry: a counter short (he
-  is long at E) is blocked once mid < E x (1 - p), a counter long (he is
+  then a fresh open on the opposite of their NEW side.
+- `max_worse_entry_pct` checks OUR side against THEIR entry: a counter short (they
+  is long at E) is blocked once mid < E x (1 - p), a counter long (they are
   short) once mid > E x (1 + p). Liquidity caps read the book on our order side.
 - Each `copies` / `dry_copies` row stores the `direction` it was opened with,
   and keeps it until it closes. Changing a wallet's direction applies to its
@@ -184,32 +184,32 @@ go short).
 - Safety: an add is skipped when our real position is on the other side from
   what the copy's direction says it should be (changed outside copycat);
   adding would net against it. "Not ours" and "vanished" are side-blind
-  (any size counts), and the stranded-copy close seeds his last-seen sign
+  (any size counts), and the stranded-copy close seeds their last-seen sign
   from ours, inverted for a counter copy.
 
 **Coin filters (v8, `coin_allowlist` / `coin_blocklist`)**: an open/add of a
 coin outside a non-empty allowlist, or on the blocklist, is skipped with
-"filtered: <coin>" (a fresh open is then ignored until he goes flat, like
+"filtered: <coin>" (a fresh open is then ignored until they go flat, like
 "disabled"). Exits are never filtered. Matching is case-insensitive; a HIP-3
 coin keeps its "dex:COIN" form ("xyz:TSLA" never matches plain "TSLA"). The
 book-wide lists apply to every wallet whose override does not set its own (an
-override's list, even [], replaces the book-wide one). Sizing still sees his
+override's list, even [], replaces the book-wide one). Sizing still sees their
 whole book: a filtered coin's slice is left unspent, never handed to the
 other coins (`sizing.coin_allowed`).
 
 **Pause (v8, `paused`)**: a paused wallet (its override, or the book-wide
 flag) gets no new opens or adds (skip "paused"; a fresh open is ignored until
-he goes flat; a liquidity catch-up waits); exits always mirror. Pausing is
-not stopping: the wallet stays in the book and its copies keep following him
+they go flat; a liquidity catch-up waits); exits always mirror. Pausing is
+not stopping: the wallet stays in the book and its copies keep following them
 out.
 
 **One-shot (v9, `one_shot`, set by an MCP copy plan with follow=false)**: the
-first cycle that sees it for this `invested_ms` records his held coins and sides
+first cycle that sees it for this `invested_ms` records their held coins and sides
 (kv `one_shot`, event `baseline` "one-shot: ..."). Only a first open of one of
 those, same side, is allowed, including a pending `max_worse_entry_pct` retry and
 a liquidity catch-up. An add ("one-shot: adds not copied"), a flip's new side, a
-reopen after he closed, or a new coin ("one-shot: only the positions he held
-when copied") is skipped and ignored until he goes flat. Exits always mirror.
+reopen after they closed, or a new coin ("one-shot: only the positions they held
+when copied") is skipped and ignored until they go flat. Exits always mirror.
 Turning it off drops the record. The engine never writes settings.
 
 **Skip events carry their leader** (v8): a coin's skip reason is logged (once,
@@ -331,7 +331,7 @@ SQLite, with `running` true if the last cycle is within max(30s, 3x poll).
   an adverse move of about `1/leverage - maintenance` (40x: about 1.25%). The
   engine only learns of it afterwards ("our copy vanished").
 - Cross margin shares collateral: one bad copy can liquidate others.
-- Copies enter after the leader, at a worse price, and exit after him.
+- Copies enter after the leader, at a worse price, and exit after them.
 - Day PnL nets transfers by ledger type. A new HL ledger type makes day PnL
   unreliable (the halt holds) until `engine/daypnl.py` learns it. A transfer
   between 00:00 UTC and a pre-upgrade anchor (no `ts_ms`) is counted twice
@@ -349,10 +349,10 @@ In the fixed sizing modes one copy is one fixed-size position: at most
 `max(fixed_margin_usd x exchange leverage, $10.50) x 1.02` (fixed_margin) or
 `max(fixed_notional_usd, $10.50) x 1.02` (fixed_notional), measured at our
 entry price. The leader's adds can top a copy up to that size (an open that was
-trimmed, split or partially filled) but never past it; once full, his adds are
+trimmed, split or partially filled) but never past it; once full, their adds are
 skipped with "add capped". Before this cap, dozens of tiny adds each bumped to
 $10.50 grew a $1-margin copy to $126 of margin, and one liquidation took a $100
 account to -127% (found by the discovery sim, 2026-10-05; regression tests
 `test_fixed_margin_copy_never_grows_past_its_fixed_size` and
 `test_fixed_notional_add_tops_up_a_partial_open_but_not_past_it`). Use the
-allocation or proportional modes to follow his scaling.
+allocation or proportional modes to follow their scaling.

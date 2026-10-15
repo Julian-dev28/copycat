@@ -153,20 +153,20 @@ export function YourWallets({
                           {src}
                         </span>
                         {w.trade_direction === "counter" ? (
-                          <span title="Counter: the opposite side of each of his positions" className="inline-flex items-center gap-0.5 rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-danger">
+                          <span title="Counter: the opposite side of each of their positions" className="inline-flex items-center gap-0.5 rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-danger">
                             <ArrowDownUp size={10} aria-hidden="true" /> counter
                           </span>
                         ) : null}
                         {w.one_shot ? (
-                          <span title="One-shot: copies only the positions he held when you invested; his new trades are not copied" className="rounded bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
+                          <span title="One-shot: copies only the positions they held when you invested; their new trades are not copied" className="rounded bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
                             one-shot
                           </span>
                         ) : null}
-                        {!w.read_ok && (status === "running" || status === "paused") ? <AlertTriangle size={12} className="text-danger" aria-label="Last read of his account failed" /> : null}
+                        {!w.read_ok && (status === "running" || status === "paused") ? <AlertTriangle size={12} className="text-danger" aria-label="Last read of their account failed" /> : null}
                       </button>
                     </td>
                     <td className={TD}>{w.allocation_usd ? formatUsd(w.allocation_usd, w.allocation_usd >= 100_000) : "—"}</td>
-                    <td className={TD}>{src === "Global" ? <span className="text-muted">settings</span> : w.exposure_mode === "target" ? `${w.target_leverage}x` : <span className="text-muted">his</span>}</td>
+                    <td className={TD}>{src === "Global" ? <span className="text-muted">settings</span> : w.exposure_mode === "target" ? `${w.target_leverage}x` : <span className="text-muted">theirs</span>}</td>
                     <td className={TD}>{formatUsd(w.exposure_usd, w.exposure_usd >= 100_000)}</td>
                     <td className={TD}><PnlText usd={w.unrealized_pnl_usd}>{formatSignedUsd(w.unrealized_pnl_usd)}</PnlText></td>
                     <td className={TD}><PnlText usd={w.realized_pnl_usd}>{formatSignedUsd(w.realized_pnl_usd)}</PnlText></td>
@@ -206,7 +206,7 @@ export function YourWallets({
           onConfirm={(close_positions) =>
             stop.mutate({ address: current.address, body: { close_positions } }, {
               onSettled: () => setDialog(null),
-              onSuccess: () => setMsg(close_positions ? `Stopping ${label(current.address)}: closing its copies.` : `Stopped new copies of ${label(current.address)}; open ones follow him out.`),
+              onSuccess: () => setMsg(close_positions ? `Stopping ${label(current.address)}: closing its copies.` : `Stopped new copies of ${label(current.address)}; open ones follow them out.`),
             })
           }
         />

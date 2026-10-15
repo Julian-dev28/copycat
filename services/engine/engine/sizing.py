@@ -39,19 +39,19 @@ ALLOCATION_SLACK = 1.02
 def allocation_notional(settings: Settings, his_added_ntl: float, his_equity: float,
                         his_gross_ntl_after: float, lev: Optional[int] = None) -> float:
     """`allocation` sizing ("invest $X in this wallet", the Trade page), for
-    an open or an add alike (`his_added_ntl` is his full opening notional or
-    his incremental add, both at his entry price):
+    an open or an add alike (`his_added_ntl` is their full opening notional or
+    their incremental add, both at their entry price):
 
     - exposure_mode match:  `his_added_ntl / his_equity * allocation_usd`.
-      His book at his own leverage: if he runs 3x, $1,000 invested carries
+      Their book at their own leverage: if they run 3x, $1,000 invested carries
       about $3,000 of notional.
     - exposure_mode target: `his_added_ntl / his_gross_ntl_after *
       allocation_usd * lev`, where `his_gross_ntl_after` is the sum of
-      |notional| over his whole book AFTER this change and `lev` is the
+      |notional| over their whole book AFTER this change and `lev` is the
       exchange leverage this copy runs at (`exchange_leverage`: the
       target_leverage, capped by the coin max and max_position_leverage;
       None = target_leverage). Using the CAPPED leverage keeps every
-      slice's margin at exactly `allocation_usd * his weight`, so the whole
+      slice's margin at exactly `allocation_usd * their weight`, so the whole
       wallet's margin is the allocation even on a coin that cannot reach L.
 
     Returns 0.0 on a zero/negative denominator (never divide by zero, never
@@ -85,9 +85,9 @@ def open_notional(settings: Settings, his_added_ntl: float, his_equity: float,
 
     - proportional: `his_added_ntl / his_equity * allocation * size_multiplier`,
       where `allocation = our_equity * sleeve_frac / n_leaders` (a fixed,
-      equal split across leaders, not weighted by his size). For a fresh
-      open, `his_added_ntl` is the leader's FULL opening notional (his size
-      times his own average entry price -- not the mark). Returns 0.0 if
+      equal split across leaders, not weighted by their size). For a fresh
+      open, `his_added_ntl` is the leader's FULL opening notional (their size
+      times their own average entry price -- not the mark). Returns 0.0 if
       `his_equity <= 0` or `n_leaders <= 0`: never divide by zero, never
       size off a degraded or nonsensical read.
     - fixed_margin: `settings.fixed_margin_usd * exchange_lev`. A fixed
@@ -120,15 +120,15 @@ def add_notional(settings: Settings, his_added_ntl: float, his_equity: float,
     """Dollar notional for an ADD to an existing copy under `settings.sizing_mode`.
 
     - proportional: identical formula to `open_notional`'s proportional
-      branch. `his_added_ntl` is now his INCREMENTAL notional (the size he
-      just added times his entry), not his full position.
+      branch. `his_added_ntl` is now their INCREMENTAL notional (the size they
+      just added times their entry), not their full position.
     - fixed_margin / fixed_notional: does NOT re-apply the fixed dollar
       amount -- that would re-fix the position back to the same size on
       every add and it would never grow with the leader. Instead scales OUR
-      current notional by his fractional change:
+      current notional by their fractional change:
       `our_current_notional * his_frac_added`, where `his_frac_added` is
       `(|his_cur| - |his_prev|) / |his_prev|`.
-    - allocation: `allocation_notional` with his INCREMENTAL notional, same
+    - allocation: `allocation_notional` with their INCREMENTAL notional, same
       formula as the open.
 
     Reduces, closes and flips never call this -- only an increase in the
@@ -175,9 +175,9 @@ def worse_entry_ok(side: str, mid: float, entry: float, pct: float) -> bool:
 
     A long is blocked once `mid > entry * (1 + pct/100)`; a short once
     `mid < entry * (1 - pct/100)`. `side` is OUR side (contract v8): a
-    counter copy of his long is a short, checked against HIS entry, so it
-    is blocked once mid has fallen more than pct below his entry (we would
-    sell too cheap); a counter long (he is short) once mid has risen more
+    counter copy of their long is a short, checked against THEIR entry, so it
+    is blocked once mid has fallen more than pct below their entry (we would
+    sell too cheap); a counter long (they are short) once mid has risen more
     than pct above it. `entry <= 0` (unknown/missing) always
     returns True: there is nothing to compare against, so this gate cannot
     apply. This only ever gates opens/adds -- reduces and closes never call
@@ -196,18 +196,18 @@ def entry_wait_reason(our_long: bool, mid: float, his_entry: float, pct: float) 
     `worse_entry_ok` lets it through. The engine checks exactly this before
     every open/add (core._diff_coin) and retries each cycle, so a slice that
     fails it is not copied now: it opens only once mid comes back within
-    `pct` of his entry. Regression: the preview showed such slices as "copy"
-    with a notional (NEAR: his entry 2.35, mid 5.25, 2% allowed), the engine
+    `pct` of their entry. Regression: the preview showed such slices as "copy"
+    with a notional (NEAR: their entry 2.35, mid 5.25, 2% allowed), the engine
     never opened them."""
     if mid <= 0 or worse_entry_ok("long" if our_long else "short", mid, his_entry, pct):
         return None
     past = abs(mid / his_entry - 1.0) * 100.0
-    return f"price is {past:.1f}% past his entry; opens only within {pct:g}%"
+    return f"price is {past:.1f}% past their entry; opens only within {pct:g}%"
 
 
 def our_is_long(his_szi: float, direction: Any) -> bool:
-    """Contract v8 TradeDirection: the side OUR copy takes for his signed size.
-    copy: his side. counter: the opposite (he is long -> we are short).
+    """Contract v8 TradeDirection: the side OUR copy takes for their signed size.
+    copy: their side. counter: the opposite (they are long -> we are short).
     `direction` is a TradeDirection or its string value."""
     counter = getattr(direction, "value", direction) == "counter"
     return (his_szi > 0) != counter
@@ -347,7 +347,7 @@ def account_equity(account: dict) -> float:
 # ── small accounts: the allocation plan (engine and Trade ticket preview) ────
 
 def his_notional(pos: Mapping[str, Any]) -> float:
-    """|size| x his average entry: the notional the engine sizes from
+    """|size| x their average entry: the notional the engine sizes from
     (`_open_or_add` uses entry, not mark, for `his_added_ntl` too, so a
     plan and a live open always agree)."""
     try:
@@ -363,16 +363,16 @@ def gross_notional(positions: Mapping[str, Mapping[str, Any]]) -> float:
 
 def concentrate(base: Mapping[str, float], ntl: Mapping[str, float], held: Iterable[str] = (),
                 min_order: float = HL_MIN_ORDER_USD) -> "tuple[List[str], float]":
-    """small_account_mode concentrate. `base[coin]` is the slice each of his
-    positions gets un-concentrated, `ntl[coin]` his notional on it.
+    """small_account_mode concentrate. `base[coin]` is the slice each of their
+    positions gets un-concentrated, `ntl[coin]` their notional on it.
 
     Drops the smallest slice under `min_order` and renormalizes the rest
-    (`scale = his gross / gross of what is left`, so the whole allocation
+    (`scale = their gross / gross of what is left`, so the whole allocation
     goes into the positions that remain), one at a time, until every
     remaining slice clears the minimum. Dropping one at a time matters: a
     slice just under the floor can clear it once a smaller one is dropped.
     Coins in `held` (already copied) are never dropped: they stay copied
-    until he exits. Ties drop the alphabetically first coin, so the result
+    until they exit. Ties drop the alphabetically first coin, so the result
     is deterministic. Returns `(eligible coins sorted, scale)`; nothing
     eligible -> `([], 1.0)`."""
     held_set = set(held)
@@ -390,7 +390,7 @@ def concentrate(base: Mapping[str, float], ntl: Mapping[str, float], held: Itera
 
 def base_slices(ntl: Mapping[str, float], his_equity: float, allocation_usd: float,
                 exposure_mode: ExposureMode, levs: Mapping[str, int]) -> Dict[str, float]:
-    """Un-concentrated slice per coin for an allocation wallet, given his
+    """Un-concentrated slice per coin for an allocation wallet, given their
     notional per coin: target `n / gross * allocation * lev`, match
     `n / his_equity * allocation` (0.0 on a zero denominator)."""
     gross = sum(v for v in ntl.values() if v > 0)
@@ -463,7 +463,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
                     wait: Optional[Mapping[str, str]] = None,
                     max_open_copies: Optional[int] = None,
                     open_copies: int = 0) -> Dict[str, Any]:
-    """What an `allocation` wallet would copy of his book RIGHT NOW. Pure.
+    """What an `allocation` wallet would copy of their book RIGHT NOW. Pure.
     The engine sizes every open from the same pieces (`allocation_notional`,
     `concentrate`, `allocation_room_ntl`, `bump`, `split_order`) in the same
     order, and the Trade ticket preview (`engine.public.preview_wallet`) is
@@ -471,7 +471,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
 
     Per coin, in coin-name order (the order a first-sight batch is opened in):
       1. slice: target `n/gross * A * lev`, match `n/his_equity * A`
-         (`n` = |size| x his entry, `lev` = exchange leverage for the coin).
+         (`n` = |size| x their entry, `lev` = exchange leverage for the coin).
       2. concentrate: coins outside `concentrate()`'s eligible set are
          skipped; the rest are multiplied by its scale.
       3. allocation cap: trimmed so total margin (`margin_used_usd` + slices
@@ -486,12 +486,12 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
     coin max, max_position_leverage) and match uses the coin max.
 
     `min_allocation_for_full_book`: the smallest allocation at which every
-    one of his positions clears the minimum without concentrating.
+    one of their positions clears the minimum without concentrating.
 
     Engine gates that run BEFORE sizing (core._diff_coin / _open_or_add), in
     its order, none of which spends allocation or an open slot:
       `pre_skip[coin]` (owned by another wallet, coin filter): "skip" with that reason;
-      `wait[coin]` (`entry_wait_reason`: mid too far past his entry): "wait",
+      `wait[coin]` (`entry_wait_reason`: mid too far past their entry): "wait",
         nothing copied now, the engine opens it once price comes back;
       `max_open_copies` (None = not modelled): opens past it, counting
         `open_copies` already open, are skipped.
@@ -541,7 +541,7 @@ def plan_allocation(his_positions: Mapping[str, Mapping[str, Any]], his_equity: 
         if c not in eligible_set:
             row["status"] = "skip"
             row["reason"] = (f"concentrate: slice ${base[c] * scale:,.2f} under the "
-                             f"${HL_MIN_ORDER_USD} minimum, allocation goes to his bigger positions")
+                             f"${HL_MIN_ORDER_USD} minimum, allocation goes to their bigger positions")
             continue
         s = base[c] * scale
         room = max(0.0, cap_total - used) * lev
@@ -598,7 +598,7 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
               pre_skip: Optional[Mapping[str, str]] = None,
               wait: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     """`plan_allocation`'s sibling for the other sizing modes (fixed_margin,
-    fixed_notional, proportional): what a first sight of his book would open
+    fixed_notional, proportional): what a first sight of their book would open
     under `settings` (a global wallet runs on the Settings tab as-is). Same
     result shape, so one preview renders both. Pure.
 
@@ -606,7 +606,7 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
       - `taken[coin]` (another wallet owns our copy of it): skipped.
       - `max_open_copies`: opens past it (counting `open_copies` already
         open across all wallets) are skipped.
-      - notional `open_notional(settings, his notional, his_equity,
+      - notional `open_notional(settings, their notional, his_equity,
         our_equity, n_leaders, lev)` at `lev_by_coin` (else the coin max
         capped by max_position_leverage); proportional needs `our_equity`.
       - `bump` (min_order_bump / small_account_mode), then the $10.50 floor.
@@ -686,7 +686,7 @@ def plan_copy(settings: Settings, his_positions: Mapping[str, Mapping[str, Any]]
 def fixed_copy_cap_ntl(settings: Settings, exchange_lev: int) -> Optional[float]:
     """Largest notional ONE copy may reach in a fixed sizing mode, or None for
     the other modes (allocation has its own wallet-level cap, proportional
-    tracks his book). The $10.50 floor is included because an open may have
+    tracks their book). The $10.50 floor is included because an open may have
     been bumped to it; 2% slack absorbs size rounding."""
     if settings.sizing_mode == SizingMode.fixed_margin:
         base = settings.fixed_margin_usd * max(1, int(exchange_lev))

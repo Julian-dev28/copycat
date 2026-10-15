@@ -36,7 +36,7 @@ export function demoWalletHistory(
     const side = ourSide(p.side, t.direction);
     const v = coinVerdict(p.coin, t.allow, t.block);
     if (t.onlyNew) {
-      out.push({ ts_ms: ts, action: "skip", leader: a, coin: p.coin, side, reason: "only new positions: he held it before you copied", dry_run: true });
+      out.push({ ts_ms: ts, action: "skip", leader: a, coin: p.coin, side, reason: "only new positions: they held it before you copied", dry_run: true });
       return;
     }
     if (v) {
@@ -46,7 +46,7 @@ export function demoWalletHistory(
     const n = Math.max(10.5, Math.round((p.notional_usd / 2_000) * 100) / 100);
     out.push({
       ts_ms: ts, action: "open", leader: a, coin: p.coin, side, notional_usd: n, leverage: Math.max(1, Math.round(p.leverage)),
-      reason: t.direction === "counter" ? "counter: opposite of his side" : null, dry_run: true,
+      reason: t.direction === "counter" ? "counter: opposite of their side" : null, dry_run: true,
     });
     // Then his activity on that coin every few hours: adds, a reduce, a worse-entry skip.
     const step = (3 + ((h >> i) % 5)) * HOUR;
@@ -55,7 +55,7 @@ export function demoWalletHistory(
       const pick = (h + i * 7 + k * 13) % 6;
       if (pick === 0 || pick === 3) out.push({ ts_ms: at, action: "add", leader: a, coin: p.coin, side, notional_usd: Math.round(n * 0.25 * 100) / 100, leverage: Math.max(1, Math.round(p.leverage)), dry_run: true });
       else if (pick === 1) out.push({ ts_ms: at, action: "reduce", leader: a, coin: p.coin, side, notional_usd: Math.round(n * 0.3 * 100) / 100, dry_run: true });
-      else if (pick === 4) out.push({ ts_ms: at, action: "skip", leader: a, coin: p.coin, side, reason: "add skipped: mid 1.8% worse than his entry (max 1.5%)", dry_run: true });
+      else if (pick === 4) out.push({ ts_ms: at, action: "skip", leader: a, coin: p.coin, side, reason: "add skipped: mid 1.8% worse than their entry (max 1.5%)", dry_run: true });
     }
   });
   // A round trip he opened and closed after we started: always followed, even when paused or filtered.
@@ -63,7 +63,7 @@ export function demoWalletHistory(
   if (rt + 90 * 60_000 < nowMs) {
     const side = ourSide(h % 2 ? "long" : "short", t.direction);
     out.push({ ts_ms: rt, action: "open", leader: a, coin: "DOGE", side, notional_usd: 12.4, leverage: 5, dry_run: true });
-    out.push({ ts_ms: rt + 90 * 60_000, action: "close", leader: a, coin: "DOGE", side, notional_usd: 12.4, reason: "he closed", dry_run: true });
+    out.push({ ts_ms: rt + 90 * 60_000, action: "close", leader: a, coin: "DOGE", side, notional_usd: 12.4, reason: "they closed", dry_run: true });
   }
   return out.sort((x, y) => y.ts_ms - x.ts_ms);
 }

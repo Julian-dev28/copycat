@@ -27,7 +27,7 @@ function Head({ cols }: { cols: string[] }) {
 
 export function FillsTab({ address, truncationNotice }: { address: string; truncationNotice?: string | null }) {
   const q = useFileFills(address, true);
-  if (q.isError && !q.data) return <LoadError what="his fills" error={q.error} onRetry={() => q.refetch()} />;
+  if (q.isError && !q.data) return <LoadError what="their fills" error={q.error} onRetry={() => q.refetch()} />;
   const fills = q.data?.pages.flat() ?? [];
   if (q.isPending) return <p className="p-4 text-sm text-muted">Loading fills…</p>;
   if (!fills.length) return <p className="p-4 text-sm text-muted">No fills cached for this trader.</p>;
@@ -80,7 +80,7 @@ export function FillsTab({ address, truncationNotice }: { address: string; trunc
 
 export function OrdersTab({ address }: { address: string }) {
   const q = useFileOrders(address, true);
-  if (q.isError) return <LoadError what="his open orders" error={q.error} onRetry={() => q.refetch()} />;
+  if (q.isError) return <LoadError what="their open orders" error={q.error} onRetry={() => q.refetch()} />;
   if (!q.data) return <p className="p-4 text-sm text-muted">Loading open orders…</p>;
   if (!q.data.length) return <p className="p-4 text-sm text-muted">No open orders.</p>;
   return (

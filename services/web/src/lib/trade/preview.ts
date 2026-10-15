@@ -33,7 +33,7 @@ export function localPreview(inp: TicketInput): TicketPreview {
   if (inp.smallMode === "concentrate") {
     sized = concentrate(raw, total, MIN);
     sized.forEach((s, i) => {
-      if (s <= 0 && raw[i] > 0) reasons[i] = "under $10 min: moved to his bigger bets";
+      if (s <= 0 && raw[i] > 0) reasons[i] = "under $10 min: moved to their bigger bets";
     });
   } else {
     sized = raw.map((r) => (r >= MIN ? r : 0));
@@ -130,7 +130,7 @@ export function liqEstimate(inp: TicketInput, live: PlannedCopy[], exposureUsd: 
  * the engine preview failed.
  */
 export function estimateNote(apiFailed: string | null | false, showingLocal: boolean, asOfMs: number | null | undefined, nowMs = Date.now()): string | null {
-  const age = asOfMs ? ` (his positions as of ${ageText(nowMs - asOfMs)} ago)` : "";
+  const age = asOfMs ? ` (their positions as of ${ageText(nowMs - asOfMs)} ago)` : "";
   if (apiFailed === "too_old") return `Local estimate${age}: your api has no preview route yet.`;
   if (apiFailed) return `Local estimate${age}: the engine preview failed.`;
   if (showingLocal) return `Estimate from cached data${age}; the engine preview replaces it in a moment.`;

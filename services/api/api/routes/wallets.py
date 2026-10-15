@@ -95,8 +95,8 @@ def copy_wallet(address: str, body: WalletCopyRequest,
 def preview_wallet(address: str, body: WalletCopyRequest,
                    store: SettingsStore = Depends(get_store),
                    engine: EngineClient = Depends(get_engine_client)) -> WalletPreview:
-    """What investing would copy of his book right now, sized by the same
-    `engine.sizing.plan_allocation` the engine uses. 502 when his live read
+    """What investing would copy of their book right now, sized by the same
+    `engine.sizing.plan_allocation` the engine uses. 502 when their live read
     fails, 503 when the engine package is missing."""
     addr = _addr_or_400(address)
     _target_needs_leverage(body)
@@ -154,7 +154,7 @@ def _set_paused(address: str, paused: bool, store: SettingsStore) -> Settings:
 @router.post("/{address}/pause", response_model=Settings)
 def pause_wallet(address: str, store: SettingsStore = Depends(get_store)) -> Settings:
     """Pause one wallet: the engine opens and adds nothing for it (skip
-    "paused"); its open copies still follow his reduces and closes. Pausing
+    "paused"); its open copies still follow their reduces and closes. Pausing
     is not stopping: the wallet stays in the book. A global wallet gets a
     minimal override `{paused: true}` and stays "global". 404 when the wallet
     is not in the book."""
@@ -163,8 +163,8 @@ def pause_wallet(address: str, store: SettingsStore = Depends(get_store)) -> Set
 
 @router.post("/{address}/resume", response_model=Settings)
 def resume_wallet(address: str, store: SettingsStore = Depends(get_store)) -> Settings:
-    """Resume a paused wallet. Moves he made while paused are not entered
-    midway; the next position he opens is copied. 404 when not in the book."""
+    """Resume a paused wallet. Moves they made while paused are not entered
+    midway; the next position they open is copied. 404 when not in the book."""
     return _set_paused(address, False, store)
 
 
@@ -241,11 +241,11 @@ def wallet_projection(request: Request, address: str,
                       target_leverage: Optional[int] = Query(None, ge=1, le=MAX_LEVERAGE_CAP),
                       store: SettingsStore = Depends(get_store),
                       scout: ScoutClient = Depends(get_scout_client)) -> Any:
-    """His last 30d replayed onto `allocation_usd` at these terms (counter =
+    """Their last 30d replayed onto `allocation_usd` at these terms (counter =
     every side inverted, liquidations on our side), by discovery's copy-sim
     on CACHED fills and candles only: no HL call in this request. Unset terms
     come from the wallet's current settings (custom override, else the
-    Settings tab), and his coin filters apply. No cached data for him yet:
+    Settings tab), and their coin filters apply. No cached data for them yet:
     202 with the Scout status, and a build is queued (as GET
     /api/scout/traders/{a} does). 409 while another what-if runs."""
     addr = _addr_or_400(address)
@@ -277,7 +277,7 @@ def build_projection(scout: ScoutClient, addr: str, settings: Settings, allocati
     mode, leverage, margin mode, entry deviation, small-account mode, coin
     lists) is replayed too, so the projection runs at the plan's terms.
     Regression: the MCP plan's projection used only direction / exposure /
-    target leverage, so a "follow his leverage, 2% entry" plan was replayed at
+    target leverage, so a "follow their leverage, 2% entry" plan was replayed at
     the saved leverage_mode (max) and 10% entry. Raises LookupError (no
     cached data), ScoutBusy, ScoutUnavailable; the caller holds the what-if
     lock."""
@@ -296,7 +296,7 @@ def build_projection(scout: ScoutClient, addr: str, settings: Settings, allocati
                            target_leverage=target_leverage or eff.target_leverage, **extra)
     res = scout.what_if(addr, settings, allocation_usd, patch)
     sc = res.score
-    note = "his last 30 days on cached data"
+    note = "their last 30 days on cached data"
     if direction == TradeDirection.counter:
         note += "; counter: every side inverted"
     if eff.coin_allowlist or eff.coin_blocklist:
@@ -328,7 +328,7 @@ _STYLE_TTL_S = 300.0
 
 
 def _styles(request: Request, scout: Optional[ScoutClient], addrs: List[str]) -> Dict[str, TradingStyle]:
-    """His Scout style per wallet, from the stored board row (one indexed
+    """Their Scout style per wallet, from the stored board row (one indexed
     page query per wallet, cached 5 min on the app). Never raises; unknown =
     absent. Never queues a build (profile would)."""
     if scout is None or not addrs:
@@ -441,8 +441,8 @@ def list_wallets(request: Request,
     come back, zeroed, read_ok false. ROE % = (realized + unrealized) /
     allocation_usd x 100, None for a wallet not on allocation sizing. Terms:
     in-book wallets from settings; out-of-book ones from the engine's
-    `effective` (the terms they last ran with). `style` is his Scout style
-    when Scout has his board row, else null."""
+    `effective` (the terms they last ran with). `style` is their Scout style
+    when Scout has their board row, else null."""
     settings = store.load()
     st = _engine_status(engine)
     rows: Dict[str, LeaderStatus] = {r.address: r for r in (st.leaders if st else [])}

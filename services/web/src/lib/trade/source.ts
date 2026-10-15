@@ -191,7 +191,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       const b = book(acct);
       const a = normAddr(address);
       b.stopping.add(a);
-      logEvent(b, a, { ts_ms: demoNowMs(), action: "skip", reason: body.close_positions ? "stop wallet: closing its copies" : "stop wallet: open copies follow him out" });
+      logEvent(b, a, { ts_ms: demoNowMs(), action: "skip", reason: body.close_positions ? "stop wallet: closing its copies" : "stop wallet: open copies follow them out" });
       // Closing takes a cycle or two on a real engine; running out takes until he exits (sped up here).
       setTimeout(() => finishStop(b, acct, a), body.close_positions ? 2_500 : 8_000);
       return later(structuredClone(b.settings), 300);
@@ -234,7 +234,7 @@ export function demoTrade(acct: DemoAccount): TradeSource {
       if (!onBoard) {
         const first = b.building.get(a) ?? Date.now();
         b.building.set(a, first);
-        if (Date.now() - first < 4_000) return later<ProjectionResult>({ kind: "building", note: "Reading his last 30 days from Hyperliquid." }, 200);
+        if (Date.now() - first < 4_000) return later<ProjectionResult>({ kind: "building", note: "Reading their last 30 days from Hyperliquid." }, 200);
       }
       const prof = fixtureProfile(demoFileRow(a, nowMs), nowMs);
       const idx = profileIndex(prof, "30d");

@@ -51,7 +51,7 @@ export function TraderFile({ address }: { address: string }) {
     const t = buildingText(q.data.status);
     return (
       <Message title="Building this trader file" spin>
-        Reading his fills, positions and the copy sim. This page checks back every 3 seconds{t ? ` (${t})` : ""}.
+        Reading their fills, positions and the copy sim. This page checks back every 3 seconds{t ? ` (${t})` : ""}.
       </Message>
     );
   }
@@ -84,7 +84,7 @@ export function TraderFile({ address }: { address: string }) {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-4">
           <Panel>
-            <PanelHeader title="Performance" description="His PnL or account value, with your copy's sim overlaid" />
+            <PanelHeader title="Performance" description="Their PnL or account value, with your copy's sim overlaid" />
             <div className="px-4 pb-4">
               <PerformanceChart profile={profile} simLabel={whatIf ? "Your copy (what-if)" : undefined} />
             </div>

@@ -547,7 +547,7 @@ def wallet_settings(settings: Settings, address: str, req: WalletCopyRequest) ->
 
 def _apply_v8_to_plan(plan: Dict[str, Any], es: Settings, notes: List[str]) -> None:
     """Contract v8 on a preview plan, the way the engine applies it: sized on
-    his whole book first (a filtered coin's slice is left unspent, never
+    their whole book first (a filtered coin's slice is left unspent, never
     handed to the other coins), then a coin outside the allow/block lists is
     skipped "filtered: <coin>", every side flips for counter, and a paused
     wallet copies nothing until resumed."""
@@ -561,7 +561,7 @@ def _apply_v8_to_plan(plan: Dict[str, Any], es: Settings, notes: List[str]) -> N
                      reason=f"filtered: {r['coin']}")
             changed = True
     if counter:
-        notes.append("counter: every copy takes the opposite side of his position")
+        notes.append("counter: every copy takes the opposite side of their position")
     if es.paused:
         notes.append("paused: nothing opens until the wallet is resumed")
     if changed:
@@ -579,9 +579,9 @@ def _default_venue() -> Any:
 
 
 def leader_book(address: str, venue: Optional[Any] = None) -> List[Dict[str, Any]]:
-    """His open perp positions from ONE account read (no per-coin reads), as
-    [{coin, side, notional_usd}] with notional = |size| x his entry (what the
-    engine sizes from). The api's MCP copy plan hashes this to detect that his
+    """Their open perp positions from ONE account read (no per-coin reads), as
+    [{coin, side, notional_usd}] with notional = |size| x their entry (what the
+    engine sizes from). The api's MCP copy plan hashes this to detect that their
     book changed between a plan and its execute. PreviewUnavailable if the
     read fails."""
     venue = venue or _default_venue()
@@ -599,11 +599,11 @@ def leader_book(address: str, venue: Optional[Any] = None) -> List[Dict[str, Any
 
 def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
                    venue: Optional[Any] = None, now_ms: Optional[int] = None) -> WalletPreview:
-    """What investing `req` in `address` would copy of his book now. Read
-    only: his account, each coin's max leverage, 24h volume and book depth.
+    """What investing `req` in `address` would copy of their book now. Read
+    only: their account, each coin's max leverage, 24h volume and book depth.
     Sized by `sizing.plan_allocation` with the exact exchange leverage the
-    engine would request per coin, his equity computed as the engine does
-    (extras included when include_spot_staked), our existing copies of him
+    engine would request per coin, their equity computed as the engine does
+    (extras included when include_spot_staked), our existing copies of them
     held (concentrate never drops them) and their margin counted against
     the allocation cap, so re-posting a bigger amount previews the adjust."""
     venue = venue or _default_venue()
@@ -707,16 +707,16 @@ def preview_wallet(address: str, req: WalletCopyRequest, settings: Settings,
         for r in plan["slices"]:
             if r["status"] != "skip":     # incl. "wait": his current book is never copied
                 r.update(status="skip", notional_usd=0.0, margin_usd=0.0, fill_cycles=1,
-                         reason="only_new_positions: his current positions are not copied")
+                         reason="only_new_positions: their current positions are not copied")
         plan.update(planned_notional_usd=0.0, planned_margin_usd=0.0, copied=[], waiting=[],
                     skipped=[r["coin"] for r in plan["slices"]], multi_cycle=False)
-        notes.append("only_new_positions: only positions he opens from now on are copied")
+        notes.append("only_new_positions: only positions they open from now on are copied")
     _apply_v8_to_plan(plan, es, notes)
     if not positions:
-        notes.append("he holds no positions now: nothing opens until he does")
+        notes.append("they hold no positions now: nothing opens until they do")
     if plan.get("waiting"):
         notes.append(f"waiting on price: {', '.join(plan['waiting'])} (mid is more than "
-                     f"{es.max_worse_entry_pct:g}% past his entry; the engine opens it only once price "
+                     f"{es.max_worse_entry_pct:g}% past their entry; the engine opens it only once price "
                      f"comes back, not counted in the totals)")
     if plan["multi_cycle"]:
         notes.append("some slices exceed the liquidity cap and fill over several cycles")

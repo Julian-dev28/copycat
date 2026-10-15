@@ -1,4 +1,4 @@
-"""MCP copy plans: "paste an address, see his strategy at $X, approve, copy".
+"""MCP copy plans: "paste an address, see their strategy at $X, approve, copy".
 
 The copycat MCP server (services/mcp) lets the user's own Claude Code build a
 plan and, only when the operator opted in, execute it. Execution never talks
@@ -21,9 +21,9 @@ Execute guards, in this order (each one audit-logged with its outcome):
       settings.max_position_leverage, and today's executed MCP dollars (UTC
       day, from the audit log) + this amount <= COPYCAT_MCP_MAX_USD_PER_DAY
       (default = the per-plan cap) (403)
-  (e) his positions now (one account read, `leader_book`) hash to the plan's
+  (e) their positions now (one account read, `leader_book`) hash to the plan's
       book_fingerprint (409, plan burned)
-  (f) the book has room (MAX_LEADERS) unless he is already in it (409)
+  (f) the book has room (MAX_LEADERS) unless they are already in it (409)
 Then `copy_wallet` with the plan's custom terms. `enabled` and `dry_run` are
 never touched: whether anything is ordered stays the user's switch.
 
@@ -135,8 +135,8 @@ def utc_day_start_ms(now_ms: int) -> int:
 
 def copy_request_for(req: CopyPlanRequest) -> WalletCopyRequest:
     """The Trade-page terms a plan writes. leverage None follows his: exposure
-    match (his book at his leverage) with leverage_mode match. leverage L:
-    exposure target at L (allocation x L in his proportions)."""
+    match (their book at their leverage) with leverage_mode match. leverage L:
+    exposure target at L (allocation x L in their proportions)."""
     lev = req.leverage
     return WalletCopyRequest(
         settings_source="custom", allocation_usd=req.amount_usd,
@@ -158,7 +158,7 @@ def planned_coins(preview: WalletPreview) -> List[str]:
 
 def book_fingerprint(book: List[Dict[str, Any]],
                      coins: Optional[List[str]] = None) -> Tuple[str, List[str]]:
-    """sha256 over his positions (coin, side, |size| x entry to the cent),
+    """sha256 over their positions (coin, side, |size| x entry to the cent),
     sorted by coin, plus a human summary sorted by size. `book` is
     `engine.public.leader_book` (one account read). Entry-based, so a mark
     move does not change it; an open, add, reduce, close or flip does.
@@ -166,7 +166,7 @@ def book_fingerprint(book: List[Dict[str, Any]],
     `coins`: hash only these (the ones the plan copies), plus whether each is
     still held. A very active trader changing a coin we are NOT copying no
     longer voids the plan; any change to a planned coin (size, side, closed)
-    still does. The summary always covers his whole book."""
+    still does. The summary always covers their whole book."""
     all_rows = sorted((str(b["coin"]), str(b["side"]), round(float(b["notional_usd"]), 2)) for b in book)
     if coins is None:
         rows = all_rows
@@ -224,26 +224,26 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
         executable = False
         w.append(f"Your book is full ({MAX_LEADERS} wallets); stop one in the web UI first.")
     if in_book:
-        w.append("He is already in your book: executing replaces this wallet's terms "
-                 "(his ledger carries on). Positions you already copy are kept.")
+        w.append("They are already in your book: executing replaces this wallet's terms "
+                 "(their ledger carries on). Positions you already copy are kept.")
         if settings.for_leader(addr).paused:
             w.append("This wallet is paused: executing keeps it paused (resume it on the Trade page).")
-        w.append("Already in the book, so the engine has seen his current positions: they are "
-                 "not entered midway; only his next moves are copied.")
+        w.append("Already in the book, so the engine has seen their current positions: they are "
+                 "not entered midway; only their next moves are copied.")
     if not live:
         w.append("Trading is not live (enabled=false or dry_run=true): executing only saves the "
-                 "copy terms and nothing is ordered; positions he opens while it is off are not "
+                 "copy terms and nothing is ordered; positions they open while it is off are not "
                  "entered later. Only you can turn trading on, in the copycat web UI.")
         if not req.follow:
-            w.append("One-shot while trading is off copies nothing: his current positions are "
+            w.append("One-shot while trading is off copies nothing: their current positions are "
                      "seen (and skipped) now, and nothing after them is copied.")
     if style == TradingStyle.algo:
-        w.append("Scout tags him as an algo/HFT trader: copies land seconds late, which usually "
+        w.append("Scout tags them as an algo/HFT trader: copies land seconds late, which usually "
                  "erases a short-hold edge.")
     elif style == TradingStyle.scalp:
-        w.append("Scout tags him as a scalper: short holds degrade most when copied seconds late.")
+        w.append("Scout tags them as a scalper: short holds degrade most when copied seconds late.")
     if his_liq_pct is not None and his_liq_pct < LIQ_WARN_PCT:
-        w.append(f"His nearest liquidation is {his_liq_pct:.1f}% away: a small move against him "
+        w.append(f"Their nearest liquidation is {his_liq_pct:.1f}% away: a small move against them "
                  f"liquidates that position (and your copy at the same leverage).")
     hot = sorted({s.leverage for s in preview.slices if s.status not in ("skip", "wait") and s.leverage > 0
                   and 100.0 / s.leverage < LIQ_WARN_PCT})
@@ -252,16 +252,16 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
                  f"{100.0 / max(hot):.1f}% adverse move or less (isolated margin, before "
                  f"maintenance margin).")
     if not preview.slices:
-        w.append("He holds no positions right now." + (
+        w.append("They hold no positions right now." + (
             " One-shot would copy nothing." if not req.follow else
-            " Nothing opens until his next position."))
+            " Nothing opens until their next position."))
     under_min = [s for s in preview.slices if s.status == "skip"
                  and "minimum" in (s.reason or "")]
     if under_min:
-        w.append(f"{len(under_min)} of his {len(preview.slices)} positions are under the "
+        w.append(f"{len(under_min)} of their {len(preview.slices)} positions are under the "
                  f"${HL_MIN_ORDER_USD} order minimum at ${req.amount_usd:,.2f} and are skipped: "
                  + ", ".join(s.coin for s in under_min)
-                 + (f". ${preview.min_allocation_for_full_book:,.2f} copies his full book."
+                 + (f". ${preview.min_allocation_for_full_book:,.2f} copies their full book."
                     if preview.min_allocation_for_full_book else "."))
     other = [s for s in preview.slices if s.status == "skip" and s not in under_min]
     if other:
@@ -269,19 +269,19 @@ def plan_warnings(req: CopyPlanRequest, preview: WalletPreview,
     waiting = [s for s in preview.slices if s.status == "wait"]
     if waiting:
         w.append("Waiting on price, NOT copied now and not in the totals (the engine opens each only "
-                 "if price comes back near his entry): "
+                 "if price comes back near their entry): "
                  + "; ".join(f"{s.coin} ({s.reason})" for s in waiting))
     if preview.copied == 0 and preview.slices:
-        w.append("At this amount none of his current positions would be copied.")
+        w.append("At this amount none of their current positions would be copied.")
     if projection is None:
-        w.append("No cached 30-day projection for him yet (Scout is building it).")
+        w.append("No cached 30-day projection for them yet (Scout is building it).")
     elif projection.liquidations:
         w.append(f"The 30-day replay at these terms hit {projection.liquidations} liquidation(s).")
     w.append(f"Isolated margin: each copied position can lose its own margin, so this plan "
              f"risks about ${req.amount_usd:,.2f} (its allocation), not the rest of your account.")
     if req.trade_direction.value == "counter":
-        w.append("Counter: you take the opposite side of every position he opens.")
-    w.append(f"Entries wait while price is more than {req.entry_deviation_pct:g}% worse than his "
+        w.append("Counter: you take the opposite side of every position they open.")
+    w.append(f"Entries wait while price is more than {req.entry_deviation_pct:g}% worse than their "
              f"entry and fill if it comes back (re-checked every cycle).")
     w.extend(preview.notes)
     return w, executable
@@ -464,7 +464,7 @@ def notify_text(plan: CopyPlan) -> str:
     """Notification body. Only server-validated fields (0x address, numbers, the code
     from CODE_ALPHABET): nothing a trader or a thesis wrote."""
     r = plan.request
-    lev = f"{r.leverage}x" if r.leverage else "his leverage"
+    lev = f"{r.leverage}x" if r.leverage else "their leverage"
     return (f"Code {plan.confirm_code}: ${r.amount_usd:,.2f} on {r.address[:8]}...{r.address[-4:]}, "
             f"{r.trade_direction.value}, {lev}. Type it to Claude only if you approve.")
 

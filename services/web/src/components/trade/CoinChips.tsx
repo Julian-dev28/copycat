@@ -127,7 +127,7 @@ export function CoinChips({
               className={clsx("flex cursor-pointer items-center justify-between px-3 py-1 text-sm", i === active && "bg-surface-2")}
             >
               <span className="font-num">{s.coin}</span>
-              {s.his ? <span className="text-[10px] text-muted">he trades it</span> : null}
+              {s.his ? <span className="text-[10px] text-muted">they trade it</span> : null}
             </li>
           ))}
         </ul>

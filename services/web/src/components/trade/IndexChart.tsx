@@ -91,8 +91,8 @@ export function IndexChart({ profile, direction = "copy" }: { profile: TraderPro
       </div>
       {counter.length ? (
         <p className="flex items-center gap-3 text-[11px] text-muted">
-          <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4" style={{ background: color }} /> his index</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-0 w-4 border-t-2 border-dashed border-accent" /> countering him (inverted)</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4" style={{ background: color }} /> their index</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-0 w-4 border-t-2 border-dashed border-accent" /> countering them (inverted)</span>
         </p>
       ) : null}
       <div ref={ref} className="relative w-full">

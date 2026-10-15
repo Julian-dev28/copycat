@@ -470,7 +470,7 @@ def test_size_multiplier_scales_proportional_mode_only(engine_state, venue):
 
 def test_fixed_margin_copy_at_full_size_skips_his_adds(engine_state, venue):
     """Fixed modes are one fixed-size copy per position. A full copy does not
-    follow his adds (that is what allocation/proportional sizing is for)."""
+    follow their adds (that is what allocation/proportional sizing is for)."""
     venue.set_account(OUR, 1000.0)
     venue.max_levs["BTC"] = 10
     venue.hold(LEADER1, "BTC", 10.0, entry_px=100.0)

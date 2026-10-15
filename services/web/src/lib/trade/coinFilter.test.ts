@@ -43,7 +43,7 @@ describe("coin filters (engine coin_allowed rule)", () => {
     expect(addCoin(["BTC"], "btc")).toEqual(["BTC"]);
     expect(parseCoins("btc, eth  sol;btc")).toEqual(["BTC", "ETH", "SOL"]);
   });
-  it("autocomplete: his coins first, prefix before substring, chosen excluded", () => {
+  it("autocomplete: their coins first, prefix before substring, chosen excluded", () => {
     const s = suggestCoins("e", ["ETH", "BTC"], ["ENA", "ETH", "PENDLE"], []);
     expect(s[0]).toEqual({ coin: "ETH", his: true });
     expect(s.map((x) => x.coin)).toEqual(["ETH", "ENA", "PENDLE"]);

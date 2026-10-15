@@ -22,7 +22,7 @@ export function StrategyTab({ address }: { address: string }) {
     return (
       <Panel className="flex items-center gap-3 p-5 text-sm text-muted" role="status">
         <Loader2 size={16} className="animate-spin text-accent" aria-hidden="true" />
-        {s ? `Reading his fills and candles to build the fingerprint${s.total ? ` (${s.done}/${s.total})` : ""}. This page checks back every few seconds.` : "Loading strategy…"}
+        {s ? `Reading their fills and candles to build the fingerprint${s.total ? ` (${s.done}/${s.total})` : ""}. This page checks back every few seconds.` : "Loading strategy…"}
       </Panel>
     );
   }
@@ -56,7 +56,7 @@ export function StrategyTab({ address }: { address: string }) {
       </Panel>
 
       <Panel>
-        <PanelHeader title="When he enters" description="Trip entries by UTC hour and weekday" />
+        <PanelHeader title="When they enter" description="Trip entries by UTC hour and weekday" />
         <div className="px-4 pb-4">
           <StrategyHeatmap fp={f} />
         </div>

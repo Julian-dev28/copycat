@@ -65,8 +65,8 @@ describe("niceTicks", () => {
   });
 });
 
-describe("buildDualSparkline (his PnL + your sim, spec 4.1)", () => {
-  it("needs 2 of his points; the sim is optional", () => {
+describe("buildDualSparkline (their PnL + your sim, spec 4.1)", () => {
+  it("needs 2 of their points; the sim is optional", () => {
     expect(buildDualSparkline(pts([1]), pts([1, 2]), 100, 40)).toBeNull();
     const s = buildDualSparkline(pts([0, 5]), pts([1000]), 100, 40)!;
     expect(s.sim).toBeNull();

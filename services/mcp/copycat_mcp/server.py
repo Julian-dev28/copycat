@@ -16,7 +16,7 @@ both only compute (nothing in the book changes). No tool calls /copy or /stop.
 execute_copy_plan (v0.3) is the one tool that can put money to work. It is not
 registered at all unless COPYCAT_MCP_ALLOW_TRADING=1 is in this server's env,
 and the api refuses it unless the same flag is in the api's env. It applies a
-plan the user saw (single-use, MCP_PLAN_TTL_S, confirm code, dollar caps, his book
+plan the user saw (single-use, MCP_PLAN_TTL_S, confirm code, dollar caps, their book
 unchanged, isolated margin) through the engine, and still cannot change `enabled` or `dry_run`.
 
 The confirm code is never in any tool output (audit H2): the api does not return
@@ -56,7 +56,7 @@ fills, candles) and let you save written strategy theses. You can build copy pla
 list only when the user approves a plan and `execute_copy_plan` runs.
 You cannot turn trading on, change global settings, halt, or close positions: the user does
 that in the copycat web UI. Use the `write_thesis` prompt for the full research-and-write flow
-and the `copy_trader` prompt for "research this trader, then copy him with $X".
+and the `copy_trader` prompt for "research this trader, then copy them with $X".
 Timestamps are Unix milliseconds, UTC.
 
 If `execute_copy_plan` is available, it moves real money. Call it ONLY when the user's most
@@ -155,9 +155,9 @@ def present_plan(plan: Dict[str, Any], can_execute: bool) -> str:
     the human reads that in copycat and types it back."""
     req = plan.get("request") or {}
     pv = plan.get("preview") or {}
-    lev = f"{req.get('leverage')}x (yours)" if req.get("leverage") else "his leverage"
-    mode = "follow (copy his new positions too)" if req.get("follow", True) else \
-        "one-shot (copy what he holds now, then only mirror his exits)"
+    lev = f"{req.get('leverage')}x (yours)" if req.get("leverage") else "their leverage"
+    mode = "follow (copy their new positions too)" if req.get("follow", True) else \
+        "one-shot (copy what they hold now, then only mirror their exits)"
     expires = time.strftime("%H:%M:%S UTC", time.gmtime(int(plan.get("expires_ms") or 0) / 1000))
     lines = [
         f"### Copy plan `{plan.get('plan_id')}`",
@@ -165,11 +165,11 @@ def present_plan(plan: Dict[str, Any], can_execute: bool) -> str:
         f"- Amount: {_money(req.get('amount_usd'))}",
         f"- Direction: {req.get('trade_direction', 'copy')}",
         f"- Leverage: {lev}",
-        f"- Entry deviation: {req.get('entry_deviation_pct')}% worse than his entry at most",
+        f"- Entry deviation: {req.get('entry_deviation_pct')}% worse than their entry at most",
         f"- Mode: {mode}",
         f"- Trading live now: {'yes' if plan.get('trading_live') else 'NO (enabled=false or dry_run=true)'}",
         "",
-        "| coin | his side | his notional | your copy | margin | lev | status |",
+        "| coin | their side | their notional | your copy | margin | lev | status |",
         "|---|---|---|---|---|---|---|",
     ]
     for sl in pv.get("slices") or []:
@@ -180,7 +180,7 @@ def present_plan(plan: Dict[str, Any], can_execute: bool) -> str:
                      f"{_money(sl.get('notional_usd'))} | {_money(sl.get('margin_usd'))} | "
                      f"{sl.get('leverage')}x | {status} |")
     if not pv.get("slices"):
-        lines.append("| (he holds no positions) | | | | | | |")
+        lines.append("| (they hold no positions) | | | | | | |")
     lines += ["", f"Planned: {_money(pv.get('planned_notional_usd'))} notional, "
                   f"{_money(pv.get('planned_margin_usd'))} margin, {pv.get('copied', 0)} copied, "
                   f"{pv.get('skipped', 0)} skipped."]
@@ -472,14 +472,14 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
         allocation_usd: Annotated[Optional[float], Field(gt=0, description="custom: dollars to invest "
                                                                            "in this wallet.")] = None,
         exposure_mode: Annotated[Literal["match", "target"], Field(
-            description="custom: match = his book at his leverage; target = allocation x "
-                        "target_leverage spread in his proportions.")] = "match",
+            description="custom: match = their book at their leverage; target = allocation x "
+                        "target_leverage spread in their proportions.")] = "match",
         target_leverage: Annotated[Optional[int], Field(ge=1, le=50, description="custom + target: "
                                                                                  "your leverage.")] = None,
     ) -> Dict[str, Any]:
         """Preview what copycat WOULD place to copy this wallet right now, computed by the engine's
-        own sizing code from his live positions: per-coin copy sizes, which positions are skipped
-        and why (under the $10 minimum, liquidity), the minimum investment for his full book, and
+        own sizing code from their live positions: per-coin copy sizes, which positions are skipped
+        and why (under the $10 minimum, liquidity), the minimum investment for their full book, and
         margin needed. It never places or saves anything (read-only on the server); the user
         decides on the Trade page."""
         body: Dict[str, Any] = {"settings_source": settings_source}
@@ -506,24 +506,24 @@ def build_server(config: Optional[McpConfig] = None, api: Optional[CopycatApi] =
     @mcp.tool(annotations=READ)
     async def copy_plan(
         address: Address,
-        amount_usd: Annotated[float, Field(gt=0, description="Dollars to put into copying him "
+        amount_usd: Annotated[float, Field(gt=0, description="Dollars to put into copying them "
                                                              "(margin budget for this wallet).")],
         leverage: Annotated[Optional[int], Field(ge=1, le=50, description="YOUR leverage (1-50); "
-                                                 "omit to follow his leverage.")] = None,
+                                                 "omit to follow their leverage.")] = None,
         entry_deviation_pct: Annotated[float, Field(ge=0, le=50, description="Open only while price "
-                                                    "is at most this % worse than his entry; "
+                                                    "is at most this % worse than their entry; "
                                                     "further away waits and opens if it comes "
                                                     "back.")] = 2.0,
         trade_direction: Annotated[Literal["copy", "counter"], Field(
-            description="copy = his sides; counter = the opposite side of each position.")] = "copy",
-        follow: Annotated[bool, Field(description="true: keep copying his new positions. false: "
-                                                  "one-shot, copy what he holds now, then only "
-                                                  "mirror his exits.")] = True,
+            description="copy = their sides; counter = the opposite side of each position.")] = "copy",
+        follow: Annotated[bool, Field(description="true: keep copying their new positions. false: "
+                                                  "one-shot, copy what they hold now, then only "
+                                                  "mirror their exits.")] = True,
     ) -> Dict[str, Any]:
         """Build a copy plan: what copying this trader with amount_usd at these terms would do
-        right now, computed by copycat's engine from his live positions (per-position copy sizes,
+        right now, computed by copycat's engine from their live positions (per-position copy sizes,
         skips under the $10.50 minimum, margin), plus the cached 30-day projection, warnings,
-        his fingerprint summary and the newest saved thesis. Places NOTHING and changes nothing in
+        their fingerprint summary and the newest saved thesis. Places NOTHING and changes nothing in
         the book; the plan is stored for a few minutes (see plan.expires_ms). Its one-time confirm
         code is NOT in this result: copycat shows it only to the human (Portfolio > Pending MCP
         plans). Show the user `present` and ask before anything else happens."""

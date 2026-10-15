@@ -1,7 +1,7 @@
 """MCP copy plans (contract v9): POST /api/mcp/plans and .../execute.
 
 Every execute guard with its status, single use, expiry, confirm mismatch
-(and burning after 3), his book changing, the caps, the rate limit, the
+(and burning after 3), their book changing, the caps, the rate limit, the
 one-shot flag, the audit log carrying no secret, and enabled/dry_run never
 being touched. No HL: the engine preview is FakeEngineClient.preview_result."""
 from __future__ import annotations
@@ -134,7 +134,7 @@ def test_plan_without_leverage_follows_his(client, auth_headers, engine, plans):
 
 def test_plan_projection_runs_at_the_plans_own_terms(client, auth_headers, engine, fake_scout, plans):
     """Regression: the projection replayed only direction / exposure / target
-    leverage, so a 'follow his leverage, 2% entry' plan was simulated at the
+    leverage, so a 'follow their leverage, 2% entry' plan was simulated at the
     saved leverage_mode (max) and 10% entry: its liquidation count described
     terms the plan would never run."""
     make_plan(client, auth_headers, entry_deviation_pct=2.0)
@@ -177,7 +177,7 @@ def test_plan_warnings(client, auth_headers, fake_engine, fake_scout, plans):
     assert "Execution is disabled" in w and "COPYCAT_MCP_ALLOW_TRADING=1" in w
     assert "over the per-plan cap of $100.00" in w
     assert "Trading is not live" in w and "One-shot while trading is off copies nothing" in w
-    assert "1 of his 2 positions are under the $10.5 order minimum" in w and "DOGE" in w
+    assert "1 of their 2 positions are under the $10.5 order minimum" in w and "DOGE" in w
     assert "liquidate on roughly a 4.0% adverse move" in w
     assert "No cached 30-day projection" in w and p["projection"] is None
     assert p["executable"] is False
@@ -195,7 +195,7 @@ def test_plan_style_and_his_liquidation_warnings(client, auth_headers, engine, f
     prof = prof.model_copy(update={"account": prof.account.model_copy(update={"nearest_liq_pct": 3.2})})
     monkeypatch.setattr(fake_scout, "profile", lambda a: prof)
     w = "\n".join(make_plan(client, auth_headers)["warnings"])
-    assert "algo/HFT" in w and "His nearest liquidation is 3.2% away" in w
+    assert "algo/HFT" in w and "Their nearest liquidation is 3.2% away" in w
 
 
 def test_plan_for_a_wallet_already_in_the_book_says_so(client, auth_headers, engine, plans):
@@ -207,7 +207,7 @@ def test_plan_for_a_wallet_already_in_the_book_says_so(client, auth_headers, eng
 
 def test_plan_preview_failure_is_502(client, auth_headers, fake_engine, plans):
     from api.engine_client import PreviewFailed
-    fake_engine.preview_result = PreviewFailed("his read failed")
+    fake_engine.preview_result = PreviewFailed("their read failed")
     r = client.post("/api/mcp/plans", headers=auth_headers, json={"address": A, "amount_usd": 5})
     assert r.status_code == 502
 

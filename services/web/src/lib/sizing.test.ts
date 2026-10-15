@@ -44,7 +44,7 @@ describe("previewNotionalUsd", () => {
     expect(previewNotionalUsd({ ...base, sizingMode: "fixed_notional" }, 1)).toBe(50);
   });
 
-  it("proportional: his exposure / his equity * our allocation * size_multiplier", () => {
+  it("proportional: their exposure / their equity * our allocation * size_multiplier", () => {
     // leader has $10k notional on $5k equity (2x exposure); we allocate our
     // whole $1k equity (sleeve_frac=1) at 1x size_multiplier.
     const result = previewNotionalUsd(

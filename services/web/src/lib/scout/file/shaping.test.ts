@@ -27,7 +27,7 @@ describe("chart paths", () => {
     expect(d).toContain("100");
   });
 
-  it("overlay turns his PnL and the sim into % series that start at 0", () => {
+  it("overlay turns their PnL and the sim into % series that start at 0", () => {
     const profile = fixtureProfile(demoFileRow(ADDR, NOW), NOW);
     const data = chartData(profile, "pnl", "30d", true);
     expect(data.unit).toBe("pct");

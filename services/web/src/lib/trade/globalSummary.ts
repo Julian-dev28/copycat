@@ -19,7 +19,7 @@ export function sizingText(s: TradeSettings): string {
     case "fixed_notional":
       return `Fixed size, ${formatUsd(s.fixed_notional_usd)} per copy`;
     case "proportional":
-      return `Proportional, ${s.size_multiplier}x his size on ${Math.round(s.sleeve_frac * 100)}% of equity`;
+      return `Proportional, ${s.size_multiplier}x their size on ${Math.round(s.sleeve_frac * 100)}% of equity`;
     case "allocation":
       return `${formatUsd(s.allocation_usd ?? 0)} per wallet`;
     default:

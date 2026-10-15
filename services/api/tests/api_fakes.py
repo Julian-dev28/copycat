@@ -56,7 +56,7 @@ class FakeEngineClient:
         self.book_result: Any = None           # v9 leader_book(): a list, or an exception
 
     def leader_book(self, address: str) -> List[Dict[str, Any]]:
-        """v9: `book_result` if set, else his positions as the preview shows them."""
+        """v9: `book_result` if set, else their positions as the preview shows them."""
         if isinstance(self.book_result, Exception):
             raise self.book_result
         if self.book_result is not None:

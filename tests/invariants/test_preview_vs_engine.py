@@ -108,7 +108,7 @@ def _engine(book, mids, maxes, req, base, his_eq):
 @given(scenario())
 def test_preview_status_and_size_equal_the_engines_next_cycle(sc):
     """Prevents: a preview / MCP plan row marked "copy" with a notional the
-    engine never opens (NEAR: his entry 2.35, mid 5.25, 2% allowed -> the
+    engine never opens (NEAR: their entry 2.35, mid 5.25, 2% allowed -> the
     engine waits forever; the plan said copy), or opens at a different size,
     leverage or side; and totals that count slices the engine will not place.
     Statuses map: copy/trimmed/bump <-> an order of that notional at that
@@ -158,7 +158,7 @@ def test_counter_preview_is_copy_with_every_side_inverted(sc):
 
 
 def test_near_regression_far_from_entry_waits_and_is_not_in_the_totals():
-    """The MCP run that found it: NEAR his entry 2.35, mid ~5.25, 2% allowed."""
+    """The MCP run that found it: NEAR their entry 2.35, mid ~5.25, 2% allowed."""
     book = {"NEAR": {"szi": 10_000.0, "entry_px": 2.35, "lev": 5.0},
             "BTC": {"szi": 1.0, "entry_px": 60_000.0, "lev": 5.0}}
     mids = {"NEAR": 5.25, "BTC": 60_000.0}
@@ -168,7 +168,7 @@ def test_near_regression_far_from_entry_waits_and_is_not_in_the_totals():
     pv = _preview(*sc)
     near = next(s for s in pv.slices if s.coin == "NEAR")
     assert near.status == "wait" and near.notional_usd == 0.0
-    assert "123.4% past his entry; opens only within 2%" in near.reason
+    assert "123.4% past their entry; opens only within 2%" in near.reason
     assert pv.waiting == 1 and pv.copied == 1
     v, _ = _engine(*sc)
     assert [o[0] for o in v.orders] == ["BTC"]

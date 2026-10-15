@@ -164,8 +164,8 @@ and only execute it after an explicit yes. You are handling the user's real mone
 3. `trader_trades(address)`: example entries with context and recent round trips.
 4. `list_theses(address)`: the newest saved thesis, if any. If there is none, offer to run the
    `write_thesis` prompt afterwards; do not write one now unless the user asks.
-5. `copy_plan(address, amount_usd={amount_usd})` with defaults (his leverage, 2% entry deviation,
-   copy, follow) to see what his book looks like at ${amount_usd}: which positions copy, which are skipped
+5. `copy_plan(address, amount_usd={amount_usd})` with defaults (their leverage, 2% entry deviation,
+   copy, follow) to see what their book looks like at ${amount_usd}: which positions copy, which are skipped
    under the $10.50 minimum, margin, warnings. This plan is a preview; you will make the real one after
    the user answers.
 
@@ -178,7 +178,7 @@ and only execute it after an explicit yes. You are handling the user's real mone
   concentration, hidden PnL outside the counted trips). If there is no saved thesis yet, derive this
   from the fingerprint alone: say so, and name what you'd want a thesis for. This section exists so the
   user sees the reasons to walk away before they see a table that makes copying look easy.
-- Their book at your amount: a table of his current positions (coin, side, his notional, your copy,
+- Their book at your amount: a table of their current positions (coin, side, their notional, your copy,
   status) from the plan's preview, the margin you would use, and what is skipped and why.
 - Risks: leverage and liquidation distance, latency (short holds and breakouts degrade when copied
   seconds late), concentration, the projection's drawdown and liquidations if present, every plan warning.
@@ -186,12 +186,12 @@ and only execute it after an explicit yes. You are handling the user's real mone
 
 ## 3. Ask the user, and wait for the answers (do not assume any of them):
 {questions}
-   - Leverage: a number from 1 to 50 for your own leverage, or "his" to follow his leverage.
-   - Entry deviation: how far (in %) the price may be worse than his entry and still open (default 2).
+   - Leverage: a number from 1 to 50 for your own leverage, or "theirs" to follow their leverage.
+   - Entry deviation: how far (in %) the price may be worse than their entry and still open (default 2).
      Positions further away wait and open if price comes back.
-   - Copy or counter: mirror his sides, or take the opposite side of each position.
-   - Follow or one-shot: keep copying his new positions, or copy only what he holds now and then
-     just mirror his exits.
+   - Copy or counter: mirror their sides, or take the opposite side of each position.
+   - Follow or one-shot: keep copying their new positions, or copy only what they hold now and then
+     just mirror their exits.
 
 ## 4. Make the plan and show it
 Call `copy_plan(address, amount_usd, leverage, entry_deviation_pct, trade_direction, follow)` with
@@ -211,6 +211,6 @@ is false, say why (from the warnings) and stop.
 - If `execute_copy_plan` is not in your tool list, execution is turned off: tell the user the plan was
   not executed and that they can copy from the copycat web UI (Trade page), or the operator can enable
   it with COPYCAT_MCP_ALLOW_TRADING=1 (see the copycat MCP README).
-- If the plan expired or his book changed, make a new plan and ask again.
+- If the plan expired or their book changed, make a new plan and ask again.
 - After executing, report the result's `note` (whether trading is live) and suggest `my_wallets` to watch it.
 """

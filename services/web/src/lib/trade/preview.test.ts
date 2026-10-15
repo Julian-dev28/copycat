@@ -13,13 +13,13 @@ const base: TicketInput = {
   leaderEquityUsd: 50_000, positions: POS,
 };
 
-describe("rawCopies: his book in his proportions", () => {
-  it("target: allocation x L spread by his gross notional", () => {
+describe("rawCopies: their book in their proportions", () => {
+  it("target: allocation x L spread by their gross notional", () => {
     // gross 100k; $50 x 10 = $500 -> 300 / 150 / 50
     expect(rawCopies(base)).toEqual([300, 150, 50]);
   });
 
-  it("match: his notional / his equity x allocation (his own leverage)", () => {
+  it("match: their notional / their equity x allocation (their own leverage)", () => {
     // he runs 2x on 50k equity: $50 carries $100
     expect(rawCopies({ ...base, mode: "match" })).toEqual([60, 30, 10]);
   });
@@ -54,7 +54,7 @@ describe("exposure, margin and the $10.50 minimum", () => {
     expect(one(10.5).copies[0].status).toBe("copy");
   });
 
-  it("concentrate: the skipped slice's dollars move to his bigger bets, total kept", () => {
+  it("concentrate: the skipped slice's dollars move to their bigger bets, total kept", () => {
     const p = localPreview({ ...base, allocationUsd: 10, targetLeverage: 5, smallMode: "concentrate" });
     expect(p.copies[2].status).toBe("skipped");
     expect(p.copies[0].notionalUsd).toBeCloseTo(33.33, 1); // 50 x 60/90
@@ -77,7 +77,7 @@ describe("exposure, margin and the $10.50 minimum", () => {
     expect(roomy.copies[2].notionalUsd).toBe(10.5);
   });
 
-  it("full book: the allocation where his smallest position clears the minimum", () => {
+  it("full book: the allocation where their smallest position clears the minimum", () => {
     const p = localPreview({ ...base, allocationUsd: 10, targetLeverage: 5 });
     expect(p.fullBookUsd).toBeCloseTo((10.5 * 100_000) / (10_000 * 5)); // $21
     expect(localPreview({ ...base, allocationUsd: p.fullBookUsd! }).copied).toBe(3);
@@ -85,7 +85,7 @@ describe("exposure, margin and the $10.50 minimum", () => {
 });
 
 describe("follow their leverage", () => {
-  it("opens each copy at ceil(his leverage) and reports his account leverage", () => {
+  it("opens each copy at ceil(their leverage) and reports their account leverage", () => {
     const p = localPreview({ ...base, mode: "match", positions: [{ ...POS[0], leverage: 2.4 }, POS[1]] });
     expect(p.copies.map((c) => c.leverage)).toEqual([3, 5]);
     expect(p.hisLeverage).toBeCloseTo(1.8); // 90k / 50k
@@ -147,8 +147,8 @@ describe("audit S8: coin max and the estimate label", () => {
   it("labels the local estimate whenever it is shown, with the data's age", () => {
     const now = 10 * 3_600_000;
     expect(estimateNote(null, true, now - 3 * 3_600_000, now)).toBe(
-      "Estimate from cached data (his positions as of 3 h ago); the engine preview replaces it in a moment.");
-    expect(estimateNote("too_old", true, now - 5 * 60_000, now)).toMatch(/^Local estimate \(his positions as of 5 min ago\): your api/);
+      "Estimate from cached data (their positions as of 3 h ago); the engine preview replaces it in a moment.");
+    expect(estimateNote("too_old", true, now - 5 * 60_000, now)).toMatch(/^Local estimate \(their positions as of 5 min ago\): your api/);
     expect(estimateNote(null, false, now, now)).toBeNull();
   });
 });

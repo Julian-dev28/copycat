@@ -69,7 +69,7 @@ class CopycatApi:
     async def request(self, method: str, path: str, *, params: Optional[Dict[str, Any]] = None,
                       json: Any = None, timeout_s: Optional[float] = None) -> Any:
         """`timeout_s` overrides the config timeout for one slow call (a copy
-        plan's live preview reads every coin he holds: ~40 s for 60+ coins)."""
+        plan's live preview reads every coin they hold: ~40 s for 60+ coins)."""
         token = self.config.token()
         if not token:
             raise ApiError(f"No copycat api token found (looked at COPYCAT_MCP_TOKEN, "

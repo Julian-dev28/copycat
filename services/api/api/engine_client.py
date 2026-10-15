@@ -96,7 +96,7 @@ class RealEngineClient:
             raise
 
     def leader_book(self, address: str) -> List[Dict[str, Any]]:
-        """`engine.public.leader_book`: his positions from one account read
+        """`engine.public.leader_book`: their positions from one account read
         (background HL priority, like preview). PreviewFailed on a failed read."""
         public = self._public()
         fn = getattr(public, "leader_book", None)
@@ -112,7 +112,7 @@ class RealEngineClient:
             raise
 
     def preview(self, address: str, req: WalletCopyRequest, settings: Settings) -> WalletPreview:
-        """`engine.public.preview_wallet`: a few live HL reads (his account,
+        """`engine.public.preview_wallet`: a few live HL reads (their account,
         24h volume, book depth) in this process. The api never has the agent
         key, and the first preview flips the process to background HL
         priority so it never spends the engine's rate reserve (same as

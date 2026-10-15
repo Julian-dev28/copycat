@@ -31,7 +31,7 @@ describe("PnL card data shaping", () => {
     expect(d.title).toBe("Kestrel");
     expect(d.directionLabel).toBe("Copying");
   });
-  it("sparkline: his index since the copy started, inverted for counter, in the unit box", () => {
+  it("sparkline: their index since the copy started, inverted for counter, in the unit box", () => {
     const index = [0, 1, 2, 3].map((i) => ({ t_ms: NOW - (20 - i * 5) * DAY, value: 100 + i * 10 }));
     const d = shareCardData(w, { nowMs: NOW, index });
     expect(d.spark.length).toBe(2); // only the points after invested_ms (12 days ago)

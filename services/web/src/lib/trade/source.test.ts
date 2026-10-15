@@ -116,7 +116,7 @@ describe("demo book v8: counter, filters, pause, archive, log, projection", () =
     return p;
   };
 
-  it("counter + blocklist: the row says counter, copies take his opposite side, blocked coin not copied", async () => {
+  it("counter + blocklist: the row says counter, copies take their opposite side, blocked coin not copied", async () => {
     const src = demoTrade("default");
     const a = fixtureRows(demoNowMs())[0].address;
     const prev = await run(src.preview(a, { settings_source: "custom", allocation_usd: 500, exposure_mode: "match" }));

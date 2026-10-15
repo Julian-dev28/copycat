@@ -65,7 +65,7 @@ export function WhatIfFields({ draft, set, errors }: { draft: WhatIfDraft; set: 
       {mode === "proportional" || mode === "" ? <Num f="size_multiplier" label="Multiplier" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_margin" ? <Num f="fixed_margin_usd" label="Margin per trade (USD)" draft={draft} set={set} errors={errors} /> : null}
       {mode === "fixed_notional" ? <Num f="fixed_notional_usd" label="Notional per trade (USD)" draft={draft} set={set} errors={errors} /> : null}
-      <Pick f="leverage_mode" label="Leverage" draft={draft} set={set} options={[["match", "Match his"], ["max", "Coin max"], ["fixed", "Fixed"]]} />
+      <Pick f="leverage_mode" label="Leverage" draft={draft} set={set} options={[["match", "Match theirs"], ["max", "Coin max"], ["fixed", "Fixed"]]} />
       {draft.leverage_mode === "fixed" ? <Num f="leverage" label="Leverage (x)" draft={draft} set={set} errors={errors} /> : null}
       <Pick f="margin_mode" label="Margin" draft={draft} set={set} options={[["cross", "Cross"], ["isolated", "Isolated"]]} />
       <Num f="max_worse_entry_pct" label="Max worse entry %" draft={draft} set={set} errors={errors} />

@@ -97,7 +97,7 @@ def _style(scout: ScoutClient, addr: str) -> Optional[TradingStyle]:
 
 
 def _his_liq_pct(scout: ScoutClient, addr: str) -> Optional[float]:
-    """His nearest liquidation from the Scout profile (queues a build if he
+    """Their nearest liquidation from the Scout profile (queues a build if they
     has none, which the projection then uses next time)."""
     try:
         prof = scout.profile(addr)
@@ -149,7 +149,7 @@ def pending_plans(plans: mp.PlanStore = Depends(get_plan_store)) -> List[McpPend
 @router.post("/plans/{plan_id}/execute", response_model=CopyPlanResult,
              responses={403: {"description": "disabled, wrong confirm code, or over a cap"},
                         404: {"description": "unknown plan"},
-                        409: {"description": "his book changed, or your book is full"},
+                        409: {"description": "their book changed, or your book is full"},
                         410: {"description": "plan expired or already used"},
                         429: {"description": "rate limit"}})
 def execute_plan(plan_id: str, body: CopyPlanExecuteRequest,
@@ -231,9 +231,9 @@ def _wallet_row(addr: str, settings, engine: EngineClient) -> Optional[WalletPos
 
 def _note(plan: CopyPlan, live: bool) -> str:
     r = plan.request
-    lev = f"{r.leverage}x" if r.leverage else "his leverage"
-    what = ("copies his current positions once, then only mirrors his exits (one-shot)"
-            if not r.follow else "copies his current and future positions")
+    lev = f"{r.leverage}x" if r.leverage else "their leverage"
+    what = ("copies their current positions once, then only mirrors their exits (one-shot)"
+            if not r.follow else "copies their current and future positions")
     head = (f"Saved: ${r.amount_usd:,.2f} on {r.address}, {r.trade_direction.value}, {lev}, "
             f"entries within {r.entry_deviation_pct:g}% of his; {what}. ")
     if live:

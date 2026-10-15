@@ -49,7 +49,7 @@ network, <1s). Live eval: `-m live services/discovery/tests/test_live.py`.
       `start_position` + signed size; a flip is close + open.
    5. **HFT gate**: opens/day > 100 is flagged `hft` and not simulated
       (`hft_not_simulated`, uncopyable at 5s polling) unless `include_hft`.
-   6. **Candles** (`candles_cache.py`): only for coins and periods where he
+   6. **Candles** (`candles_cache.py`): only for coins and periods where they
       held a position that OPENED in the window (`positions.trip_spans`).
    7. **Copy-sim** (`sim.py`) and **score** (`scoring.py`).
 3. **Persist**: `results` rows as each wallet finishes; `runs.scored`,
@@ -74,7 +74,7 @@ series is tiered by age (`candles_cache.tier_bounds`, 4900-bar margin):
 | age of the bar | resolution | what it means for the sim |
 |---|---|---|
 | last ~3.4 days | 1m | entry at the next 1m open; liquidation checked per minute |
-| 3.4 to ~51 days | 15m | entry at his fill price + 5 bps; liquidation checked per 15m bar |
+| 3.4 to ~51 days | 15m | entry at their fill price + 5 bps; liquidation checked per 15m bar |
 | older | 1h | same, per hour (only for windows > 51 days) |
 
 A bar's high/low contains every wick inside it, so a coarse bar never MISSES
@@ -94,11 +94,11 @@ Per wallet, starting at `sim_equity_usd`, copying ONLY this wallet
   `1 / (2 * coin_max_leverage)`. Leverage is fixed per copy at open.
 - Entry sizing follows `engine.core._execute_entry`: raw notional from
   `engine.sizing` (`open_notional` / `add_notional`, all four sizing modes
-  incl. `allocation`, whose `his_gross_ntl_after` comes from his in-window
+  incl. `allocation`, whose `his_gross_ntl_after` comes from their in-window
   book), trimmed to margin room (free margin x lev x 0.95), trimmed to the
   allocation cap (allocation mode), bumped, skipped if still under $10.50.
   Opens also skip on unknown max leverage, `max_open_copies`, or worse than
-  `max_worse_entry_pct` vs his fill. Isolated free margin is cash minus
+  `max_worse_entry_pct` vs their fill. Isolated free margin is cash minus
   posted margin: an open copy's unrealized gain cannot back new orders.
 - **Fixed modes never grow a copy past its fixed size**: in `fixed_margin`
   / `fixed_notional`, total copy margin <= max(fixed margin, margin posted
@@ -112,7 +112,7 @@ Per wallet, starting at `sim_equity_usd`, copying ONLY this wallet
   is floored at its margin, so a price gap in the data can never cost more.
 - Fees: 0.045% taker on every leg.
 - Contract v8, from the effective settings: `trade_direction` counter opens
-  the opposite of his side at the same size; fill price, worse-entry check,
+  the opposite of their side at the same size; fill price, worse-entry check,
   liquidation price and PnL are all on our inverted side (a copy that wins
   is a counter that loses the same move, and both pay fees and slippage).
   An open copy keeps its side. `coin_allowlist` / `coin_blocklist` skip
@@ -122,7 +122,7 @@ Per wallet, starting at `sim_equity_usd`, copying ONLY this wallet
   what-if replay.
 - Optional equity curve: `simulate_wallet(..., curve_step_ms=3_600_000)`
   returns `SimResult.curve = [(t_ms, equity)]` at every step plus the end.
-- Not modeled from the engine: `small_account_mode` concentrate (needs his
+- Not modeled from the engine: `small_account_mode` concentrate (needs their
   full live book), liquidity caps and catch-up orders (need historical
   depth/volume), the daily loss limit.
 
@@ -147,11 +147,11 @@ Flags: `vault`, `hft`, `hft_not_simulated`, `too_few_trades`, `liquidated`,
 ## Known biases
 
 - **Copy latency**: inside the 1m tier, entry is the next 1m open + 2 bps
-  (we react on the next poll, not his fill). Beyond it, his fill price + 5
-  bps. Real 5s polling is closer to his price than "next minute" for
+  (we react on the next poll, not their fill). Beyond it, their fill price + 5
+  bps. Real 5s polling is closer to their price than "next minute" for
   majors and further for thin HIP-3 markets.
-- **His equity** (proportional mode) is his CURRENT account value from the
-  leaderboard for the whole window; his leverage (match mode) is his
+- **Their equity** (proportional mode) is their CURRENT account value from the
+  leaderboard for the whole window; their leverage (match mode) is their
   current per-coin leverage. Neither is recoverable historically.
 - **No funding** paid or received.
 - **Candle resolution liquidation**: the partial bar at entry and at exit is
@@ -168,7 +168,7 @@ Flags: `vault`, `hft`, `hft_not_simulated`, `too_few_trades`, `liquidated`,
 Found tracing `0x30afce2f` (xyz:DRAM, -127%) and reported on `0xbf732ea0`
 (-99.96%, 2 liquidated coins), both at `Settings()` defaults ($1 fixed
 margin, max leverage, $100). Cause: `engine.sizing.add_notional` in the
-fixed modes scales OUR copy by HIS fractional add, and the engine then
+fixed modes scales OUR copy by THEIR fractional add, and the engine then
 bumps every sub-minimum add to $10.50. A leader who opens small and scales
 in (DRAM: +928%, +77%, ..., then 40+ adds of +0.3% each bumped to $10.50)
 takes a $1-margin copy to $100+ of margin; one liquidation then wipes the

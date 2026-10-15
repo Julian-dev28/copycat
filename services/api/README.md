@@ -19,14 +19,14 @@ are dropped.
 | POST | /leaders | `{address}`; 400 bad address or our own account, 409 at 25 leaders |
 | DELETE | /leaders/{address} | also drops its override; idempotent |
 | POST | /wallets/{address}/copy | `WalletCopyRequest` -> `Settings`; invest or adjust (see Trade page) |
-| POST | /wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`; 502 his read failed, 503 engine missing |
+| POST | /wallets/{address}/preview | `WalletCopyRequest` -> `WalletPreview`; 502 their read failed, 503 engine missing |
 | POST | /wallets/{address}/stop | `WalletStopRequest` -> `{settings, stopping}`; 404 not in book and no copies |
 | GET | /wallets | `WalletPosition[]`: book wallets, then stopped ones (winding down or with PnL history); `?include=archived` adds archived |
 | POST | /wallets/{address}/pause | -> `Settings`; no new opens/adds, exits mirrored; 404 not in book |
 | POST | /wallets/{address}/resume | -> `Settings`; 404 not in book |
 | POST | /wallets/{address}/archive | -> `WalletPosition`; stopped wallets only (409 otherwise) |
 | GET | /wallets/{address}/events | `EngineEvent[]` of that wallet, newest first; `limit`, `before_ms` |
-| GET | /wallets/{address}/projection | `WalletProjection` from cached data; 202 while Scout builds him |
+| GET | /wallets/{address}/projection | `WalletProjection` from cached data; 202 while Scout builds them |
 | GET | /status | `EngineStatus` from `engine.public.status()`; 503 if the engine package is missing |
 | GET | /events?limit=&since_ms= | newest first |
 | GET | /events/stream | SSE, tails `data/events.jsonl` from its end, one `EngineEvent` JSON per message |
@@ -54,7 +54,7 @@ are dropped.
 | POST | /accounts/{id}/action/prepare, /accounts/{id}/action/submit, /accounts/{id}/action | spot<->perps, usdSend, withdraw3 (browser-signed / passphrase) -> `UserActionResult` |
 | GET | /market/candles?coin=&interval=&start_ms=&end_ms= | candle bars, <= 5000, 422 on bad interval/range |
 | POST | /mcp/plans | `CopyPlanRequest` -> `CopyPlan` (read-only on the book; stored 120 s) |
-| POST | /mcp/plans/{plan_id}/execute | `{confirm_code}` -> `CopyPlanResult`; 403 off / bad code / over cap, 404, 409 his book changed / book full, 410 used / expired, 429 |
+| POST | /mcp/plans/{plan_id}/execute | `{confirm_code}` -> `CopyPlanResult`; 403 off / bad code / over cap, 404, 409 their book changed / book full, 410 used / expired, 429 |
 
 ## Auth
 
@@ -184,7 +184,7 @@ Routes in `api/routes/wallets.py`. Every wallet route needs the bearer token.
   sizes with, so the ticket shows what the engine will do: per position the
   slice, leverage, margin, status (copy / trimmed / bump / skip + reason),
   liquidity cap and `fill_cycles`; plus `min_allocation_for_full_book` and
-  notes (e.g. not enough free margin). Our existing copies of him count
+  notes (e.g. not enough free margin). Our existing copies of them count
   against the allocation cap, so a bigger re-post previews the adjust.
 - **stop** (`SettingsStore.stop_wallet` + `api/wallet_stop.py`): removes the
   wallet and its override, then writes `data/stop/<address>.flag`
@@ -251,14 +251,14 @@ target L, unset: exposure match + leverage_mode match; `max_worse_entry_pct` =
 the entry deviation; `only_new_positions` false; `one_shot` = not follow), the
 cached projection, warnings (execution off, over cap, over max leverage, own
 account, full book, already in the book / paused, trading not live, algo or
-scalp style, his liquidation < 5%, copies above 20x, slices under the minimum,
-no projection) and a sha256 of his positions (coin, side, size x entry).
+scalp style, their liquidation < 5%, copies above 20x, slices under the minimum,
+no projection) and a sha256 of their positions (coin, side, size x entry).
 
 Execute guards, in order: (a) `COPYCAT_MCP_ALLOW_TRADING=1` in the api env
 (403 with how to enable); rate limit 10/hour counted from the audit log (429);
 (b) unknown plan 404, used or expired 410; (c) constant-time confirm code, 403,
 the 3rd wrong code voids the plan; (d) `amount_usd <= COPYCAT_MCP_MAX_USD`
-(default 100) and leverage <= `max_position_leverage`, 403; (e) his positions
+(default 100) and leverage <= `max_position_leverage`, 403; (e) their positions
 still hash to `book_fingerprint`, else 409 and the plan is void; (f) room in
 the book, 409. Then `SettingsStore.copy_wallet` + `clear_stop`, exactly like
 POST /wallets/{a}/copy. `enabled` / `dry_run` are never written. The whole

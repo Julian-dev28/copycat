@@ -8,7 +8,7 @@ plain-English rule set; every rule below is pinned by a gate test.
 Kept from pathiel:
   - one leader owns a coin at a time (first to open it keeps it until OUR
     copy of it closes)
-  - a leader read failure skips only that leader and never looks like him
+  - a leader read failure skips only that leader and never looks like them
     going flat
   - exits (reduce/close/flip) mirror regardless of `enabled`. `dry_run` is
     a different axis: it blocks ALL writes, exits included
@@ -488,10 +488,10 @@ def _run_leader(cy: _Cycle, leader: str, es: Settings, is_orphan: bool) -> Dict[
 
 def _one_shot_coins(cy: _Cycle, leader: str, es: Settings,
                     now_pos: Dict[str, Any]) -> Optional[Dict[str, int]]:
-    """The coins a one-shot wallet may still open (coin -> his side), or None
+    """The coins a one-shot wallet may still open (coin -> their side), or None
     when the wallet is not one-shot. The first cycle that sees `one_shot`
-    for this investment (`invested_ms`) records what he holds; from then on
-    nothing else is opened for him. Turning one-shot off drops the record."""
+    for this investment (`invested_ms`) records what they hold; from then on
+    nothing else is opened for them. Turning one-shot off drops the record."""
     book = cy.state.get_kv(_ONE_SHOT_KEY) or {}
     if not es.one_shot:
         if leader in book:
@@ -507,13 +507,13 @@ def _one_shot_coins(cy: _Cycle, leader: str, es: Settings,
         cy.state.set_kv(_ONE_SHOT_KEY, book)
         held = ", ".join(f"{c} {'long' if s > 0 else 'short'}" for c, s in coins.items())
         cy.event("baseline", leader=leader,
-                 reason=f"one-shot: copying only what he holds now ({held or 'nothing'}); "
-                        f"nothing he opens later; exits mirrored")
+                 reason=f"one-shot: copying only what they hold now ({held or 'nothing'}); "
+                        f"nothing they open later; exits mirrored")
     return dict(rec.get("coins") or {})
 
 
 def _one_shot_prune(cy: _Cycle, leader: str, now_pos: Dict[str, Any]) -> None:
-    """A one-shot coin he closed or flipped is spent: re-opening it later is a
+    """A one-shot coin they closed or flipped is spent: re-opening it later is a
     new position, never copied."""
     if cy.one_shot is None:
         return
@@ -625,7 +625,7 @@ def _diff_coin(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, coin: str
             if copy is None and cur:
                 ignored.add(coin)
             cy.skip(coin, "one-shot: adds not copied" if copy is not None
-                    else "one-shot: only the positions he held when copied")
+                    else "one-shot: only the positions they held when copied")
             return
     # Our side. A copy we hold keeps the direction it was opened with; only a
     # fresh open (incl. the open half of a flip) takes the wallet's current one.
@@ -757,7 +757,7 @@ def _do_reduce(cy: _Cycle, coin: str, leader: str, prev: float, cur: float,
     `prev` would take the full fraction off again.
 
     Never bumped to the exchange minimum. Under the floor with a remainder
-    above it: skipped and left to accumulate (prev stays frozen, so his next
+    above it: skipped and left to accumulate (prev stays frozen, so their next
     reduce adds to the fraction). Remainder under the floor: full close."""
     state, venue, out = cy.state, cy.venue, cy.out
     frac = (abs(prev) - abs(cur)) / abs(prev)
@@ -851,9 +851,9 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
                  copy: Optional[Copy], is_long: bool, direction: str) -> str:
     """`copy` is this leader's existing copy/shadow-copy row for `coin`, or
     None for a fresh open. `es` is this leader's EFFECTIVE settings.
-    `is_long` is OUR side (his side, inverted for a counter `direction`).
+    `is_long` is OUR side (their side, inverted for a counter `direction`).
     Sizes are direction-blind: every notional is |size| x price.
-    Returns "done", "skip" or "retry" (the caller freezes his size)."""
+    Returns "done", "skip" or "retry" (the caller freezes their size)."""
     state, venue, dry = cy.state, cy.venue, cy.dry
     if copy is None:
         if _szi(cy.our_positions, coin) != 0.0 and state.get_copy(coin) is None:
@@ -885,8 +885,8 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         if conc is None:
             if copy is None:
                 ignored.add(coin)
-            cy.skip(coin, f"concentrate: his {coin} slice is under the ${HL_MIN_ORDER_USD} minimum, "
-                          f"the allocation goes to his bigger positions")
+            cy.skip(coin, f"concentrate: their {coin} slice is under the ${HL_MIN_ORDER_USD} minimum, "
+                          f"the allocation goes to their bigger positions")
             return "skip"
         scale = conc
 
@@ -899,7 +899,7 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
         # and allocation size off his added notional alone; the fixed modes
         # have nothing sane to scale and skip the add.
         if es.sizing_mode not in (SizingMode.proportional, SizingMode.allocation):
-            cy.skip(coin, "add skipped: copy exists but his previous size is flat (no fraction to scale)")
+            cy.skip(coin, "add skipped: copy exists but their previous size is flat (no fraction to scale)")
             return "skip"
         ntl = sizing.add_notional(es, his_added_ntl, his_equity, cy.equity_usd, cy.n_leaders, 0.0, 0.0,
                                   cy.lead_gross, lev)
@@ -914,10 +914,10 @@ def _open_or_add(cy: _Cycle, es: Settings, coin: str, leader: str, cur: float, p
 
 def _concentrate_scale(cy: _Cycle, es: Settings, leader: str, coin: str,
                        his_equity: float) -> Optional[float]:
-    """small_account_mode concentrate, on his book as it is now: the
+    """small_account_mode concentrate, on their book as it is now: the
     renormalization factor for `coin`, or None when `coin` is not in the
-    eligible set. Coins we already copy for him are always eligible (they
-    stay copied until he exits). Same `sizing.concentrate` the preview uses."""
+    eligible set. Coins we already copy for them are always eligible (they
+    stay copied until they exit). Same `sizing.concentrate` the preview uses."""
     pos = cy.lead_pos
     levs = {c: max(1, sizing.exchange_leverage(es, float(p.get("lev") or 1.0),
                                                cy.venue.max_leverage(c)))
@@ -991,7 +991,7 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
     wallets: total wallet margin <= allocation_usd x 1.02), the bump (not for
     a catch-up remainder), the $10.50 minimum, then the liquidity cap: what
     does not fit is carried in kv `catch_up` and sent over the next cycles
-    (`_catch_up`) until filled or he changes the position."""
+    (`_catch_up`) until filled or they change the position."""
     state, venue, out, dry = cy.state, cy.venue, cy.out, cy.dry
     action = "add" if copy is not None else "open"
     dex = coin.split(":", 1)[0] if ":" in coin else ""
@@ -1153,7 +1153,7 @@ def _execute_entry(cy: _Cycle, es: Settings, coin: str, leader: str, is_long: bo
         # An add never re-leverages or re-records the copy row.
         out["added"].append(coin)
     if direction == "counter" and copy is None:
-        notes.insert(0, "counter: opposite of his side")
+        notes.insert(0, "counter: opposite of their side")
     cy.event(action, leader=leader, coin=coin, side=side, notional_usd=round(ntl, 2),
              leverage=lev, reason="; ".join(notes) or None)
     _after_entry(cy, coin, leader, is_long, his_szi, carry)
@@ -1188,9 +1188,9 @@ def _set_catch_up(state: EngineState, coin: str, entry: Optional[Dict[str, Any]]
 def _catch_up(cy: _Cycle, leader: str, es: Settings, is_orphan: bool, now_pos: Dict[str, Any],
               retry: Dict[str, float]) -> None:
     """Send the next slice of every liquidity-split entry of this leader.
-    Dropped once he changes that position (the diff already mirrored the
+    Dropped once they change that position (the diff already mirrored the
     change), our copy is gone, or the leader is an orphan. Paused (kept)
-    while entries are blocked, the mid is missing or worse than his entry
+    while entries are blocked, the mid is missing or worse than their entry
     by more than max_worse_entry_pct. Never in the same cycle as an entry
     on that coin."""
     cu = cy.state.get_kv(_CATCH_UP_KEY)
@@ -1389,7 +1389,7 @@ def _reconcile_vanished(cy: _Cycle) -> None:
 
     Runs every non-dry cycle, independent of whether the leader moved: HL
     liquidating our isolated copy while the leader sits still changes nothing
-    on his side, so the per-leader diff alone would never notice and the row
+    on their side, so the per-leader diff alone would never notice and the row
     would linger as a ghost and count against `max_open_copies` forever.
 
     Two consecutive reads are required before a copy is forgotten: a copy on
@@ -1448,10 +1448,10 @@ def _book_vanished(cy: _Cycle, leader: str, coin: str, first_missing_ms: int) ->
 
 
 def _ignore_while_leader_holds(state: EngineState, leader: str, coin: str) -> None:
-    """Add `coin` to the leader's ignored set iff his last-seen size on it is
-    nonzero, so copycat does not re-enter his position midway. The ignore
-    clears itself when he goes flat (see the diff loop). Ignoring a coin he
-    is flat on would also ignore his next fresh open, so that never happens."""
+    """Add `coin` to the leader's ignored set iff their last-seen size on it is
+    nonzero, so copycat does not re-enter their position midway. The ignore
+    clears itself when they go flat (see the diff loop). Ignoring a coin they
+    is flat on would also ignore their next fresh open, so that never happens."""
     ls = state.get_leader(leader)
     if ls is None or not float(ls.last_positions.get(coin) or 0.0):
         return
@@ -1633,14 +1633,14 @@ def _run_stop(cy: _Cycle, addr: str, close_positions: bool) -> bool:
     caller deletes the flag).
 
     close_positions false: nothing to do here; the wallet is an orphan now,
-    its open copies keep following his exits.
+    its open copies keep following their exits.
     close_positions true: close every copy of this leader reduce-only, like
     close-all for one wallet and, like close-all, even in dry_run (an
     explicit user command to flatten real positions). A failed, partial or
     ambiguous close keeps the flag, so the next cycle retries until flat."""
     state, venue = cy.state, cy.venue
     if not close_positions:
-        cy.event("skip", leader=addr, reason="wallet stopped: open copies follow his exits")
+        cy.event("skip", leader=addr, reason="wallet stopped: open copies follow their exits")
         return True
     pending_reduces = state.get_kv(_PENDING_REDUCES_KEY) or {}
     remaining = 0

@@ -8,7 +8,7 @@ const prev = localPreview({
 });
 
 describe("counter preview inversion", () => {
-  it("counter flips our side on every copy and keeps his side", () => {
+  it("counter flips our side on every copy and keeps their side", () => {
     const p = applyDirection(prev, "counter");
     expect(p.copies.map((c) => [c.side, c.ourSide])).toEqual([["long", "short"], ["short", "long"]]);
     expect(p.direction).toBe("counter");

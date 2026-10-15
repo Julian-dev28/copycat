@@ -105,7 +105,7 @@ export function localProjection(inp: LocalProjectionInput): WalletProjection {
     liquidations,
     copies: 0,
     skipped: 0,
-    note: "Estimate from his equity index: no fills, fees or slippage.",
+    note: "Estimate from their equity index: no fills, fees or slippage.",
   };
 }
 

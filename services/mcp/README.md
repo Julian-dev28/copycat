@@ -76,9 +76,9 @@ the exact tool list with and without the flag.
 
 `copy_plan(address, amount_usd, leverage?, entry_deviation_pct=2, trade_direction=copy, follow=true)`
 returns the plan (engine preview at those terms, cached 30-day projection,
-warnings, book fingerprint), a deterministic `present` markdown block, his
-fingerprint summary and the newest thesis. `leverage` unset follows his.
-`follow=false` is one-shot: copy what he holds now, then only mirror his exits
+warnings, book fingerprint), a deterministic `present` markdown block, their
+fingerprint summary and the newest thesis. `leverage` unset follows theirs.
+`follow=false` is one-shot: copy what they hold now, then only mirror their exits
 (the engine enforces it, see services/engine/README.md).
 
 `execute_copy_plan(plan_id, confirm_code)` is annotated destructive + open
@@ -93,7 +93,7 @@ explicitly approves THIS plan. Three independent switches must be on:
    them; with trading off it only saves the wallet's terms.
 
 The api also enforces: single use, expiry (`MCP_PLAN_TTL_S`, 300 s), constant-time confirm code (3
-wrong codes void the plan), leverage <= `max_position_leverage`, his book
+wrong codes void the plan), leverage <= `max_position_leverage`, their book
 unchanged since the plan (409), room in the book, 10 executes per hour. Every
 plan and execute is logged to `data/mcp_audit.jsonl` (no code, no token).
 Keep `execute_copy_plan` out of Claude Code's auto-allowed tools so every call

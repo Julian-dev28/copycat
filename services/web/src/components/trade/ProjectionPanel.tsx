@@ -67,7 +67,7 @@ export function ProjectionPanel({
         </>
       ) : building ? (
         <p className="flex items-center gap-1.5 py-4 text-muted">
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" /> Building: reading his last 30 days{res.data?.kind === "building" && res.data.note ? ` (${res.data.note})` : ""}.
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" /> Building: reading their last 30 days{res.data?.kind === "building" && res.data.note ? ` (${res.data.note})` : ""}.
         </p>
       ) : res.error && !tooOld ? (
         <p className="text-muted">{problemText(res.error, "projection")}</p>
@@ -77,8 +77,8 @@ export function ProjectionPanel({
         <div className="h-[90px] animate-pulse rounded bg-surface-2" />
       )}
       <p className="text-[11px] text-muted">
-        Backtest of his past trades{direction === "counter" ? ", inverted" : ""}, not a promise. Real copies enter later and pay fees, slippage and funding over the time a position stays open.
-        {estimate ? " Estimate from his equity index: your api has no projection route yet." : proj?.note ? ` ${proj.note}` : ""}
+        Backtest of their past trades{direction === "counter" ? ", inverted" : ""}, not a promise. Real copies enter later and pay fees, slippage and funding over the time a position stays open.
+        {estimate ? " Estimate from their equity index: your api has no projection route yet." : proj?.note ? ` ${proj.note}` : ""}
       </p>
     </section>
   );
