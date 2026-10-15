@@ -16,7 +16,7 @@ what the Claude Code MCP integration can and cannot reach.
 
 ## Screenshots
 
-<!-- TODO: add screenshots of /copy, /positions and /discover -->
+<!-- TODO: add screenshots of Trade (/), Portfolio (/portfolio) and Scout (/scout) -->
 _Coming soon._
 
 ## 5-minute setup
@@ -34,8 +34,9 @@ _Coming soon._
    asks for the api's bearer token: `COPYCAT_API_TOKEN` if you set one, or
    `cat data/api_token` — the api generates one on first start and also prints
    its path to the terminal running `make dev`.
-3. **Set up a trading account.** Click **Accounts** on the Account page. Three
-   ways in, pick whichever matches what you already have:
+3. **Set up a trading account.** On the Account page, **Create a new account**
+   or **Connect an existing account** (that dialog offers **Sign with wallet**
+   or **API key**). Three ways in, pick whichever matches what you already have:
    - **Create a new account** — copycat generates a fresh Hyperliquid wallet on
      this machine and encrypts its key with a passphrase you choose. You see
      the private key once, to back up; copycat never shows it again.
