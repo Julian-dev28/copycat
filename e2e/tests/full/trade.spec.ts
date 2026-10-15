@@ -1,5 +1,5 @@
 import { test, expect } from "../../fixtures";
-import { ALPHA, api, mock, ordersFor, signIn } from "./_stack";
+import { ALPHA, BETA, api, mock, ordersFor, signIn } from "./_stack";
 
 /**
  * The whole product end to end on the mock Hyperliquid: connect an API wallet through the
@@ -88,5 +88,31 @@ test.describe.serial("full stack: connect, go live, copy; the engine mirrors the
     await expect.poll(async () => (await mock(request, stack, "/__mock/state")).users[main.address].positions,
       { timeout: 30_000 }).toEqual({});
     await expect(page.getByRole("heading", { name: /^Positions \(0\)/ })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("a leverage far above theirs asks twice, tighter liquidation then real money, and the copy still goes out", async ({ page, request, stack }) => {
+    // mock-beta runs 10 BTC ($1M) on $250K cash: about 4x effective, ~25% to liquidation. Our 25x copy
+    // liquidates on ~4%: the "Tighter liquidation than theirs?" confirm, then "Copy with real money?".
+    // The first dialog's native close event used to run its cancel handler a tick later and wipe the
+    // chain, so "Copy at this leverage anyway" did nothing (2026-10-15).
+    await mock(request, stack, "/__mock/user", { address: BETA, positions: { BTC: { szi: 10, leverage: 5 } } });
+    await signIn(page, stack);
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Search traders" }).fill(BETA);
+    await page.getByRole("button", { name: /^mock-beta/ }).click();
+    const ticket = page.getByRole("region", { name: "Copy mock-beta" });
+    await ticket.getByRole("textbox", { name: /^Invest/ }).fill("100");
+    await ticket.getByRole("radio", { name: "Set leverage" }).click();
+    await ticket.getByRole("slider", { name: "Your leverage" }).fill("25");
+    await expect(ticket.getByTestId("ticket-leverage-mismatch")).toContainText("Tighter than theirs", { timeout: 30_000 });
+    await ticket.getByRole("button", { name: "Copy trader" }).click();
+    const tighter = page.getByRole("dialog", { name: "Tighter liquidation than theirs?" });
+    await expect(tighter).toBeVisible();
+    await tighter.getByRole("button", { name: "Copy at this leverage anyway" }).click();
+    const real = page.getByRole("dialog", { name: "Copy with real money?" });
+    await expect(real, "the second confirm survives the first dialog's close event").toBeVisible();
+    await expect(tighter).toBeHidden();
+    await real.getByRole("button", { name: "Copy for real" }).click();
+    await expect(page.getByRole("tab", { name: /^Running 2/ })).toBeVisible();
   });
 });

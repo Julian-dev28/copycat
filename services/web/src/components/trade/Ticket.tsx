@@ -9,7 +9,7 @@ import { LABELS } from "@/lib/labels";
 import { problemText } from "@/lib/trade/apiState";
 import { algoWarning } from "@/lib/trade/algo";
 import { walletStatus } from "@/lib/trade/lifecycle";
-import { actionSummary, allocationBreakdown, disabledReason, effectiveLeverageText, leverageMismatch } from "@/lib/trade/ticketView";
+import { actionSummary, allocationBreakdown, disabledReason, effectiveLeverageText, leverageMismatch, sizeStarved } from "@/lib/trade/ticketView";
 import type { TraderProfile, TraderRow } from "@/lib/scout/types";
 import type { TradeSettings, TradeStatus, WalletPosition } from "@/lib/trade/types";
 import { AlgoWarning, CoinFilterFields, DirectionSwitch } from "./TicketExtras";
@@ -306,6 +306,8 @@ export function Ticket({
               onlyNew={t.eff.onlyNew}
               equityUsd={status?.equity_usd}
               onUseFullBook={custom ? (usd) => t.setDraft({ amountText: String(usd) }) : null}
+              starved={sizeStarved(preview, { global: !custom, amount: custom ? t.amount : null, leverage: t.lev.effective, cap: t.lev.cap, equityUsd: status?.equity_usd })}
+              onStarvedFix={(fix) => t.setDraft({ source: "custom", mode: "target", leverage: fix.leverage, amountText: fix.amountText })}
             />
           </div>
         ) : !custom && t.previewPending ? (

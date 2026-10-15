@@ -159,3 +159,92 @@ export function leverageMismatch(liq: LiqEstimate, theirLeverage: number | null 
 export function leverageMismatchText(m: LeverageMismatch): string {
   return `You liquidate on a ~${pctText(m.yourPct)} move; they run an effective ${m.theirLeverage.toFixed(1)}x (~${pctText(m.theirPct)} cushion). A move they'd survive could wipe your copy.`;
 }
+
+/* ---------- skipped rows: the reason in the cell, and the size dead end with its fix ---------- */
+
+/** Hyperliquid's minimum order, the number every size skip is measured against. */
+export const MIN_ORDER_USD = 10.5;
+
+const SIZE_SKIP_RE = /under the \$|below \$10|under \$10|no room to round up|^no size$/;
+
+/**
+ * A skipped row said "skipped" with the engine's reason hidden in a tooltip, so a $15 account
+ * read "skipped" on every position and nothing else (2026-10-15). The reason, short, in the cell;
+ * the long form stays in the title.
+ */
+export function skipReasonShort(reason: string | null | undefined): string {
+  if (!reason) return "skipped";
+  let m = reason.match(/^(?:copy|slice|reduce) \$([\d.,]+) under the \$[\d.]+ minimum/);
+  if (m) return `$${m[1]} < ${money(MIN_ORDER_USD)} min`;
+  if (/^concentrate:/.test(reason) || /moved to their bigger bets/.test(reason)) return "folded into their bigger positions";
+  if (/only_new_positions/.test(reason)) return "new trades only";
+  if (/^one-shot/.test(reason)) return "one-shot: not held when copied";
+  if (/liquidity cap/.test(reason)) return "liquidity cap";
+  if (/below \$10 min|no room to round up/.test(reason)) return `< ${money(MIN_ORDER_USD)} min`;
+  m = reason.match(/^only_new_positions|^(no amount yet|no size)$/);
+  if (m) return reason;
+  return reason.length > 44 ? `${reason.slice(0, 41)}…` : reason;
+}
+
+export interface SizeStarved {
+  text: string;
+  /** The ticket terms that clear the minimum on their biggest position, or null when no amount the account has can. */
+  fix: { amountText: string; leverage: number; label: string } | null;
+}
+
+/**
+ * Every position skipped for size: the dead end a small account hits with
+ * proportional Settings sizing (19% of $15.21 spread by their weights is cents
+ * per coin, 2026-10-15) or a low leverage. Names the cause in plain words and
+ * offers the terms that work: this ticket's own amount at the leverage that
+ * puts their biggest position over the minimum, capped at Settings' maximum.
+ * Null when something copies, when a skip has another cause (new trades only,
+ * coin filters, liquidity) or when they hold nothing.
+ */
+export function sizeStarved(
+  preview: Pick<TicketPreview, "copies" | "total">,
+  o: { global: boolean; amount: number | null; leverage: number; cap: number; equityUsd: number | null | undefined; minOrderUsd?: number },
+): SizeStarved | null {
+  const min = o.minOrderUsd ?? MIN_ORDER_USD;
+  const rows = preview.copies.filter((c) => !c.filtered);
+  if (preview.total === 0 || rows.length === 0) return null;
+  if (rows.some((c) => c.status !== "skipped" || !c.reason || !SIZE_SKIP_RE.test(c.reason))) return null;
+  const gross = rows.reduce((a, c) => a + Math.abs(c.hisNotionalUsd), 0);
+  const maxWeight = gross > 0 ? Math.max(...rows.map((c) => Math.abs(c.hisNotionalUsd))) / gross : 1;
+  const needExposure = min / maxWeight;                       // exposure that puts their biggest position at the minimum
+  const cap = Math.max(1, Math.floor(o.cap));
+  const equity = o.equityUsd != null && Number.isFinite(o.equityUsd) ? o.equityUsd : null;
+  const minAmountAtCap = Math.ceil(needExposure / cap);
+  const label = (amount: number, lev: number) => `Invest ${money(amount)} at ${lev}x`;
+
+  if (o.global) {
+    const head = `Your Settings sizing comes out under Hyperliquid's ${money(min)} minimum on every position` +
+      (equity != null ? ` at ${money(equity)} of equity` : "") + ". Give this ticket its own amount and leverage.";
+    if (equity == null) return { text: head, fix: null };
+    const amount = Math.floor(equity);
+    if (amount < 1 || amount * cap < needExposure) {
+      return { text: `${head} Even ${money(Math.max(amount, 0))} at the ${cap}x cap is under it on their biggest position; it takes ${money(minAmountAtCap)}.`, fix: null };
+    }
+    const lev = Math.min(cap, Math.max(1, Math.ceil(needExposure / amount)));
+    return { text: head, fix: { amountText: String(amount), leverage: lev, label: label(amount, lev) } };
+  }
+
+  const amount = o.amount ?? 0;
+  const at = `${money(amount)} x ${o.leverage}x`;
+  if (amount <= 0) return { text: `Nothing clears the ${money(min)} minimum without an amount.`, fix: null };
+  const needLev = Math.ceil(needExposure / amount);
+  if (needLev <= cap) {
+    const lev = Math.max(needLev, 1);
+    return {
+      text: `At ${at} nothing clears Hyperliquid's ${money(min)} minimum order. ${lev}x puts their biggest position over it.`,
+      fix: { amountText: String(amount), leverage: lev, label: `Use ${lev}x` },
+    };
+  }
+  if (equity != null && minAmountAtCap > equity) {
+    return { text: `At ${at} nothing clears Hyperliquid's ${money(min)} minimum order; even the ${cap}x cap needs ${money(minAmountAtCap)} and you have ${money(equity)}.`, fix: null };
+  }
+  return {
+    text: `At ${at} nothing clears Hyperliquid's ${money(min)} minimum order. ${money(minAmountAtCap)} at the ${cap}x cap puts their biggest position over it.`,
+    fix: { amountText: String(minAmountAtCap), leverage: cap, label: label(minAmountAtCap, cap) },
+  };
+}

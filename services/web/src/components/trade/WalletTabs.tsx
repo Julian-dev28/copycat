@@ -11,7 +11,7 @@ import { formatAgo, formatPct, formatPrice, formatSignedPct, formatSignedUsd, fo
 import type { TraderProfile } from "@/lib/scout/types";
 import type { CopyPosition } from "@/lib/api/types";
 import type { PlannedCopy, TicketPreview } from "@/lib/trade/ticket";
-import { COPY_ROW_LABEL, copyColumnTitle, copyRowState, type CopyRowState } from "@/lib/trade/ticketView";
+import { COPY_ROW_LABEL, copyColumnTitle, copyRowState, skipReasonShort, type CopyRowState } from "@/lib/trade/ticketView";
 import { SideTag } from "./bits";
 
 type Tab = "positions" | "trades" | "strategy";
@@ -102,7 +102,7 @@ function CopyCell({
   if (copy.status === "skipped") {
     return (
       <span className="text-muted" title={copy.reason ?? undefined}>
-        {copy.filtered ? "filtered" : "skipped"}
+        {copy.filtered ? "filtered" : skipReasonShort(copy.reason)}
       </span>
     );
   }

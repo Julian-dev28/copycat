@@ -27,8 +27,15 @@ const WIDTH = { sm: "w-[min(25rem,calc(100vw-2rem))]", md: "w-[min(30rem,calc(10
 export function Dialog({ open, onClose, title, description, children, footer, size = "md" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // The native `close` event also fires after a programmatic el.close() (open -> false),
+  // a tick later. Reporting that as a user close ran the parent's cancel handler after
+  // it had already moved on: the Trade ticket's "Tighter liquidation" confirm opened
+  // "Copy with real money?", then this stale close wiped the confirm chain and shut
+  // it again, so "Copy at this leverage anyway" did nothing (2026-10-15).
+  const wantOpen = useRef(open);
 
   useEffect(() => {
+    wantOpen.current = open;   // set before el.close() below, so its queued close event reads false
     const el = ref.current;
     if (!el) return;
     if (open && !el.open) el.showModal();
@@ -38,7 +45,9 @@ export function Dialog({ open, onClose, title, description, children, footer, si
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      onClose={() => {
+        if (wantOpen.current) onClose();   // a close the user made (Esc, backdrop); not the echo of open=false
+      }}
       onCancel={onClose}
       // a click on the backdrop lands on the <dialog> itself: cancel
       onClick={(e) => {

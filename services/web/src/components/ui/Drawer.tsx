@@ -22,9 +22,11 @@ export interface DrawerProps {
  */
 export function Drawer({ open, onClose, title, children, footer, closeLabel = "Close" }: DrawerProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const wantOpen = useRef(open);   // see Dialog: ignore the native close event that echoes open=false
   const titleId = useId();
 
   useEffect(() => {
+    wantOpen.current = open;
     const el = ref.current;
     if (!el) return;
     if (open && !el.open) el.showModal();
@@ -34,7 +36,9 @@ export function Drawer({ open, onClose, title, children, footer, closeLabel = "C
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      onClose={() => {
+        if (wantOpen.current) onClose();
+      }}
       onCancel={onClose}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

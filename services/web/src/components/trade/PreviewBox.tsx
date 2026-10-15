@@ -6,7 +6,7 @@ import { CoinBadge } from "@/components/scout/bits";
 import { Badge } from "@/components/ui";
 import { formatUsd } from "@/lib/format";
 import type { TicketPreview } from "@/lib/trade/ticket";
-import { fullBookShortfall, leverageMismatch, leverageMismatchText, liqTone } from "@/lib/trade/ticketView";
+import { fullBookShortfall, leverageMismatch, leverageMismatchText, liqTone, skipReasonShort, type SizeStarved } from "@/lib/trade/ticketView";
 import type { ExposureMode, MarginMode } from "@/lib/trade/types";
 import { SideTag } from "./bits";
 
@@ -33,6 +33,8 @@ export function PreviewBox({
   onlyNew,
   equityUsd,
   onUseFullBook,
+  starved = null,
+  onStarvedFix = null,
 }: {
   preview: TicketPreview;
   /** Null for "Use global": the sizing comes from the Settings tab. */
@@ -46,6 +48,9 @@ export function PreviewBox({
   /** Your account equity, for "needs $X; you have $Y". */
   equityUsd: number | null | undefined;
   onUseFullBook: ((usd: number) => void) | null;
+  /** Every position skipped for size (ticketView.sizeStarved): the cause and the terms that work. */
+  starved?: SizeStarved | null;
+  onStarvedFix?: ((fix: NonNullable<SizeStarved["fix"]>) => void) | null;
 }) {
   const p = preview;
   const estimate = p.source === "local";
@@ -126,7 +131,7 @@ export function PreviewBox({
                 {c.status === "skipped" ? (
                   <span className={clsx("flex items-center gap-1 truncate text-right", c.filtered ? "text-muted" : "text-warn")} title={c.reason ?? undefined}>
                     {c.filtered ? null : <AlertTriangle size={11} className="flex-shrink-0" aria-hidden="true" />}
-                    {c.reason ?? "skipped"}
+                    {c.filtered ? "filtered" : skipReasonShort(c.reason)}
                   </span>
                 ) : (
                   <span className={clsx("num text-right", estimate ? "text-muted" : "text-fg")}>
@@ -144,6 +149,19 @@ export function PreviewBox({
           </ul>
         </>
       )}
+      {starved ? (
+        <p role="note" className="flex flex-col gap-1 text-warn" data-testid="ticket-size-starved">
+          <span className="flex items-start gap-1.5">
+            <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>{starved.text}</span>
+          </span>
+          {starved.fix && onStarvedFix ? (
+            <button type="button" onClick={() => onStarvedFix(starved.fix!)} className="self-start font-medium text-accent hover:underline">
+              {starved.fix.label}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       {shortfall ? (
         <p role="note" className="flex items-start gap-1.5 text-warn" data-testid="ticket-full-shortfall">
           <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" aria-hidden="true" />

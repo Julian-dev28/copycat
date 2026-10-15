@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PlannedCopy } from "./ticket";
 import {
   actionSummary,
   allocationBreakdown,
@@ -11,6 +12,8 @@ import {
   leverageMismatchText,
   liqText,
   liqTone,
+  sizeStarved,
+  skipReasonShort,
 } from "./ticketView";
 
 describe("allocationBreakdown (#10)", () => {
@@ -119,5 +122,74 @@ describe("leverageMismatch (user_consensus_2026-10-14.md P0 #4)", () => {
   });
   it("is null in match mode even where the numbers would otherwise be severe: each copy already opens at the leader's own per-coin leverage there", () => {
     expect(leverageMismatch({ kind: "isolated", pct: 9, leverage: 10 }, 3, "match")).toBeNull();
+  });
+});
+
+describe("skipped rows say why (2026-10-15: a $15 account read 'skipped' on every position)", () => {
+  it("shortens the engine's reasons for the cell, keeps unknown ones", () => {
+    expect(skipReasonShort("copy $0.04 under the $10.5 minimum")).toBe("$0.04 < $10.50 min");
+    expect(skipReasonShort("slice $9.40 under the $10.5 minimum")).toBe("$9.40 < $10.50 min");
+    expect(skipReasonShort("concentrate: slice $9.40 under the $10.5 minimum, allocation goes to their bigger positions")).toBe("folded into their bigger positions");
+    expect(skipReasonShort("under $10 min: moved to their bigger bets")).toBe("folded into their bigger positions");
+    expect(skipReasonShort("only_new_positions: their current positions are not copied")).toBe("new trades only");
+    expect(skipReasonShort("one-shot: only the positions they held when copied")).toBe("one-shot: not held when copied");
+    expect(skipReasonShort("liquidity cap $8.00 is under the $10.5 minimum")).toBe("liquidity cap");
+    expect(skipReasonShort("below $10 min, skipped")).toBe("< $10.50 min");
+    expect(skipReasonShort("no amount yet")).toBe("no amount yet");
+    expect(skipReasonShort(null)).toBe("skipped");
+    expect(skipReasonShort("x".repeat(60))).toHaveLength(42);
+  });
+});
+
+function skipped(coin: string, hisNotionalUsd: number, reason: string, extra: Partial<PlannedCopy> = {}): PlannedCopy {
+  return { coin, side: "long", hisNotionalUsd, hisLeverage: 5, notionalUsd: 0, leverage: 15, marginUsd: 0, status: "skipped", reason, cycles: 1, ...extra };
+}
+
+describe("sizeStarved: every position under the minimum, and the terms that work", () => {
+  // the live case: proportional Settings sizing, 19% of $15.21 spread by their weights
+  const book = [skipped("BTC", 327_138, "copy $1.50 under the $10.5 minimum"), skipped("ZRO", 30_763, "copy $0.04 under the $10.5 minimum")];
+
+  it("global sizing on a $15 account: names the cause and offers this ticket's own terms", () => {
+    const s = sizeStarved({ copies: book, total: 2 }, { global: true, amount: null, leverage: 15, cap: 15, equityUsd: 15.21 });
+    expect(s?.text).toBe("Your Settings sizing comes out under Hyperliquid's $10.50 minimum on every position at $15.21 of equity. Give this ticket its own amount and leverage.");
+    // $15 x 1x = $15; their biggest position is 91% of the book: $13.70 clears $10.50 at 1x
+    expect(s?.fix).toEqual({ amountText: "15", leverage: 1, label: "Invest $15.00 at 1x" });
+  });
+
+  it("global sizing with a book spread thin: the leverage that clears it, capped", () => {
+    const thin = [1, 2, 3, 4, 5].map((i) => skipped(`C${i}`, 100, "copy $0.50 under the $10.5 minimum"));   // 20% each: needs $52.50 of exposure
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: true, amount: null, leverage: 15, cap: 15, equityUsd: 15.21 })?.fix)
+      .toEqual({ amountText: "15", leverage: 4, label: "Invest $15.00 at 4x" });
+    const s = sizeStarved({ copies: thin, total: 5 }, { global: true, amount: null, leverage: 15, cap: 3, equityUsd: 15.21 });
+    expect(s?.fix).toBeNull();
+    expect(s?.text).toContain("Even $15.00 at the 3x cap is under it on their biggest position; it takes $18.00.");
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: true, amount: null, leverage: 15, cap: 15, equityUsd: null })).toEqual({
+      text: "Your Settings sizing comes out under Hyperliquid's $10.50 minimum on every position. Give this ticket its own amount and leverage.", fix: null,
+    });
+  });
+
+  it("custom terms: the leverage that works, or the amount at the cap, or the honest dead end", () => {
+    const thin = [1, 2, 3, 4, 5].map((i) => skipped(`C${i}`, 100, "slice $0.50 under the $10.5 minimum"));
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: false, amount: 15, leverage: 1, cap: 15, equityUsd: 15.21 })).toEqual({
+      text: "At $15.00 x 1x nothing clears Hyperliquid's $10.50 minimum order. 4x puts their biggest position over it.",
+      fix: { amountText: "15", leverage: 4, label: "Use 4x" },
+    });
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: false, amount: 2, leverage: 3, cap: 3, equityUsd: 100 })).toEqual({
+      text: "At $2.00 x 3x nothing clears Hyperliquid's $10.50 minimum order. $18.00 at the 3x cap puts their biggest position over it.",
+      fix: { amountText: "18", leverage: 3, label: "Invest $18.00 at 3x" },
+    });
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: false, amount: 2, leverage: 3, cap: 3, equityUsd: 15.21 })).toEqual({
+      text: "At $2.00 x 3x nothing clears Hyperliquid's $10.50 minimum order; even the 3x cap needs $18.00 and you have $15.21.", fix: null,
+    });
+    expect(sizeStarved({ copies: thin, total: 5 }, { global: false, amount: 0, leverage: 3, cap: 3, equityUsd: 15.21 })?.fix).toBeNull();
+  });
+
+  it("is silent when something copies, when the cause is not size, or when they hold nothing", () => {
+    const opts = { global: true, amount: null, leverage: 15, cap: 15, equityUsd: 15.21 };
+    expect(sizeStarved({ copies: [{ ...book[0], status: "copy", notionalUsd: 40, reason: null }, book[1]], total: 2 }, opts)).toBeNull();
+    expect(sizeStarved({ copies: [skipped("BTC", 1, "only_new_positions: their current positions are not copied")], total: 1 }, opts)).toBeNull();
+    expect(sizeStarved({ copies: [skipped("BTC", 1, "liquidity cap $8.00 is under the $10.5 minimum"), book[1]], total: 2 }, opts)).not.toBeNull();   // a size reason too
+    expect(sizeStarved({ copies: [], total: 0 }, opts)).toBeNull();
+    expect(sizeStarved({ copies: [skipped("BTC", 1, "copy $0.04 under the $10.5 minimum", { filtered: true })], total: 1 }, opts)).toBeNull();   // filtered rows do not count
   });
 });
