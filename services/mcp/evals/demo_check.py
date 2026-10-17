@@ -24,9 +24,12 @@ from mcp.client.stdio import stdio_client
 ROOT = Path(__file__).resolve().parents[3]
 RUN_SH = ROOT / "services" / "mcp" / "run.sh"
 
-READ_TOOLS = {"scout_list", "trader_profile", "trader_fingerprint", "trader_trades", "trader_fills",
-              "market_candles", "list_theses", "save_thesis", "copycat_settings", "engine_status",
-              "my_wallets", "preview_copy", "copy_plan"}
+# Every tool the server registers without COPYCAT_MCP_ALLOW_TRADING. scout_sim_terms (v16, a GET)
+# and scout_add_wallet (v15, POST /api/scout/custom: a wallet on the Scout board, research scope,
+# no money) joined later and this set lagged: the 2026-10-17 run failed step 1 on "15 tools".
+READ_TOOLS = {"scout_list", "scout_sim_terms", "scout_add_wallet", "trader_profile", "trader_fingerprint",
+              "trader_trades", "trader_fills", "market_candles", "list_theses", "save_thesis",
+              "copycat_settings", "engine_status", "my_wallets", "preview_copy", "copy_plan"}
 
 
 class Demo:

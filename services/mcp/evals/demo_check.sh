@@ -23,7 +23,9 @@ TOK="$(openssl rand -hex 32)"
   COPYCAT_SKIP_DOTENV=1 COPYCAT_MCP_ALLOW_TRADING=1 \
   PYTHONPATH=.:services/hl:services/engine:services/discovery:services/api:services/vault \
   env -u COPYCAT_AGENT_KEY nohup .venv/bin/python -m api > "$T/api.log" 2>&1 & )
-trap 'kill $(lsof -t -iTCP:'"$PORT"' -sTCP:LISTEN) 2>/dev/null || true' EXIT
+# The data dir is a copy of discovery.db (gigabytes): removed on exit unless COPYCAT_KEEP=1
+# (the transcript paths printed below live in it).
+trap 'kill $(lsof -t -iTCP:'"$PORT"' -sTCP:LISTEN) 2>/dev/null || true; [[ "${COPYCAT_KEEP:-0}" == "1" ]] || rm -rf "$T"' EXIT
 for _ in $(seq 1 30); do curl -s -o /dev/null "localhost:$PORT/api/health" && break; sleep 1; done
 MTOK="$(cat "$T/mcp_token")"
 echo "throwaway copycat on :$PORT, data $T"
@@ -46,8 +48,8 @@ JSON
   cd "$T"
   M=(--mcp-config "$T/mcp.json" --strict-mcp-config --allowedTools "mcp__copycat__*" --output-format stream-json --verbose --max-turns 30)
   claude -p "Use copycat: show me the top 5 traders on the Scout board by Copy Fit, one line each." "${M[@]}" < /dev/null > c1.jsonl
-  claude -p -c "Explain trader $TRADER's strategy in plain words: style, how long he holds, win rate, biggest risks. Use his fingerprint." "${M[@]}" < /dev/null > c2.jsonl
-  claude -p -c "Make a copy plan for $TRADER with \$50 at 3x, 50% entry deviation, copy his side, follow new positions. Show me the plan." "${M[@]}" < /dev/null > c3.jsonl
+  claude -p -c "Explain trader $TRADER's strategy in plain words: style, how long they hold, win rate, biggest risks. Use their fingerprint." "${M[@]}" < /dev/null > c2.jsonl
+  claude -p -c "Make a copy plan for $TRADER with \$50 at 3x, 50% entry deviation, copy their side, follow new positions. Show me the plan." "${M[@]}" < /dev/null > c3.jsonl
   CODE="$(curl -s -H "Authorization: Bearer $TOK" "localhost:$PORT/api/mcp/plans/pending" \
     | "$ROOT/.venv/bin/python" -c 'import json,sys; p=json.load(sys.stdin); print(p[0]["confirm_code"] if p else "")')"
   claude -p -c "Yes, I approve. The code copycat shows me is $CODE." "${M[@]}" < /dev/null > c4.jsonl
